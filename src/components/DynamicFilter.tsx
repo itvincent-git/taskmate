@@ -9,6 +9,7 @@ export function DynamicFilter({ definition, current, onChange }: {
   const [operator, setOperator] = useState(() => current[0]?.operator || defaultOperator(definition));
   const [first, setFirst] = useState(() => valueString(current[0]?.value));
   const [second, setSecond] = useState(() => valueString(current[1]?.value));
+  const [multiValues, setMultiValues] = useState<string[]>(() => Array.isArray(current[0]?.value) ? current[0].value.map(String) : []);
   const apply = (nextOperator: string, a = first, b = second) => {
     setOperator(nextOperator);
     if (nextOperator === "set" || nextOperator === "unset") {
@@ -34,13 +35,34 @@ export function DynamicFilter({ definition, current, onChange }: {
   if (definition.type === "select" || definition.type === "multiselect" || definition.type === "tags") {
     const multi = definition.type !== "select";
     return <div className="dynamic-filter">
-      {multi && <select aria-label={`${definition.name} match`} value={operator} onChange={(event) => apply(event.target.value)}>
+      {multi && <select aria-label={`${definition.name} match`} value={operator} onChange={(event) => {
+        const nextOperator = event.target.value;
+        setOperator(nextOperator);
+        if (nextOperator === "unset") onChange([{ key: definition.key, operator: "unset" }]);
+        else {
+          const values = definition.options.length ? multiValues : first.split(",").map((value) => value.trim()).filter(Boolean);
+          onChange(values.length ? [{ key: definition.key, operator: nextOperator, value: values }] : []);
+        }
+      }}>
         <option value="any">Any</option><option value="all">All</option><option value="unset">Unset</option>
       </select>}
-      {definition.options.length ? <select aria-label={`Filter by ${definition.name}`} value={first} onChange={(event) => { setFirst(event.target.value); apply(multi ? operator : "eq", event.target.value); }}>
+      {definition.options.length ? <select multiple={multi} aria-label={`Filter by ${definition.name}`} value={multi ? multiValues : first} onChange={(event) => {
+        if (multi) {
+          const values = Array.from(event.target.selectedOptions, (option) => option.value).filter(Boolean);
+          setMultiValues(values);
+          onChange(values.length ? [{ key: definition.key, operator, value: values }] : []);
+        } else {
+          setFirst(event.target.value);
+          apply("eq", event.target.value);
+        }
+      }}>
         <option value="">{definition.name}: All</option>
         {definition.options.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}
-      </select> : <input aria-label={`Filter by ${definition.name}`} value={first} placeholder={`${definition.name}…`} onChange={(event) => { setFirst(event.target.value); apply(multi ? operator : "eq", event.target.value); }} />}
+      </select> : <input aria-label={`Filter by ${definition.name}`} value={first} placeholder={`${definition.name}…`} onChange={(event) => {
+        setFirst(event.target.value);
+        const values = event.target.value.split(",").map((value) => value.trim()).filter(Boolean);
+        onChange(values.length ? [{ key: definition.key, operator: multi ? operator : "eq", value: multi ? values : values[0] }] : []);
+      }} />}
     </div>;
   }
 

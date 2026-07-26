@@ -29,4 +29,13 @@ describe("DynamicFilter", () => {
       { key: "due", operator: "lte", value: "2026-07-31" },
     ]);
   });
+
+  it("supports Any and All matching with multiple selected options", async () => {
+    const onChange = vi.fn();
+    render(<DynamicFilter definition={{ ...base, type: "tags", name: "Tags", key: "tags", options: [{ id: "rust", label: "Rust", order: 0 }, { id: "tauri", label: "Tauri", order: 1 }] }} current={[]} onChange={onChange} />);
+    await userEvent.setup().selectOptions(screen.getByLabelText("Filter by Tags"), ["rust", "tauri"]);
+    expect(onChange).toHaveBeenLastCalledWith([{ key: "tags", operator: "any", value: ["rust", "tauri"] }]);
+    await userEvent.setup().selectOptions(screen.getByLabelText("Tags match"), "all");
+    expect(onChange).toHaveBeenLastCalledWith([{ key: "tags", operator: "all", value: ["rust", "tauri"] }]);
+  });
 });

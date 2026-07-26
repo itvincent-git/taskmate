@@ -22,6 +22,13 @@ export function PropertySettings({ definitions, lockedIds, onChange, onSave, onR
     if (!other) return;
     onChange(definitions.map((definition) => definition.id === id ? { ...definition, order: other.order } : definition.id === other.id ? { ...definition, order: ordered[index].order } : definition));
   };
+  const moveOption = (definition: PropertyDefinition, index: number, direction: -1 | 1) => {
+    const target = index + direction;
+    if (!definition.options[target]) return;
+    const options = definition.options.slice();
+    [options[index], options[target]] = [options[target], options[index]];
+    update(definition.id, { options: options.map((option, order) => ({ ...option, order })) });
+  };
   const add = () => {
     const id = crypto.randomUUID();
     onChange([...definitions, {
@@ -56,7 +63,7 @@ export function PropertySettings({ definitions, lockedIds, onChange, onSave, onR
               <div className="option-editor">
                 <label>Options</label>
                 <div className="option-list">
-                  {definition.options.map((option, index) => <div key={option.id}><input type="color" aria-label={`${option.label} color`} value={option.color || "#718096"} onChange={(event) => update(definition.id, { options: definition.options.map((item) => item.id === option.id ? { ...item, color: event.target.value } : item) })} /><input value={option.label} onChange={(event) => update(definition.id, { options: definition.options.map((item) => item.id === option.id ? { ...item, label: event.target.value } : item) })} /><button className="mini danger" onClick={() => update(definition.id, { options: definition.options.filter((item) => item.id !== option.id).map((item, order) => ({ ...item, order })) })}>×</button>{index === definition.options.length - 1 && <button className="mini" onClick={() => update(definition.id, { options: [...definition.options, { id: crypto.randomUUID(), label: "New option", color: "#718096", order: definition.options.length }] })}>+</button>}</div>)}
+                  {definition.options.map((option, index) => <div key={option.id}><input type="color" aria-label={`${option.label} color`} value={option.color || "#718096"} onChange={(event) => update(definition.id, { options: definition.options.map((item) => item.id === option.id ? { ...item, color: event.target.value } : item) })} /><input value={option.label} onChange={(event) => update(definition.id, { options: definition.options.map((item) => item.id === option.id ? { ...item, label: event.target.value } : item) })} /><button className="mini" aria-label={`Move ${option.label} up`} onClick={() => moveOption(definition, index, -1)}><ChevronUp /></button><button className="mini" aria-label={`Move ${option.label} down`} onClick={() => moveOption(definition, index, 1)}><ChevronDown /></button><button className="mini danger" onClick={() => update(definition.id, { options: definition.options.filter((item) => item.id !== option.id).map((item, order) => ({ ...item, order })) })}>×</button>{index === definition.options.length - 1 && <button className="mini" onClick={() => update(definition.id, { options: [...definition.options, { id: crypto.randomUUID(), label: "New option", color: "#718096", order: definition.options.length }] })}>+</button>}</div>)}
                   {definition.options.length === 0 && <button className="secondary" onClick={() => update(definition.id, { options: [{ id: crypto.randomUUID(), label: "New option", color: "#718096", order: 0 }] })}>Add option</button>}
                 </div>
               </div>

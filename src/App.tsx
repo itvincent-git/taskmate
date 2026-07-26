@@ -368,6 +368,7 @@ export function App() {
                     <option key={`${definition.id}-desc`} value={`${definition.key}:desc`}>{definition.name} · Desc</option>,
                   ])}
                 </select>
+                {query.sort && <select aria-label="Empty values position" value={query.sort.nulls} onChange={(event) => setQuery({ ...query, sort: { ...query.sort!, nulls: event.target.value as "first" | "last" } })}><option value="last">Empty last</option><option value="first">Empty first</option></select>}
               </div>
               <button className={query.archived ? "secondary active" : "secondary"} onClick={() => { setTask(null); setQuery({ ...query, archived: !query.archived }); }}>{query.archived ? <ArchiveRestore size={16} /> : <Archive size={16} />}{query.archived ? "Active" : "Archive"}</button>
               <button className="primary" onClick={create}><Plus size={17} /> New task</button>
