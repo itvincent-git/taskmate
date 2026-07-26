@@ -377,4 +377,37 @@ mod tests {
         index.remove("a").unwrap();
         assert_eq!(index.query(&TaskQuery::default(), &[]).unwrap().len(), 1);
     }
+
+    #[test]
+    fn queries_five_thousand_indexed_tasks() {
+        let temporary = tempfile::tempdir().unwrap();
+        let index = TaskIndex::open(&temporary.path().join("index.sqlite")).unwrap();
+        for number in 0..5_000 {
+            let task = task(
+                &format!("task-{number}"),
+                &format!("Task {number}"),
+                number % 20,
+                if number % 2 == 0 { "doing" } else { "done" },
+                &["scale"],
+            );
+            index
+                .upsert(
+                    &task,
+                    &temporary.path().join(format!("task-{number}.md")),
+                    number,
+                )
+                .unwrap();
+        }
+        let result = index
+            .query(
+                &TaskQuery {
+                    search: "Task 4999".into(),
+                    ..TaskQuery::default()
+                },
+                &[],
+            )
+            .unwrap();
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].id, "task-4999");
+    }
 }

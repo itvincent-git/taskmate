@@ -91,4 +91,20 @@ mod tests {
     fn rejects_missing_required_frontmatter() {
         assert!(parse_task(Path::new("bad.md"), "---\ntitle: Missing ID\n---\n").is_err());
     }
+
+    #[test]
+    fn round_trips_a_one_megabyte_markdown_body() {
+        let body = "文".repeat(350_000);
+        let source = format!(
+            "---\nid: large\ntitle: Large\narchived: false\ncreatedAt: 2026-01-01T00:00:00Z\nupdatedAt: 2026-01-01T00:00:00Z\n---\n\n{body}"
+        );
+        let task = parse_task(Path::new("large.md"), &source).unwrap();
+        assert!(task.body.len() >= 1_000_000);
+        assert_eq!(
+            parse_task(Path::new("large.md"), &serialize_task(&task).unwrap())
+                .unwrap()
+                .body,
+            task.body
+        );
+    }
 }
