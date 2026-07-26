@@ -85,6 +85,7 @@ export interface GitStatus {
   ahead: number;
   behind: number;
   lastCommit?: string;
+  lastSync?: string;
 }
 
 export type AppView = "tasks" | "properties" | "backup";

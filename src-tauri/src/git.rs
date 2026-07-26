@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use std::fs;
 use std::path::Path;
 use std::process::Command;
 
@@ -13,6 +14,7 @@ pub struct GitStatus {
     pub ahead: i64,
     pub behind: i64,
     pub last_commit: Option<String>,
+    pub last_sync: Option<String>,
 }
 
 pub fn initialize(root: &Path) -> Result<GitStatus, String> {
@@ -48,12 +50,14 @@ pub fn commit(root: &Path, message: &str) -> Result<GitStatus, String> {
 pub fn push(root: &Path) -> Result<GitStatus, String> {
     reject_conflicts(root)?;
     run(root, &["push"])?;
+    record_sync(root)?;
     status(root)
 }
 
 pub fn pull(root: &Path) -> Result<GitStatus, String> {
     reject_conflicts(root)?;
     run(root, &["pull", "--no-rebase"])?;
+    record_sync(root)?;
     status(root)
 }
 
@@ -78,6 +82,7 @@ pub fn status(root: &Path) -> Result<GitStatus, String> {
             ahead: 0,
             behind: 0,
             last_commit: None,
+            last_sync: None,
         });
     }
     let porcelain = run(root, &["status", "--porcelain=v1", "--branch"])?;
@@ -110,6 +115,10 @@ pub fn status(root: &Path) -> Result<GitStatus, String> {
     let ahead = counts.next().unwrap_or(0);
     let behind = counts.next().unwrap_or(0);
     let last_commit = run_optional(root, &["log", "-1", "--format=%aI"]);
+    let last_sync = fs::read_to_string(root.join(".task-app/git-sync.timestamp"))
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty());
     Ok(GitStatus {
         initialized: true,
         branch,
@@ -119,6 +128,7 @@ pub fn status(root: &Path) -> Result<GitStatus, String> {
         ahead,
         behind,
         last_commit,
+        last_sync,
     })
 }
 
@@ -136,6 +146,15 @@ fn reject_conflicts(root: &Path) -> Result<(), String> {
 
 fn run_optional(root: &Path, args: &[&str]) -> Option<String> {
     run(root, args).ok().filter(|value| !value.is_empty())
+}
+
+fn record_sync(root: &Path) -> Result<(), String> {
+    fs::create_dir_all(root.join(".task-app")).map_err(|error| error.to_string())?;
+    fs::write(
+        root.join(".task-app/git-sync.timestamp"),
+        chrono::Utc::now().to_rfc3339(),
+    )
+    .map_err(|error| format!("Git completed, but its sync timestamp could not be saved: {error}"))
 }
 
 fn run(root: &Path, args: &[&str]) -> Result<String, String> {

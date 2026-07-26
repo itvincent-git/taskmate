@@ -285,10 +285,27 @@ impl Workspace {
 
     fn ensure_gitignore(&self) -> Result<(), String> {
         let path = self.root.join(".gitignore");
-        let required = ".task-app/index.sqlite\n.task-app/index.sqlite-shm\n.task-app/index.sqlite-wal\ntrash/\n";
-        let existing = fs::read_to_string(&path).unwrap_or_default();
-        if !existing.contains(".task-app/index.sqlite") {
-            atomic_write(&path, format!("{existing}{required}").as_bytes())?;
+        let required = [
+            ".task-app/index.sqlite",
+            ".task-app/index.sqlite-shm",
+            ".task-app/index.sqlite-wal",
+            ".task-app/git-sync.timestamp",
+            "trash/",
+        ];
+        let mut contents = fs::read_to_string(&path).unwrap_or_default();
+        let mut changed = false;
+        for entry in required {
+            if !contents.lines().any(|line| line.trim() == entry) {
+                if !contents.is_empty() && !contents.ends_with('\n') {
+                    contents.push('\n');
+                }
+                contents.push_str(entry);
+                contents.push('\n');
+                changed = true;
+            }
+        }
+        if changed {
+            atomic_write(&path, contents.as_bytes())?;
         }
         Ok(())
     }

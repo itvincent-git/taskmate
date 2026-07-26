@@ -93,7 +93,7 @@ function BackupView() {
         <div className="backup-grid">
           <section className="settings-card">
             <h2>Repository</h2>
-            <dl><div><dt>Branch</dt><dd>{status.branch || "—"}</dd></div><div><dt>Changes</dt><dd>{status.changes.length}</dd></div><div><dt>Ahead / behind</dt><dd>{status.ahead} / {status.behind}</dd></div><div><dt>Last sync</dt><dd>{status.lastCommit ? new Date(status.lastCommit).toLocaleString() : "Never"}</dd></div></dl>
+            <dl><div><dt>Branch</dt><dd>{status.branch || "—"}</dd></div><div><dt>Changes</dt><dd>{status.changes.length}</dd></div><div><dt>Ahead / behind</dt><dd>{status.ahead} / {status.behind}</dd></div><div><dt>Last sync</dt><dd>{status.lastSync ? new Date(status.lastSync).toLocaleString() : "Never"}</dd></div></dl>
             {status.conflicts.length > 0 && <div className="banner error"><strong>Sync stopped: conflicts</strong>{status.conflicts.map((conflict) => <code key={conflict}>{conflict}</code>)}</div>}
           </section>
           <section className="settings-card">

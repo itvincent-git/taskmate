@@ -180,7 +180,7 @@ export const api = {
     return { initialized: false, changes: [], conflicts: [], ahead: 0, behind: 0 };
   },
   async gitAction(action: string, args: Record<string, string> = {}): Promise<GitStatus> {
-    if (!isTauri) return { initialized: action === "git_initialize", branch: "main", changes: [], conflicts: [], ahead: 0, behind: 0 };
+    if (!isTauri) return { initialized: action === "git_initialize", branch: "main", changes: [], conflicts: [], ahead: 0, behind: 0, lastSync: action === "git_pull" || action === "git_push" ? new Date().toISOString() : undefined };
     return invoke(action, args);
   },
   async gitHistory(): Promise<string[]> {
