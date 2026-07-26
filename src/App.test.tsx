@@ -61,4 +61,33 @@ describe("Taskmate application", () => {
     expect(screen.getByRole("alert")).toHaveTextContent("disk full");
     failure.mockRestore();
   });
+
+  it("remembers workspaces and offers switching without retyping", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await user.clear(screen.getByLabelText("Workspace folder"));
+    await user.type(screen.getByLabelText("Workspace folder"), "/tmp/remembered");
+    await user.click(screen.getByRole("button", { name: "Open workspace" }));
+    expect(await screen.findByRole("heading", { name: "My tasks" })).toBeInTheDocument();
+    expect(localStorage.getItem("taskmate-workspaces.v1")).toContain("/tmp/remembered");
+
+    await user.click(screen.getByRole("button", { name: "Switch workspace" }));
+    expect(screen.getByRole("button", { name: /\/tmp\/remembered/ })).toBeInTheDocument();
+    expect(screen.getByLabelText("Workspace folder")).toHaveValue("/tmp/remembered");
+  });
+
+  it("opens Markdown tasks in tabs and persists card display controls", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(screen.getByRole("button", { name: "Open workspace" }));
+    await user.click(await screen.findByRole("button", { name: "New task" }));
+    await user.click(screen.getByRole("button", { name: "New task" }));
+    expect(screen.getAllByRole("tab")).toHaveLength(2);
+
+    await user.click(screen.getByRole("button", { name: "Compact cards" }));
+    expect(localStorage.getItem("taskmate-compact-cards.v1")).toBe("true");
+    await user.click(screen.getByRole("button", { name: "Hide task cards" }));
+    expect(localStorage.getItem("taskmate-task-list-visible.v1")).toBe("false");
+    expect(screen.getByRole("button", { name: "Show task cards" })).toBeInTheDocument();
+  });
 });

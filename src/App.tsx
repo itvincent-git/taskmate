@@ -6,15 +6,20 @@ import {
   Check,
   Cloud,
   Database,
+  FolderSync,
   GitBranch,
   LayoutList,
   LoaderCircle,
   Moon,
+  PanelLeftClose,
+  PanelLeftOpen,
   Plus,
+  Rows3,
   Search,
   Settings2,
   Sun,
   Trash2,
+  X,
 } from "lucide-react";
 import { api } from "./lib/api";
 import type {
@@ -40,7 +45,22 @@ import { TaskmateI18nProvider, localizedPropertyName, useTaskmateI18n } from "./
 import "./styles.css";
 
 const initialPath = localStorage.getItem("taskmate-workspace") || `${navigator.platform.includes("Mac") ? "/Users/Shared" : "."}/Taskmate`;
+const RECENT_WORKSPACES_KEY = "taskmate-workspaces.v1";
+const COMPACT_CARDS_KEY = "taskmate-compact-cards.v1";
+const TASK_LIST_VISIBLE_KEY = "taskmate-task-list-visible.v1";
 const MarkdownEditor = lazy(() => import("./components/MarkdownEditor").then((module) => ({ default: module.MarkdownEditor })));
+
+function loadRecentWorkspaces() {
+  try {
+    const stored = JSON.parse(localStorage.getItem(RECENT_WORKSPACES_KEY) || "[]");
+    const recent = Array.isArray(stored) ? stored.filter((path): path is string => typeof path === "string").slice(0, 8) : [];
+    const legacy = localStorage.getItem("taskmate-workspace");
+    return recent.length > 0 || !legacy ? recent : [legacy];
+  } catch {
+    const legacy = localStorage.getItem("taskmate-workspace");
+    return legacy ? [legacy] : [];
+  }
+}
 
 function errorMessage(error: unknown) {
   return error instanceof Error ? error.message : String(error);
@@ -125,6 +145,7 @@ function BackupView() {
 function TaskmateApp() {
   const { locale, setLocale, t } = useTaskmateI18n();
   const [workspacePath, setWorkspacePath] = useState(initialPath);
+  const [recentWorkspaces, setRecentWorkspaces] = useState<string[]>(loadRecentWorkspaces);
   const [workspaceOpen, setWorkspaceOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [view, setView] = useState<AppView>("tasks");
@@ -132,6 +153,7 @@ function TaskmateApp() {
   const [lockedPropertyIds, setLockedPropertyIds] = useState<Set<string>>(new Set());
   const [tasks, setTasks] = useState<TaskSummary[]>([]);
   const [task, setTask] = useState<Task | null>(null);
+  const [openTabs, setOpenTabs] = useState<Array<Pick<Task, "id" | "title" | "fileName">>>([]);
   const [query, setQuery] = useState<TaskQuery>({ search: "", archived: false, filters: [] });
   const [searchDraft, setSearchDraft] = useState("");
   const [saveState, setSaveState] = useState<SaveState>("saved");
@@ -139,34 +161,64 @@ function TaskmateApp() {
   const [schemaSaving, setSchemaSaving] = useState(false);
   const [dark, setDark] = useState(() => localStorage.getItem("taskmate-theme") === "dark");
   const [leftWidth, setLeftWidth] = useState(390);
+  const [compactCards, setCompactCards] = useState(() => localStorage.getItem(COMPACT_CARDS_KEY) === "true");
+  const [taskListVisible, setTaskListVisible] = useState(() => localStorage.getItem(TASK_LIST_VISIBLE_KEY) !== "false");
   const [externalTask, setExternalTask] = useState<Task | null>(null);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [fileSignal, setFileSignal] = useState(0);
   const listHost = useRef<HTMLDivElement>(null);
+  const autoOpened = useRef(false);
   const selectedId = task?.id;
 
-  const openWorkspace = async () => {
+  const openWorkspace = useCallback(async (requestedPath?: string) => {
+    const path = (requestedPath ?? workspacePath).trim();
+    if (!path) return;
     setLoading(true);
     setError("");
     try {
-      const snapshot = await api.openWorkspace(workspacePath.trim());
-      localStorage.setItem("taskmate-workspace", workspacePath.trim());
+      const snapshot = await api.openWorkspace(path);
+      const recent = [path, ...recentWorkspaces.filter((candidate) => candidate !== path)].slice(0, 8);
+      localStorage.setItem("taskmate-workspace", path);
+      localStorage.setItem(RECENT_WORKSPACES_KEY, JSON.stringify(recent));
+      setWorkspacePath(path);
+      setRecentWorkspaces(recent);
       setDefinitions(snapshot.properties);
       setLockedPropertyIds(new Set(snapshot.properties.map((definition) => definition.id)));
       setTasks(snapshot.tasks);
+      setQuery({ search: "", archived: false, filters: [] });
+      setSearchDraft("");
+      setView("tasks");
       setWorkspaceOpen(true);
-      if (snapshot.tasks[0]) setTask(await api.getTask(snapshot.tasks[0].id));
+      if (snapshot.tasks[0]) {
+        const first = await api.getTask(snapshot.tasks[0].id);
+        setTask(first);
+        setOpenTabs([{ id: first.id, title: first.title, fileName: first.fileName }]);
+      } else {
+        setTask(null);
+        setOpenTabs([]);
+      }
     } catch (cause) {
       setError(errorMessage(cause));
     } finally {
       setLoading(false);
     }
-  };
+  }, [recentWorkspaces, workspacePath]);
+
+  useEffect(() => {
+    if (autoOpened.current || recentWorkspaces.length === 0) return;
+    autoOpened.current = true;
+    void openWorkspace(recentWorkspaces[0]);
+  }, [openWorkspace, recentWorkspaces]);
 
   useEffect(() => {
     document.documentElement.dataset.theme = dark ? "dark" : "light";
     localStorage.setItem("taskmate-theme", dark ? "dark" : "light");
   }, [dark]);
+
+  useEffect(() => {
+    localStorage.setItem(COMPACT_CARDS_KEY, String(compactCards));
+    localStorage.setItem(TASK_LIST_VISIBLE_KEY, String(taskListVisible));
+  }, [compactCards, taskListVisible]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => setQuery((current) => ({ ...current, search: searchDraft })), 260);
@@ -202,6 +254,7 @@ function TaskmateApp() {
     try {
       const saved = await api.saveTask(current);
       setTask((open) => open?.id === saved.id ? saved : open);
+      setOpenTabs((tabs) => tabs.map((tab) => tab.id === saved.id ? { id: saved.id, title: saved.title, fileName: saved.fileName } : tab));
       setSaveState("saved");
       await refresh();
     } catch (cause) {
@@ -248,6 +301,9 @@ function TaskmateApp() {
 
   const editTask = (patch: Partial<Task>) => {
     setTask((current) => current ? { ...current, ...patch } : current);
+    if (patch.title !== undefined && task) {
+      setOpenTabs((tabs) => tabs.map((tab) => tab.id === task.id ? { ...tab, title: patch.title! } : tab));
+    }
     setSaveState("dirty");
   };
   const editProperty = (key: string, value: unknown) => editTask({ properties: { ...task?.properties, [key]: value } });
@@ -255,7 +311,9 @@ function TaskmateApp() {
     if (id === selectedId) return;
     if (task && saveState === "dirty") await save(task);
     try {
-      setTask(await api.getTask(id));
+      const next = await api.getTask(id);
+      setTask(next);
+      setOpenTabs((tabs) => tabs.some((tab) => tab.id === next.id) ? tabs : [...tabs, { id: next.id, title: next.title, fileName: next.fileName }]);
       setSaveState("saved");
     } catch (cause) { setError(errorMessage(cause)); }
   };
@@ -263,6 +321,7 @@ function TaskmateApp() {
     try {
       const created = await api.createTask(t("tasks.untitled"));
       setTask(created);
+      setOpenTabs((tabs) => [...tabs, { id: created.id, title: created.title, fileName: created.fileName }]);
       setSaveState("saved");
       await refresh();
     } catch (cause) { setError(errorMessage(cause)); }
@@ -277,8 +336,10 @@ function TaskmateApp() {
   };
   const archive = async () => {
     if (!task) return;
+    const archivedId = task.id;
     await save({ ...task, archived: !task.archived });
     setTask(null);
+    setOpenTabs((tabs) => tabs.filter((tab) => tab.id !== archivedId));
   };
   const remove = async () => {
     if (!task) return;
@@ -292,6 +353,7 @@ function TaskmateApp() {
     if (!task) return;
     try {
       await api.deleteTask(task.id);
+      setOpenTabs((tabs) => tabs.filter((tab) => tab.id !== task.id));
       setTask(null);
       setDeleteConfirmOpen(false);
       await refresh();
@@ -301,9 +363,39 @@ function TaskmateApp() {
   const virtualizer = useVirtualizer({
     count: tasks.length,
     getScrollElement: () => listHost.current,
-    estimateSize: () => 154,
+    estimateSize: () => compactCards ? 54 : 154,
     overscan: 6,
   });
+
+  useEffect(() => {
+    virtualizer.measure();
+  }, [compactCards, virtualizer]);
+
+  const closeTab = async (id: string) => {
+    if (task?.id === id && saveState === "dirty") await save(task);
+    const index = openTabs.findIndex((tab) => tab.id === id);
+    const remaining = openTabs.filter((tab) => tab.id !== id);
+    setOpenTabs(remaining);
+    if (task?.id !== id) return;
+    const next = remaining[Math.min(index, remaining.length - 1)];
+    if (!next) {
+      setTask(null);
+      return;
+    }
+    try {
+      setTask(await api.getTask(next.id));
+      setSaveState("saved");
+    } catch (cause) {
+      setError(errorMessage(cause));
+    }
+  };
+
+  const switchWorkspace = async () => {
+    if (task && saveState === "dirty") await save(task);
+    setTask(null);
+    setOpenTabs([]);
+    setWorkspaceOpen(false);
+  };
 
   const statusDefinition = definitions.find((definition) => definition.role === "status");
   const filterDefinitions = definitions.filter((definition) => definition.enableFilter);
@@ -335,27 +427,57 @@ function TaskmateApp() {
         <h1>{t("app.name")}</h1>
         <p>{t("app.description")}</p>
         <label>{t("workspace.folder")}<Input value={workspacePath} onChange={(event) => setWorkspacePath(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") void openWorkspace(); }} /></label>
-        <Button size="lg" onClick={openWorkspace} disabled={loading || !workspacePath.trim()}>{loading ? <LoaderCircle className="spin" /> : <Database />}{t("workspace.open")}</Button>
+        <Button size="lg" onClick={() => void openWorkspace()} disabled={loading || !workspacePath.trim()}>{loading ? <LoaderCircle className="spin" /> : <Database />}{t("workspace.open")}</Button>
+        {recentWorkspaces.length > 0 ? (
+          <section className="mt-7 w-full max-w-md">
+            <p className="mb-2 text-xs font-semibold text-[var(--muted)]">{t("workspace.recent")}</p>
+            <div className="grid gap-2">
+              {recentWorkspaces.map((path) => (
+                <Button key={path} variant="outline" className="w-full justify-start overflow-hidden" onClick={() => void openWorkspace(path)}>
+                  <FolderSync size={16} className="shrink-0" /><span className="truncate">{path}</span>
+                </Button>
+              ))}
+            </div>
+          </section>
+        ) : null}
         {error && <div className="banner error">{error}</div>}
       </main>
     );
   }
 
   return (
-    <div className="app">
-      <header className="app-nav">
-        <div className="nav-brand"><span><Check size={16} /></span><strong>{t("app.name")}</strong></div>
-        <nav aria-label={t("nav.application")}>
-          <Button variant="ghost" className={view === "tasks" ? "active" : ""} onClick={() => setView("tasks")}><LayoutList size={17} />{t("nav.tasks")}</Button>
-          <Button variant="ghost" className={view === "properties" ? "active" : ""} onClick={() => setView("properties")}><Settings2 size={17} />{t("nav.properties")}</Button>
-          <Button variant="ghost" className={view === "backup" ? "active" : ""} onClick={() => setView("backup")}><GitBranch size={17} />{t("nav.backup")}</Button>
-        </nav>
-        <div className="nav-actions">
-          <Select ariaLabel={t("nav.language")} value={locale} onValueChange={(value) => setLocale(value as typeof locale)} options={[{ value: "en", label: "EN" }, { value: "zh-CN", label: "中文" }]} />
-          <Tooltip label={t("nav.theme")}><Button variant="ghost" size="icon" aria-label={t("nav.theme")} onClick={() => setDark((value) => !value)}>{dark ? <Sun /> : <Moon />}</Button></Tooltip>
+    <div className="flex h-full min-h-0 flex-col bg-[var(--bg)]">
+      <header className="flex h-11 shrink-0 items-stretch border-b border-[var(--line)] bg-[var(--surface)] pl-[78px]" data-tauri-drag-region>
+        <div className="flex min-w-0 flex-1 items-end gap-1 overflow-x-auto px-2 pt-1" role="tablist" aria-label={t("editor.openFiles")}>
+          {openTabs.map((tab) => (
+            <div
+              key={tab.id}
+              className={`group flex h-9 min-w-32 max-w-56 items-center rounded-t-md border border-b-0 px-2 text-xs ${tab.id === selectedId && view === "tasks" ? "border-[var(--line)] bg-[var(--bg)] text-[var(--text)]" : "border-transparent text-[var(--muted)] hover:bg-[var(--surface-soft)]"}`}
+              role="tab"
+              aria-selected={tab.id === selectedId && view === "tasks"}
+            >
+              <button className="min-w-0 flex-1 truncate text-left" onClick={() => { setView("tasks"); void chooseTask(tab.id); }}>{tab.title}</button>
+              <button className="ml-2 grid size-5 shrink-0 place-items-center rounded opacity-0 hover:bg-[var(--line)] group-hover:opacity-100 focus:opacity-100" aria-label={`${t("tasks.closeTab")}: ${tab.title}`} onClick={() => void closeTab(tab.id)}><X size={12} /></button>
+            </div>
+          ))}
         </div>
+        <div className="flex shrink-0 items-center px-3 text-[10px] text-[var(--muted)]">{workspacePath.split(/[\\/]/).filter(Boolean).at(-1)}</div>
       </header>
-      <main className="workspace">
+      <div className="flex min-h-0 flex-1">
+        <aside className="flex w-14 shrink-0 flex-col items-center border-r border-[var(--line)] bg-[var(--surface)] py-3">
+          <div className="mb-4 grid size-8 place-items-center rounded-lg bg-[var(--accent)] text-white"><Check size={16} /></div>
+          <nav className="grid gap-1" aria-label={t("nav.application")}>
+            <Tooltip label={t("nav.tasks")}><Button variant="ghost" size="icon" className={view === "tasks" ? "active" : ""} aria-label={t("nav.tasks")} onClick={() => setView("tasks")}><LayoutList size={18} /></Button></Tooltip>
+            <Tooltip label={t("nav.properties")}><Button variant="ghost" size="icon" className={view === "properties" ? "active" : ""} aria-label={t("nav.properties")} onClick={() => setView("properties")}><Settings2 size={18} /></Button></Tooltip>
+            <Tooltip label={t("nav.backup")}><Button variant="ghost" size="icon" className={view === "backup" ? "active" : ""} aria-label={t("nav.backup")} onClick={() => setView("backup")}><GitBranch size={18} /></Button></Tooltip>
+          </nav>
+          <div className="mt-auto grid gap-1">
+            <Tooltip label={t("workspace.switch")}><Button variant="ghost" size="icon" aria-label={t("workspace.switch")} onClick={() => void switchWorkspace()}><FolderSync size={18} /></Button></Tooltip>
+            <Select className="!h-9 !w-9 !min-w-9 !px-1" ariaLabel={t("nav.language")} value={locale} onValueChange={(value) => setLocale(value as typeof locale)} options={[{ value: "en", label: "EN" }, { value: "zh-CN", label: "中" }]} />
+            <Tooltip label={t("nav.theme")}><Button variant="ghost" size="icon" aria-label={t("nav.theme")} onClick={() => setDark((value) => !value)}>{dark ? <Sun size={18} /> : <Moon size={18} />}</Button></Tooltip>
+          </div>
+        </aside>
+        <main className="workspace !h-full flex-1">
         {error && <div className="toast" role="alert"><span>{error}</span><Button variant="ghost" size="icon" aria-label={t("common.close")} onClick={() => setError("")}>×</Button></div>}
         {view === "properties" && <PropertySettings definitions={definitions} lockedIds={lockedPropertyIds} onChange={setDefinitions} saving={schemaSaving} onRebuild={async () => {
           setSchemaSaving(true);
@@ -372,6 +494,11 @@ function TaskmateApp() {
         {view === "tasks" && (
           <>
             <header className="topbar">
+              <Tooltip label={taskListVisible ? t("tasks.hideList") : t("tasks.showList")}>
+                <Button variant="ghost" size="icon" aria-label={taskListVisible ? t("tasks.hideList") : t("tasks.showList")} onClick={() => setTaskListVisible((visible) => !visible)}>
+                  {taskListVisible ? <PanelLeftClose size={17} /> : <PanelLeftOpen size={17} />}
+                </Button>
+              </Tooltip>
               <div className="search"><Search size={17} /><Input aria-label={t("tasks.search")} placeholder={t("tasks.search")} value={searchDraft} onChange={(event) => setSearchDraft(event.target.value)} /></div>
               <div className="filters">
                 {filterDefinitions.map((definition) => <DynamicFilter key={definition.id} definition={definition} current={query.filters.filter((filter) => filter.key === definition.key)} onChange={(filters) => updateFilters(definition, filters)} />)}
@@ -388,24 +515,27 @@ function TaskmateApp() {
                 ]} />
                 {query.sort ? <Select ariaLabel={t("tasks.emptyLast")} value={query.sort.nulls} onValueChange={(value) => setQuery({ ...query, sort: { ...query.sort!, nulls: value as "first" | "last" } })} options={[{ value: "last", label: t("tasks.emptyLast") }, { value: "first", label: t("tasks.emptyFirst") }]} /> : null}
               </div>
+              <Tooltip label={compactCards ? t("tasks.comfortable") : t("tasks.compact")}>
+                <Button variant="outline" size="icon" className={compactCards ? "active" : ""} aria-label={compactCards ? t("tasks.comfortable") : t("tasks.compact")} onClick={() => setCompactCards((compact) => !compact)}><Rows3 size={17} /></Button>
+              </Tooltip>
               <Button variant="outline" className={query.archived ? "active" : ""} onClick={() => { setTask(null); setQuery({ ...query, archived: !query.archived }); }}>{query.archived ? <ArchiveRestore size={16} /> : <Archive size={16} />}{query.archived ? t("tasks.active") : t("tasks.archive")}</Button>
               <Button onClick={create}><Plus size={17} />{t("tasks.new")}</Button>
             </header>
-            <div className="split-layout" style={{ gridTemplateColumns: `${leftWidth}px 5px minmax(0, 1fr)` }}>
-              <section className="task-list-panel">
+            <div className="split-layout" style={{ gridTemplateColumns: taskListVisible ? `${leftWidth}px 5px minmax(0, 1fr)` : "0 0 minmax(0, 1fr)" }}>
+              <section className={`task-list-panel ${taskListVisible ? "" : "invisible overflow-hidden"}`} aria-hidden={!taskListVisible}>
                 <div className="list-heading"><div><p className="eyebrow">{query.archived ? t("tasks.archive") : t("tasks.workspace")}</p><h1>{query.archived ? t("tasks.archived") : t("tasks.myTasks")}</h1></div><span>{tasks.length}</span></div>
                 <div className="task-list" ref={listHost}>
                   {tasks.length === 0 ? <div className="list-empty"><LayoutList /><h2>{searchDraft || query.filters.length ? t("tasks.noMatches") : t("tasks.nothing")}</h2><p>{query.archived ? t("tasks.archivedHint") : t("tasks.createHint")}</p></div> : (
                     <div style={{ height: virtualizer.getTotalSize(), position: "relative" }}>
                       {virtualizer.getVirtualItems().map((item) => {
                         const summary = tasks[item.index];
-                        return <div key={summary.id} ref={virtualizer.measureElement} data-index={item.index} className="virtual-row" style={{ transform: `translateY(${item.start}px)` }}><TaskCard task={summary} selected={summary.id === selectedId} definitions={definitions} onSelect={() => void chooseTask(summary.id)} onQuickEdit={(key, value) => void quickEdit(summary, key, value)} /></div>;
+                        return <div key={summary.id} ref={virtualizer.measureElement} data-index={item.index} className="virtual-row" style={{ transform: `translateY(${item.start}px)` }}><TaskCard task={summary} selected={summary.id === selectedId} definitions={definitions} compact={compactCards} onSelect={() => void chooseTask(summary.id)} onQuickEdit={(key, value) => void quickEdit(summary, key, value)} /></div>;
                       })}
                     </div>
                   )}
                 </div>
               </section>
-              <div className="splitter" onPointerDown={beginResize} />
+              <div className={`splitter ${taskListVisible ? "" : "invisible"}`} onPointerDown={beginResize} />
               <section className="detail-panel">
                 {!task ? <div className="detail-empty"><div className="empty-illustration"><Check /></div><h2>{t("tasks.select")}</h2><p>{t("tasks.selectHint")}</p></div> : (
                   <div className="detail-scroll">
@@ -453,6 +583,7 @@ function TaskmateApp() {
           footer={<><Button variant="outline" onClick={() => setDeleteConfirmOpen(false)}>{t("common.cancel")}</Button><Button variant="destructive" onClick={() => void confirmDelete()}>{t("common.delete")}</Button></>}
         />
       </main>
+      </div>
     </div>
   );
 }

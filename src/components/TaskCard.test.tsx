@@ -37,4 +37,11 @@ describe("TaskCard quick editing", () => {
     expect(onQuickEdit).toHaveBeenCalledWith("status", "done");
     expect(onSelect).not.toHaveBeenCalled();
   });
+
+  it("shows only the title in compact mode", () => {
+    render(<TaskCard task={task} selected={false} definitions={[status]} compact onSelect={vi.fn()} onQuickEdit={vi.fn()} />);
+    expect(screen.getByText("Card task")).toBeInTheDocument();
+    expect(screen.queryByText("Card task.md")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Status")).not.toBeInTheDocument();
+  });
 });
