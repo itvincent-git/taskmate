@@ -1,0 +1,109 @@
+name: Release
+
+on:
+  push:
+    tags: ["app-v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag, for example app-v0.1.0
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+env:
+  RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+
+jobs:
+  build:
+    name: Build ${{ matrix.label }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { label: "macOS Intel", os: macos-latest, target: x86_64-apple-darwin, suffix: macos-x64 }
+          - { label: "macOS Apple Silicon", os: macos-latest, target: aarch64-apple-darwin, suffix: macos-arm64 }
+          - { label: "Windows x64", os: windows-latest, target: x86_64-pc-windows-msvc, suffix: windows-x64 }
+    steps:
+      - uses: actions/checkout@v4
+        with: { ref: "${{ env.RELEASE_TAG }}", fetch-depth: 0 }
+      - uses: pnpm/action-setup@v4
+        with: { version: 11.5.1 }
+      - uses: actions/setup-node@v4
+        with: { node-version: 24.11.0, cache: pnpm }
+      - uses: dtolnay/rust-toolchain@stable
+        with: { targets: "${{ matrix.target }}" }
+      - uses: swatinem/rust-cache@v2
+        with: { workspaces: "src-tauri -> target" }
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm test
+      - run: pnpm typecheck
+      - run: cargo test --manifest-path src-tauri/Cargo.toml
+      - name: Validate tag
+        shell: bash
+        run: |
+          version="$(node -p "require('./src-tauri/tauri.conf.json').version")"
+          test "${RELEASE_TAG}" = "app-v${version}"
+      - name: Build and publish
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          tagName: ${{ env.RELEASE_TAG }}
+          releaseName: Your App ${{ env.RELEASE_TAG }}
+          releaseDraft: false
+          prerelease: false
+          args: --target ${{ matrix.target }} --config src-tauri/tauri.release.conf.json
+      - name: Normalize updater assets
+        shell: bash
+        run: |
+          mkdir -p normalized
+          if [[ "${RUNNER_OS}" == "macOS" ]]; then
+            archive="$(find "src-tauri/target/${{ matrix.target }}/release/bundle/macos" -name '*.app.tar.gz' -type f | head -1)"
+            cp "${archive}" "normalized/your-app-${{ matrix.suffix }}.app.tar.gz"
+            cp "${archive}.sig" "normalized/your-app-${{ matrix.suffix }}.app.tar.gz.sig"
+          else
+            setup="$(find "src-tauri/target/${{ matrix.target }}/release/bundle/nsis" -name '*-setup.exe' -type f | head -1)"
+            cp "${setup}" "normalized/your-app-${{ matrix.suffix }}-setup.exe"
+            cp "${setup}.sig" "normalized/your-app-${{ matrix.suffix }}-setup.exe.sig"
+          fi
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.RELEASE_TAG }}
+          files: normalized/*
+
+  updater-manifest:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download signed updater assets
+        env: { GH_TOKEN: "${{ secrets.GITHUB_TOKEN }}" }
+        run: |
+          mkdir assets
+          gh release download "${RELEASE_TAG}" --repo "${GITHUB_REPOSITORY}" --dir assets --pattern 'your-app-*.app.tar.gz*' --pattern 'your-app-*-setup.exe*'
+      - name: Build complete latest.json
+        shell: bash
+        run: |
+          version="${RELEASE_TAG#app-v}"
+          base="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/releases/download/${RELEASE_TAG}"
+          jq -n \
+            --arg version "${version}" \
+            --arg date "$(date -u +'%Y-%m-%dT%H:%M:%SZ')" \
+            --arg mx "$(cat assets/your-app-macos-x64.app.tar.gz.sig)" \
+            --arg ma "$(cat assets/your-app-macos-arm64.app.tar.gz.sig)" \
+            --arg wx "$(cat assets/your-app-windows-x64-setup.exe.sig)" \
+            --arg base "${base}" \
+            '{version:$version,notes:"See the release notes.",pub_date:$date,platforms:{
+              "darwin-x86_64":{signature:$mx,url:($base+"/your-app-macos-x64.app.tar.gz")},
+              "darwin-aarch64":{signature:$ma,url:($base+"/your-app-macos-arm64.app.tar.gz")},
+              "windows-x86_64":{signature:$wx,url:($base+"/your-app-windows-x64-setup.exe")}
+            }}' > latest.json
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.RELEASE_TAG }}
+          files: latest.json

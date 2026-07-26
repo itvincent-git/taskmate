@@ -1,0 +1,36 @@
+[package]
+name = "your-app"
+version = "0.1.0"
+description = "A reusable Tauri 2 desktop application template."
+authors = ["Your Name"]
+license = "MIT"
+repository = "https://github.com/YOUR_GITHUB_OWNER/your-app"
+edition = "2021"
+
+[lib]
+name = "your_app_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+chrono = { version = "0.4.45", features = ["serde"] }
+hex = "0.4.3"
+log = "0.4"
+notify = "8.2.0"
+rusqlite = { version = "0.40.1", features = ["bundled"] }
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1"
+serde_yaml = "0.9.34"
+sha2 = "0.11.0"
+tauri = { version = "2", features = ["tray-icon", "image-png"] }
+tauri-plugin-autostart = "2"
+tauri-plugin-log = "2"
+tauri-plugin-process = "2"
+tauri-plugin-updater = "2"
+tempfile = "3.27.0"
+uuid = { version = "1.24.0", features = ["v4"] }
+
+[profile.dev]
+debug = 1
