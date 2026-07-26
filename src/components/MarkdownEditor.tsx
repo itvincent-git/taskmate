@@ -23,6 +23,9 @@ import {
 } from "lucide-react";
 import { applyMarkdownAction, type MarkdownAction } from "../editor/commands";
 import { livePreview } from "../editor/livePreview";
+import { useTaskmateI18n } from "../lib/taskmate-i18n";
+import { Button } from "./ui/Button";
+import { Tooltip } from "./ui/Tooltip";
 
 interface Props {
   value: string;
@@ -47,6 +50,7 @@ const tools: Array<[MarkdownAction, string, typeof Bold]> = [
 ];
 
 export function MarkdownEditor({ value, onChange }: Props) {
+  const { locale, t } = useTaskmateI18n();
   const host = useRef<HTMLDivElement>(null);
   const editor = useRef<EditorView | null>(null);
   const changeHandler = useRef(onChange);
@@ -63,7 +67,7 @@ export function MarkdownEditor({ value, onChange }: Props) {
           markdown({ extensions: [GFM] }),
           syntaxHighlighting(defaultHighlightStyle),
           livePreview,
-          placeholder("Write Markdown…"),
+          placeholder(t("editor.placeholder")),
           keymap.of([indentWithTab, ...defaultKeymap, ...historyKeymap]),
           EditorView.lineWrapping,
           EditorView.updateListener.of((update) => {
@@ -85,7 +89,7 @@ export function MarkdownEditor({ value, onChange }: Props) {
       view.destroy();
       editor.current = null;
     };
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     const view = editor.current;
@@ -95,17 +99,25 @@ export function MarkdownEditor({ value, onChange }: Props) {
 
   return (
     <section className="editor-section">
-      <div className="markdown-toolbar" role="toolbar" aria-label="Markdown formatting">
+      <div className="markdown-toolbar" role="toolbar" aria-label={t("editor.toolbar")}>
         {tools.map(([action, label, Icon]) => (
-          <button key={action} type="button" title={label} aria-label={label} onMouseDown={(event) => {
-            event.preventDefault();
-            if (editor.current) applyMarkdownAction(editor.current, action);
-          }}>
-            <Icon size={16} />
-          </button>
+          <Tooltip label={locale === "zh-CN" ? toolbarLabel(action) : label} key={action}>
+            <Button variant="ghost" size="icon" aria-label={locale === "zh-CN" ? toolbarLabel(action) : label} onMouseDown={(event) => {
+              event.preventDefault();
+              if (editor.current) applyMarkdownAction(editor.current, action);
+            }}><Icon size={16} /></Button>
+          </Tooltip>
         ))}
       </div>
       <div className="editor-host" ref={host} />
     </section>
   );
+}
+
+function toolbarLabel(action: MarkdownAction) {
+  return {
+    h1: "一级标题", h2: "二级标题", bold: "加粗", italic: "斜体", strike: "删除线",
+    inlineCode: "行内代码", codeBlock: "代码块", quote: "引用", bullet: "无序列表",
+    ordered: "有序列表", task: "任务列表", link: "链接", image: "图片", rule: "分割线",
+  }[action];
 }

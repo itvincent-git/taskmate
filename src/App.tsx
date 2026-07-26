@@ -31,6 +31,12 @@ import { PropertyInput } from "./components/PropertyInput";
 import { PropertySettings } from "./components/PropertySettings";
 import { TaskCard } from "./components/TaskCard";
 import { DynamicFilter } from "./components/DynamicFilter";
+import { Button } from "./components/ui/Button";
+import { Dialog } from "./components/ui/Dialog";
+import { Input } from "./components/ui/Input";
+import { Select } from "./components/ui/Select";
+import { Tooltip } from "./components/ui/Tooltip";
+import { TaskmateI18nProvider, localizedPropertyName, useTaskmateI18n } from "./lib/taskmate-i18n";
 import "./styles.css";
 
 const initialPath = localStorage.getItem("taskmate-workspace") || `${navigator.platform.includes("Mac") ? "/Users/Shared" : "."}/Taskmate`;
@@ -41,18 +47,20 @@ function errorMessage(error: unknown) {
 }
 
 function SaveBadge({ state }: { state: SaveState }) {
+  const { t } = useTaskmateI18n();
   const content = {
-    saved: [Check, "Saved"],
-    dirty: [Cloud, "Unsaved"],
-    saving: [LoaderCircle, "Saving…"],
-    failed: [Cloud, "Save failed"],
-    external: [Cloud, "External change"],
+    saved: [Check, t("save.saved")],
+    dirty: [Cloud, t("save.dirty")],
+    saving: [LoaderCircle, t("save.saving")],
+    failed: [Cloud, t("save.failed")],
+    external: [Cloud, t("save.external")],
   } as const;
   const [Icon, label] = content[state];
   return <span className={`save-badge ${state}`}><Icon size={14} className={state === "saving" ? "spin" : ""} />{label}</span>;
 }
 
 function BackupView() {
+  const { t } = useTaskmateI18n();
   const [status, setStatus] = useState<GitStatus | null>(null);
   const [remote, setRemote] = useState("");
   const [message, setMessage] = useState("Taskmate backup");
@@ -85,36 +93,37 @@ function BackupView() {
   };
   return (
     <div className="settings-view backup-view">
-      <div className="view-heading"><div><p className="eyebrow">Versioned backup</p><h1>Git & GitHub</h1><p>Task Markdown and workspace schema are versioned. The rebuildable SQLite index is ignored.</p></div></div>
+      <div className="view-heading"><div><p className="eyebrow">{t("backup.eyebrow")}</p><h1>{t("backup.title")}</h1><p>{t("backup.description")}</p></div></div>
       {error && <div className="banner error">{error}</div>}
       {!status?.initialized ? (
-        <div className="empty-panel"><GitBranch size={38} /><h2>Initialize version history</h2><p>Create a Git repository inside this workspace.</p><button className="primary" onClick={() => action("git_initialize")} disabled={Boolean(busy)}>Initialize Git</button></div>
+        <div className="empty-panel"><GitBranch size={38} /><h2>{t("backup.initializeTitle")}</h2><p>{t("backup.initializeDescription")}</p><Button onClick={() => action("git_initialize")} disabled={Boolean(busy)}>{t("backup.initialize")}</Button></div>
       ) : (
         <div className="backup-grid">
           <section className="settings-card">
-            <h2>Repository</h2>
-            <dl><div><dt>Branch</dt><dd>{status.branch || "—"}</dd></div><div><dt>Changes</dt><dd>{status.changes.length}</dd></div><div><dt>Ahead / behind</dt><dd>{status.ahead} / {status.behind}</dd></div><div><dt>Last sync</dt><dd>{status.lastSync ? new Date(status.lastSync).toLocaleString() : "Never"}</dd></div></dl>
-            {status.conflicts.length > 0 && <div className="banner error"><strong>Sync stopped: conflicts</strong>{status.conflicts.map((conflict) => <code key={conflict}>{conflict}</code>)}</div>}
+            <h2>{t("backup.repository")}</h2>
+            <dl><div><dt>{t("backup.branch")}</dt><dd>{status.branch || "—"}</dd></div><div><dt>{t("backup.changes")}</dt><dd>{status.changes.length}</dd></div><div><dt>{t("backup.aheadBehind")}</dt><dd>{status.ahead} / {status.behind}</dd></div><div><dt>{t("backup.lastSync")}</dt><dd>{status.lastSync ? new Date(status.lastSync).toLocaleString() : t("common.never")}</dd></div></dl>
+            {status.conflicts.length > 0 && <div className="banner error"><strong>{t("backup.conflicts")}</strong>{status.conflicts.map((conflict) => <code key={conflict}>{conflict}</code>)}</div>}
           </section>
           <section className="settings-card">
-            <h2>GitHub remote</h2>
-            <label>Remote URL<input value={remote} onChange={(event) => setRemote(event.target.value)} placeholder="https://github.com/owner/tasks.git" /></label>
-            <button className="secondary" onClick={() => action("git_set_remote", { url: remote })}>Save remote</button>
-            <p className="help">Credentials stay in your operating system’s Git credential manager. Tokens are rejected in remote URLs.</p>
+            <h2>{t("backup.remote")}</h2>
+            <label>{t("backup.remoteUrl")}<Input value={remote} onChange={(event) => setRemote(event.target.value)} placeholder="https://github.com/owner/tasks.git" /></label>
+            <Button variant="outline" onClick={() => action("git_set_remote", { url: remote })}>{t("backup.saveRemote")}</Button>
+            <p className="help">{t("backup.credentialHelp")}</p>
           </section>
           <section className="settings-card">
-            <h2>Sync</h2>
-            <label>Commit message<input value={message} onChange={(event) => setMessage(event.target.value)} /></label>
-            <div className="button-row"><button className="primary" onClick={() => action("git_commit", { message })}>Commit</button><button className="secondary" onClick={() => action("git_pull")}>Pull</button><button className="secondary" onClick={() => action("git_push")}>Push</button></div>
+            <h2>{t("backup.sync")}</h2>
+            <label>{t("backup.commitMessage")}<Input value={message} onChange={(event) => setMessage(event.target.value)} /></label>
+            <div className="button-row"><Button onClick={() => action("git_commit", { message })}>{t("backup.commit")}</Button><Button variant="outline" onClick={() => action("git_pull")}>{t("backup.pull")}</Button><Button variant="outline" onClick={() => action("git_push")}>{t("backup.push")}</Button></div>
           </section>
-          <section className="settings-card history"><h2>Recent history</h2>{history.length ? history.map((entry) => <code key={entry}>{entry}</code>) : <p className="muted">No commits yet.</p>}</section>
+          <section className="settings-card history"><h2>{t("backup.history")}</h2>{history.length ? history.map((entry) => <code key={entry}>{entry}</code>) : <p className="muted">{t("backup.noCommits")}</p>}</section>
         </div>
       )}
     </div>
   );
 }
 
-export function App() {
+function TaskmateApp() {
+  const { locale, setLocale, t } = useTaskmateI18n();
   const [workspacePath, setWorkspacePath] = useState(initialPath);
   const [workspaceOpen, setWorkspaceOpen] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -131,6 +140,7 @@ export function App() {
   const [dark, setDark] = useState(() => localStorage.getItem("taskmate-theme") === "dark");
   const [leftWidth, setLeftWidth] = useState(390);
   const [externalTask, setExternalTask] = useState<Task | null>(null);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [fileSignal, setFileSignal] = useState(0);
   const listHost = useRef<HTMLDivElement>(null);
   const selectedId = task?.id;
@@ -251,7 +261,7 @@ export function App() {
   };
   const create = async () => {
     try {
-      const created = await api.createTask();
+      const created = await api.createTask(t("tasks.untitled"));
       setTask(created);
       setSaveState("saved");
       await refresh();
@@ -273,13 +283,17 @@ export function App() {
   const remove = async () => {
     if (!task) return;
     if (!task.archived) {
-      setError("Archive this task before deleting it.");
+      setError(t("tasks.archiveBeforeDelete"));
       return;
     }
-    if (!window.confirm(`Permanently delete “${task.title}”? This cannot be undone.`)) return;
+    setDeleteConfirmOpen(true);
+  };
+  const confirmDelete = async () => {
+    if (!task) return;
     try {
       await api.deleteTask(task.id);
       setTask(null);
+      setDeleteConfirmOpen(false);
       await refresh();
     } catch (cause) { setError(errorMessage(cause)); }
   };
@@ -316,11 +330,12 @@ export function App() {
     return (
       <main className="welcome">
         <div className="welcome-mark"><Check /></div>
-        <p className="eyebrow">Local-first task management</p>
-        <h1>Taskmate</h1>
-        <p>Your tasks remain readable Markdown files. SQLite is only a fast, rebuildable index.</p>
-        <label>Workspace folder<input value={workspacePath} onChange={(event) => setWorkspacePath(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") void openWorkspace(); }} /></label>
-        <button className="primary large" onClick={openWorkspace} disabled={loading || !workspacePath.trim()}>{loading ? <LoaderCircle className="spin" /> : <Database />} Open workspace</button>
+        <div className="welcome-language"><Select ariaLabel={t("nav.language")} value={locale} onValueChange={(value) => setLocale(value as typeof locale)} options={[{ value: "en", label: "English" }, { value: "zh-CN", label: "简体中文" }]} /></div>
+        <p className="eyebrow">{t("app.tagline")}</p>
+        <h1>{t("app.name")}</h1>
+        <p>{t("app.description")}</p>
+        <label>{t("workspace.folder")}<Input value={workspacePath} onChange={(event) => setWorkspacePath(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") void openWorkspace(); }} /></label>
+        <Button size="lg" onClick={openWorkspace} disabled={loading || !workspacePath.trim()}>{loading ? <LoaderCircle className="spin" /> : <Database />}{t("workspace.open")}</Button>
         {error && <div className="banner error">{error}</div>}
       </main>
     );
@@ -328,17 +343,20 @@ export function App() {
 
   return (
     <div className="app">
-      <aside className="rail">
-        <div className="logo"><Check size={18} /></div>
-        <nav aria-label="Application">
-          <button className={view === "tasks" ? "active" : ""} onClick={() => setView("tasks")} title="Tasks"><LayoutList /></button>
-          <button className={view === "properties" ? "active" : ""} onClick={() => setView("properties")} title="Properties"><Settings2 /></button>
-          <button className={view === "backup" ? "active" : ""} onClick={() => setView("backup")} title="Git backup"><GitBranch /></button>
+      <header className="app-nav">
+        <div className="nav-brand"><span><Check size={16} /></span><strong>{t("app.name")}</strong></div>
+        <nav aria-label={t("nav.application")}>
+          <Button variant="ghost" className={view === "tasks" ? "active" : ""} onClick={() => setView("tasks")}><LayoutList size={17} />{t("nav.tasks")}</Button>
+          <Button variant="ghost" className={view === "properties" ? "active" : ""} onClick={() => setView("properties")}><Settings2 size={17} />{t("nav.properties")}</Button>
+          <Button variant="ghost" className={view === "backup" ? "active" : ""} onClick={() => setView("backup")}><GitBranch size={17} />{t("nav.backup")}</Button>
         </nav>
-        <button title="Toggle theme" onClick={() => setDark((value) => !value)}>{dark ? <Sun /> : <Moon />}</button>
-      </aside>
+        <div className="nav-actions">
+          <Select ariaLabel={t("nav.language")} value={locale} onValueChange={(value) => setLocale(value as typeof locale)} options={[{ value: "en", label: "EN" }, { value: "zh-CN", label: "中文" }]} />
+          <Tooltip label={t("nav.theme")}><Button variant="ghost" size="icon" aria-label={t("nav.theme")} onClick={() => setDark((value) => !value)}>{dark ? <Sun /> : <Moon />}</Button></Tooltip>
+        </div>
+      </header>
       <main className="workspace">
-        {error && <div className="toast" role="alert"><span>{error}</span><button onClick={() => setError("")}>×</button></div>}
+        {error && <div className="toast" role="alert"><span>{error}</span><Button variant="ghost" size="icon" aria-label={t("common.close")} onClick={() => setError("")}>×</Button></div>}
         {view === "properties" && <PropertySettings definitions={definitions} lockedIds={lockedPropertyIds} onChange={setDefinitions} saving={schemaSaving} onRebuild={async () => {
           setSchemaSaving(true);
           try { setTasks(await api.rebuildIndex()); } catch (cause) { setError(errorMessage(cause)); } finally { setSchemaSaving(false); }
@@ -354,30 +372,30 @@ export function App() {
         {view === "tasks" && (
           <>
             <header className="topbar">
-              <div className="search"><Search size={17} /><input aria-label="Search tasks" placeholder="Search tasks…" value={searchDraft} onChange={(event) => setSearchDraft(event.target.value)} /></div>
+              <div className="search"><Search size={17} /><Input aria-label={t("tasks.search")} placeholder={t("tasks.search")} value={searchDraft} onChange={(event) => setSearchDraft(event.target.value)} /></div>
               <div className="filters">
                 {filterDefinitions.map((definition) => <DynamicFilter key={definition.id} definition={definition} current={query.filters.filter((filter) => filter.key === definition.key)} onChange={(filters) => updateFilters(definition, filters)} />)}
-                <select aria-label="Sort tasks" value={query.sort ? `${query.sort.key}:${query.sort.direction}` : ""} onChange={(event) => {
-                  const [key, direction] = event.target.value.split(":");
+                <Select ariaLabel={t("properties.sort")} value={query.sort ? `${query.sort.key}:${query.sort.direction}` : "__recent"} onValueChange={(value) => {
+                  const [key, direction] = value === "__recent" ? ["", ""] : value.split(":");
                   setQuery({ ...query, sort: key ? { key, direction: direction as "asc" | "desc", nulls: "last" } : undefined });
-                }}>
-                  <option value="">Recently updated</option>
-                  <option value="title:asc">Title · A–Z</option>
-                  {sortDefinitions.flatMap((definition) => [
-                    <option key={`${definition.id}-asc`} value={`${definition.key}:asc`}>{definition.name} · Asc</option>,
-                    <option key={`${definition.id}-desc`} value={`${definition.key}:desc`}>{definition.name} · Desc</option>,
-                  ])}
-                </select>
-                {query.sort && <select aria-label="Empty values position" value={query.sort.nulls} onChange={(event) => setQuery({ ...query, sort: { ...query.sort!, nulls: event.target.value as "first" | "last" } })}><option value="last">Empty last</option><option value="first">Empty first</option></select>}
+                }} options={[
+                  { value: "__recent", label: t("tasks.sortRecent") },
+                  { value: "title:asc", label: t("tasks.sortTitle") },
+                  ...sortDefinitions.flatMap((definition) => [
+                    { value: `${definition.key}:asc`, label: `${localizedPropertyName(definition, locale)} · ${t("filter.asc")}` },
+                    { value: `${definition.key}:desc`, label: `${localizedPropertyName(definition, locale)} · ${t("filter.desc")}` },
+                  ]),
+                ]} />
+                {query.sort ? <Select ariaLabel={t("tasks.emptyLast")} value={query.sort.nulls} onValueChange={(value) => setQuery({ ...query, sort: { ...query.sort!, nulls: value as "first" | "last" } })} options={[{ value: "last", label: t("tasks.emptyLast") }, { value: "first", label: t("tasks.emptyFirst") }]} /> : null}
               </div>
-              <button className={query.archived ? "secondary active" : "secondary"} onClick={() => { setTask(null); setQuery({ ...query, archived: !query.archived }); }}>{query.archived ? <ArchiveRestore size={16} /> : <Archive size={16} />}{query.archived ? "Active" : "Archive"}</button>
-              <button className="primary" onClick={create}><Plus size={17} /> New task</button>
+              <Button variant="outline" className={query.archived ? "active" : ""} onClick={() => { setTask(null); setQuery({ ...query, archived: !query.archived }); }}>{query.archived ? <ArchiveRestore size={16} /> : <Archive size={16} />}{query.archived ? t("tasks.active") : t("tasks.archive")}</Button>
+              <Button onClick={create}><Plus size={17} />{t("tasks.new")}</Button>
             </header>
             <div className="split-layout" style={{ gridTemplateColumns: `${leftWidth}px 5px minmax(0, 1fr)` }}>
               <section className="task-list-panel">
-                <div className="list-heading"><div><p className="eyebrow">{query.archived ? "Archive" : "Workspace"}</p><h1>{query.archived ? "Archived tasks" : "My tasks"}</h1></div><span>{tasks.length}</span></div>
+                <div className="list-heading"><div><p className="eyebrow">{query.archived ? t("tasks.archive") : t("tasks.workspace")}</p><h1>{query.archived ? t("tasks.archived") : t("tasks.myTasks")}</h1></div><span>{tasks.length}</span></div>
                 <div className="task-list" ref={listHost}>
-                  {tasks.length === 0 ? <div className="list-empty"><LayoutList /><h2>{searchDraft || query.filters.length ? "No matching tasks" : "Nothing here yet"}</h2><p>{query.archived ? "Archived tasks appear here." : "Create a task to begin."}</p></div> : (
+                  {tasks.length === 0 ? <div className="list-empty"><LayoutList /><h2>{searchDraft || query.filters.length ? t("tasks.noMatches") : t("tasks.nothing")}</h2><p>{query.archived ? t("tasks.archivedHint") : t("tasks.createHint")}</p></div> : (
                     <div style={{ height: virtualizer.getTotalSize(), position: "relative" }}>
                       {virtualizer.getVirtualItems().map((item) => {
                         const summary = tasks[item.index];
@@ -389,26 +407,26 @@ export function App() {
               </section>
               <div className="splitter" onPointerDown={beginResize} />
               <section className="detail-panel">
-                {!task ? <div className="detail-empty"><div className="empty-illustration"><Check /></div><h2>Select a task</h2><p>Choose a card to edit its Markdown and properties.</p></div> : (
+                {!task ? <div className="detail-empty"><div className="empty-illustration"><Check /></div><h2>{t("tasks.select")}</h2><p>{t("tasks.selectHint")}</p></div> : (
                   <div className="detail-scroll">
                     <header className="detail-header">
                       <div className="title-block">
-                        <input className="title-input" aria-label="Task title" value={task.title} onChange={(event) => editTask({ title: event.target.value })} />
+                        <Input className="title-input" aria-label={t("tasks.title")} value={task.title} onChange={(event) => editTask({ title: event.target.value })} />
                         <div className="file-name">{task.fileName}</div>
                       </div>
                       {statusDefinition && <PropertyInput definition={statusDefinition} value={task.properties[statusDefinition.key]} onChange={(value) => editProperty(statusDefinition.key, value)} />}
                       <SaveBadge state={saveState} />
-                      <button className="icon" title={task.archived ? "Restore task" : "Archive task"} onClick={() => void archive()}>{task.archived ? <ArchiveRestore /> : <Archive />}</button>
-                      <button className="icon danger" title="Move to trash" onClick={() => void remove()}><Trash2 /></button>
+                      <Tooltip label={task.archived ? t("tasks.restore") : t("tasks.archiveAction")}><Button variant="ghost" size="icon" aria-label={task.archived ? t("tasks.restore") : t("tasks.archiveAction")} onClick={() => void archive()}>{task.archived ? <ArchiveRestore /> : <Archive />}</Button></Tooltip>
+                      <Tooltip label={t("tasks.deleteAction")}><Button variant="ghost" size="icon" className="danger" aria-label={t("tasks.deleteAction")} onClick={() => void remove()}><Trash2 /></Button></Tooltip>
                     </header>
-                    <Suspense fallback={<div className="editor-loading"><LoaderCircle className="spin" /> Loading editor…</div>}>
+                    <Suspense fallback={<div className="editor-loading"><LoaderCircle className="spin" />{t("editor.loading")}</div>}>
                       <MarkdownEditor value={task.body} onChange={(body) => editTask({ body })} />
                     </Suspense>
                     <section className="property-panel">
-                      <div className="section-title"><h2>Properties</h2><span>Frontmatter</span></div>
+                      <div className="section-title"><h2>{t("editor.properties")}</h2><span>{t("editor.frontmatter")}</span></div>
                       <div className="property-grid">
                         {detailDefinitions.map((definition) => (
-                          <label key={definition.id}><span>{definition.name}{definition.required && <em>*</em>}</span><PropertyInput definition={definition} value={task.properties[definition.key]} onChange={(value) => editProperty(definition.key, value)} /></label>
+                          <label key={definition.id}><span>{localizedPropertyName(definition, locale)}{definition.required && <em>*</em>}</span><PropertyInput definition={definition} value={task.properties[definition.key]} onChange={(value) => editProperty(definition.key, value)} /></label>
                         ))}
                       </div>
                     </section>
@@ -418,18 +436,27 @@ export function App() {
             </div>
           </>
         )}
-        {externalTask && task && (
-          <div className="modal-backdrop">
-            <div className="modal">
-              <p className="eyebrow">External file change</p>
-              <h2>“{task.title}” changed on disk</h2>
-              <p>Taskmate will never overwrite either version silently. Compare them, then choose which version to continue editing.</p>
-              <div className="diff-grid"><div><strong>Your editor</strong><pre>{task.body}</pre></div><div><strong>File on disk</strong><pre>{externalTask.body}</pre></div></div>
-              <div className="button-row end"><button className="secondary" onClick={() => { setExternalTask(null); setSaveState("dirty"); }}>Keep editor version</button><button className="primary" onClick={() => { setTask(externalTask); setExternalTask(null); setSaveState("saved"); }}>Reload file</button></div>
-            </div>
-          </div>
-        )}
+        <Dialog
+          open={Boolean(externalTask && task)}
+          onOpenChange={(open) => { if (!open) setExternalTask(null); }}
+          title={t("external.title", { title: task?.title ?? "" })}
+          description={t("external.description")}
+          footer={<><Button variant="outline" onClick={() => { setExternalTask(null); setSaveState("dirty"); }}>{t("external.keep")}</Button><Button onClick={() => { if (externalTask) setTask(externalTask); setExternalTask(null); setSaveState("saved"); }}>{t("external.reload")}</Button></>}
+        >
+          {externalTask && task ? <div className="diff-grid"><div><strong>{t("external.editor")}</strong><pre>{task.body}</pre></div><div><strong>{t("external.disk")}</strong><pre>{externalTask.body}</pre></div></div> : null}
+        </Dialog>
+        <Dialog
+          open={deleteConfirmOpen}
+          onOpenChange={setDeleteConfirmOpen}
+          title={t("tasks.deleteAction")}
+          description={t("tasks.deleteConfirm", { title: task?.title ?? "" })}
+          footer={<><Button variant="outline" onClick={() => setDeleteConfirmOpen(false)}>{t("common.cancel")}</Button><Button variant="destructive" onClick={() => void confirmDelete()}>{t("common.delete")}</Button></>}
+        />
       </main>
     </div>
   );
+}
+
+export function App() {
+  return <TaskmateI18nProvider><TaskmateApp /></TaskmateI18nProvider>;
 }

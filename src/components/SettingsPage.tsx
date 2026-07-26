@@ -32,10 +32,7 @@ export function SettingsPage({
     <div className="page-stack">
       <Card>
         <CardHeader title={t("language")} />
-        <Select aria-label={t("language")} value={language} onChange={(event) => setLanguage(event.currentTarget.value as Language)}>
-          <option value="en">English</option>
-          <option value="zh">简体中文</option>
-        </Select>
+        <Select ariaLabel={t("language")} value={language} onValueChange={(value) => setLanguage(value as Language)} options={[{ value: "en", label: "English" }, { value: "zh", label: "简体中文" }]} />
       </Card>
       <Card>
         <div className="setting-row">

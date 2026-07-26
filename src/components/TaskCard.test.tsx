@@ -28,10 +28,12 @@ const task: TaskSummary = {
 
 describe("TaskCard quick editing", () => {
   it("edits a property without selecting the card", async () => {
+    const user = userEvent.setup();
     const onSelect = vi.fn();
     const onQuickEdit = vi.fn();
     render(<TaskCard task={task} selected={false} definitions={[status]} onSelect={onSelect} onQuickEdit={onQuickEdit} />);
-    await userEvent.setup().selectOptions(screen.getByLabelText("Status"), "done");
+    await user.click(screen.getByLabelText("Status"));
+    await user.click(await screen.findByRole("option", { name: "Done" }));
     expect(onQuickEdit).toHaveBeenCalledWith("status", "done");
     expect(onSelect).not.toHaveBeenCalled();
   });

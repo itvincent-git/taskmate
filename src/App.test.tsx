@@ -32,12 +32,22 @@ describe("Taskmate application", () => {
     const user = userEvent.setup();
     render(<App />);
     await user.click(screen.getByRole("button", { name: "Open workspace" }));
-    expect(await screen.findByLabelText("Filter by Status")).toBeInTheDocument();
-    await user.click(screen.getByTitle("Properties"));
+    expect(await screen.findByLabelText("Status Filter")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Properties" }));
     expect(screen.getByRole("heading", { name: "Properties" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Delete Status" })).toBeDisabled();
     expect(screen.getByLabelText("Priority type")).toBeDisabled();
     expect(screen.getByRole("button", { name: "Save changes" })).toBeInTheDocument();
+  });
+
+  it("switches the complete Taskmate shell to Simplified Chinese", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(screen.getByLabelText("Language"));
+    await user.click(await screen.findByRole("option", { name: "简体中文" }));
+    expect(screen.getByRole("button", { name: "打开工作区" })).toBeInTheDocument();
+    expect(screen.getByText("本地优先的任务管理")).toBeInTheDocument();
+    expect(localStorage.getItem("taskmate.locale.v1")).toBe("zh-CN");
   });
 
   it("shows a failed autosave state instead of pretending an edit persisted", async () => {

@@ -1,6 +1,12 @@
 import { ChevronDown, ChevronUp, GripVertical, Plus, Trash2 } from "lucide-react";
 import type { PropertyDefinition, PropertyType } from "../types";
+import { localizedPropertyName, useTaskmateI18n } from "../lib/taskmate-i18n";
 import { PropertyInput } from "./PropertyInput";
+import { Button } from "./ui/Button";
+import { Checkbox } from "./ui/Checkbox";
+import { Input } from "./ui/Input";
+import { Select } from "./ui/Select";
+import { Tooltip } from "./ui/Tooltip";
 
 interface Props {
   definitions: PropertyDefinition[];
@@ -14,6 +20,7 @@ interface Props {
 const propertyTypes: PropertyType[] = ["text", "textarea", "number", "boolean", "select", "multiselect", "tags", "date", "datetime", "url"];
 
 export function PropertySettings({ definitions, lockedIds, onChange, onSave, onRebuild, saving }: Props) {
+  const { locale, t } = useTaskmateI18n();
   const update = (id: string, patch: Partial<PropertyDefinition>) => onChange(definitions.map((definition) => definition.id === id ? { ...definition, ...patch } : definition));
   const move = (id: string, direction: -1 | 1) => {
     const ordered = definitions.slice().sort((a, b) => a.order - b.order);
@@ -34,7 +41,7 @@ export function PropertySettings({ definitions, lockedIds, onChange, onSave, onR
     onChange([...definitions, {
       id,
       key: `field_${definitions.length + 1}`,
-      name: "New field",
+      name: t("properties.newField"),
       type: "text",
       showInDetail: true,
       showInCard: false,
@@ -44,35 +51,60 @@ export function PropertySettings({ definitions, lockedIds, onChange, onSave, onR
       order: definitions.length,
     }]);
   };
+  const typeLabels: Record<PropertyType, string> = locale === "zh-CN"
+    ? { text: "单行文本", textarea: "多行文本", number: "数字", boolean: "布尔值", select: "单选", multiselect: "多选", tags: "标签", date: "日期", datetime: "日期时间", url: "URL" }
+    : { text: "Text", textarea: "Long text", number: "Number", boolean: "Boolean", select: "Select", multiselect: "Multi-select", tags: "Tags", date: "Date", datetime: "Date & time", url: "URL" };
+
   return (
     <div className="settings-view">
       <div className="view-heading">
-        <div><p className="eyebrow">Workspace schema</p><h1>Properties</h1><p>One definition drives task details, cards, filters and sorting.</p></div>
-        <div className="heading-actions"><button className="secondary" onClick={onRebuild}>Rebuild index</button><button className="secondary" onClick={add}><Plus size={16} /> Add field</button><button className="primary" onClick={onSave} disabled={saving}>{saving ? "Saving…" : "Save changes"}</button></div>
+        <div><p className="eyebrow">{t("workspace.schema")}</p><h1>{t("properties.title")}</h1><p>{t("properties.description")}</p></div>
+        <div className="heading-actions">
+          <Button variant="outline" onClick={onRebuild}>{t("properties.rebuild")}</Button>
+          <Button variant="outline" onClick={add}><Plus size={16} />{t("properties.add")}</Button>
+          <Button onClick={onSave} disabled={saving}>{saving ? t("common.saving") : t("common.save")}</Button>
+        </div>
       </div>
       <div className="property-table">
-        <div className="property-row property-header"><span>Field</span><span>Key</span><span>Type</span><span>Detail</span><span>Card</span><span>Filter</span><span>Sort</span><span>Required</span><span /></div>
-        {definitions.slice().sort((a, b) => a.order - b.order).map((definition) => (
-          <div className="property-row" key={definition.id}>
-            <span className="field-name"><GripVertical size={15} /><input value={definition.name} onChange={(event) => update(definition.id, { name: event.target.value })} /><button className="mini" onClick={() => move(definition.id, -1)}><ChevronUp /></button><button className="mini" onClick={() => move(definition.id, 1)}><ChevronDown /></button></span>
-            <input value={definition.key} disabled={definition.role === "status"} onChange={(event) => update(definition.id, { key: event.target.value.replace(/\W/g, "") })} />
-            <select aria-label={`${definition.name} type`} value={definition.type} disabled={lockedIds.has(definition.id)} title={lockedIds.has(definition.id) ? "Create a replacement field to migrate this type safely." : undefined} onChange={(event) => update(definition.id, { type: event.target.value as PropertyType })}>{propertyTypes.map((type) => <option key={type}>{type}</option>)}</select>
-            {(["showInDetail", "showInCard", "enableFilter", "enableSort", "required"] as const).map((key) => <input key={key} type="checkbox" checked={Boolean(definition[key])} onChange={(event) => update(definition.id, { [key]: event.target.checked })} />)}
-            <button className="icon danger" aria-label={`Delete ${definition.name}`} disabled={definition.role === "status"} onClick={() => onChange(definitions.filter((item) => item.id !== definition.id))}><Trash2 size={15} /></button>
-            {(definition.type === "select" || definition.type === "multiselect" || definition.type === "tags") && (
-              <div className="option-editor">
-                <label>Options</label>
-                <div className="option-list">
-                  {definition.options.map((option, index) => <div key={option.id}><input type="color" aria-label={`${option.label} color`} value={option.color || "#718096"} onChange={(event) => update(definition.id, { options: definition.options.map((item) => item.id === option.id ? { ...item, color: event.target.value } : item) })} /><input value={option.label} onChange={(event) => update(definition.id, { options: definition.options.map((item) => item.id === option.id ? { ...item, label: event.target.value } : item) })} /><button className="mini" aria-label={`Move ${option.label} up`} onClick={() => moveOption(definition, index, -1)}><ChevronUp /></button><button className="mini" aria-label={`Move ${option.label} down`} onClick={() => moveOption(definition, index, 1)}><ChevronDown /></button><button className="mini danger" onClick={() => update(definition.id, { options: definition.options.filter((item) => item.id !== option.id).map((item, order) => ({ ...item, order })) })}>×</button>{index === definition.options.length - 1 && <button className="mini" onClick={() => update(definition.id, { options: [...definition.options, { id: crypto.randomUUID(), label: "New option", color: "#718096", order: definition.options.length }] })}>+</button>}</div>)}
-                  {definition.options.length === 0 && <button className="secondary" onClick={() => update(definition.id, { options: [{ id: crypto.randomUUID(), label: "New option", color: "#718096", order: 0 }] })}>Add option</button>}
+        <div className="property-row property-header"><span>{t("properties.field")}</span><span>{t("properties.key")}</span><span>{t("properties.type")}</span><span>{t("properties.detail")}</span><span>{t("properties.card")}</span><span>{t("properties.filter")}</span><span>{t("properties.sort")}</span><span>{t("properties.required")}</span><span /></div>
+        {definitions.slice().sort((a, b) => a.order - b.order).map((definition) => {
+          const name = localizedPropertyName(definition, locale);
+          return (
+            <div className="property-row" key={definition.id}>
+              <span className="field-name">
+                <GripVertical size={15} />
+                <Input aria-label={`${name} ${t("properties.field")}`} value={name} onChange={(event) => update(definition.id, { name: event.target.value })} />
+                <Button variant="ghost" size="icon" className="mini" aria-label={`Move ${name} up`} onClick={() => move(definition.id, -1)}><ChevronUp /></Button>
+                <Button variant="ghost" size="icon" className="mini" aria-label={`Move ${name} down`} onClick={() => move(definition.id, 1)}><ChevronDown /></Button>
+              </span>
+              <Input aria-label={`${name} key`} value={definition.key} disabled={definition.role === "status"} onChange={(event) => update(definition.id, { key: event.target.value.replace(/\W/g, "") })} />
+              <Tooltip label={lockedIds.has(definition.id) ? t("properties.lockedType") : typeLabels[definition.type]}>
+                <span><Select ariaLabel={`${name} type`} value={definition.type} disabled={lockedIds.has(definition.id)} onValueChange={(value) => update(definition.id, { type: value as PropertyType })} options={propertyTypes.map((type) => ({ value: type, label: typeLabels[type] }))} /></span>
+              </Tooltip>
+              {(["showInDetail", "showInCard", "enableFilter", "enableSort", "required"] as const).map((key) => <Checkbox key={key} aria-label={`${name} ${key}`} checked={Boolean(definition[key])} onCheckedChange={(checked) => update(definition.id, { [key]: checked === true })} />)}
+              <Button variant="ghost" size="icon" className="danger" aria-label={`Delete ${name}`} disabled={definition.role === "status"} onClick={() => onChange(definitions.filter((item) => item.id !== definition.id))}><Trash2 size={15} /></Button>
+              {(definition.type === "select" || definition.type === "multiselect" || definition.type === "tags") ? (
+                <div className="option-editor">
+                  <label>{t("properties.options")}</label>
+                  <div className="option-list">
+                    {definition.options.map((option, index) => <div key={option.id}>
+                      <Input type="color" aria-label={`${option.label} color`} value={option.color || "#9C9C9C"} onChange={(event) => update(definition.id, { options: definition.options.map((item) => item.id === option.id ? { ...item, color: event.target.value } : item) })} />
+                      <Input value={option.label} onChange={(event) => update(definition.id, { options: definition.options.map((item) => item.id === option.id ? { ...item, label: event.target.value } : item) })} />
+                      <Button variant="ghost" size="icon" className="mini" aria-label={`Move ${option.label} up`} onClick={() => moveOption(definition, index, -1)}><ChevronUp /></Button>
+                      <Button variant="ghost" size="icon" className="mini" aria-label={`Move ${option.label} down`} onClick={() => moveOption(definition, index, 1)}><ChevronDown /></Button>
+                      <Button variant="ghost" size="icon" className="mini danger" aria-label={`Delete ${option.label}`} onClick={() => update(definition.id, { options: definition.options.filter((item) => item.id !== option.id).map((item, order) => ({ ...item, order })) })}>×</Button>
+                      {index === definition.options.length - 1 ? <Button variant="ghost" size="icon" className="mini" aria-label={t("properties.addOption")} onClick={() => update(definition.id, { options: [...definition.options, { id: crypto.randomUUID(), label: t("properties.newOption"), color: "#9C9C9C", order: definition.options.length }] })}>+</Button> : null}
+                    </div>)}
+                    {definition.options.length === 0 ? <Button variant="outline" size="sm" onClick={() => update(definition.id, { options: [{ id: crypto.randomUUID(), label: t("properties.newOption"), color: "#9C9C9C", order: 0 }] })}>{t("properties.addOption")}</Button> : null}
+                  </div>
                 </div>
-              </div>
-            )}
-            <div className="default-editor"><label>Default</label><PropertyInput compact definition={definition} value={definition.defaultValue} onChange={(defaultValue) => update(definition.id, { defaultValue })} /></div>
-          </div>
-        ))}
+              ) : null}
+              <div className="default-editor"><label>{t("properties.default")}</label><PropertyInput compact definition={definition} value={definition.defaultValue} onChange={(defaultValue) => update(definition.id, { defaultValue })} /></div>
+            </div>
+          );
+        })}
       </div>
-      <p className="settings-note">Changing an existing field’s type is disabled here to avoid silent data loss. Create a replacement field and migrate values explicitly.</p>
+      <p className="settings-note">{t("properties.migrationNote")}</p>
     </div>
   );
 }

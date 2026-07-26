@@ -1,5 +1,6 @@
 import type { MouseEvent } from "react";
 import type { PropertyDefinition, TaskSummary } from "../types";
+import { localizedOptionLabel, useTaskmateI18n } from "../lib/taskmate-i18n";
 import { PropertyInput } from "./PropertyInput";
 
 interface Props {
@@ -11,15 +12,19 @@ interface Props {
 }
 
 function PropertyValue({ definition, value }: { definition: PropertyDefinition; value: unknown }) {
+  const { locale, t } = useTaskmateI18n();
   if (value === undefined || value === null || value === "") return null;
   const option = definition.options.find((candidate) => candidate.id === value);
   if (definition.type === "select") {
-    return <span className="chip" style={{ "--chip": option?.color || "#718096" } as React.CSSProperties}>{option?.label || String(value)}</span>;
+    return <span className="chip" style={{ "--chip": option?.color || "#718096" } as React.CSSProperties}>{option ? localizedOptionLabel(option, locale) : String(value)}</span>;
   }
   if (definition.type === "multiselect" || definition.type === "tags") {
-    return <>{(Array.isArray(value) ? value : []).slice(0, 4).map((item) => <span className="chip neutral" key={String(item)}>{definition.options.find((option) => option.id === item)?.label || String(item)}</span>)}</>;
+    return <>{(Array.isArray(value) ? value : []).slice(0, 4).map((item) => {
+      const itemOption = definition.options.find((candidate) => candidate.id === item);
+      return <span className="chip neutral" key={String(item)}>{itemOption ? localizedOptionLabel(itemOption, locale) : String(item)}</span>;
+    })}</>;
   }
-  if (definition.type === "boolean") return <span className="property-text">{value ? "Yes" : "No"}</span>;
+  if (definition.type === "boolean") return <span className="property-text">{value ? t("common.yes") : t("common.no")}</span>;
   if (definition.type === "date" || definition.type === "datetime") return <span className="property-text">{new Intl.DateTimeFormat(undefined, { dateStyle: "medium" }).format(new Date(String(value)))}</span>;
   return <span className="property-text">{String(value).slice(0, 72)}</span>;
 }
