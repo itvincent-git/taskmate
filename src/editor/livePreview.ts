@@ -2,6 +2,7 @@ import { syntaxTree } from "@codemirror/language";
 import type { SyntaxNode } from "@lezer/common";
 import { RangeSetBuilder, type EditorState } from "@codemirror/state";
 import { Decoration, type DecorationSet, EditorView, ViewPlugin, type ViewUpdate, WidgetType } from "@codemirror/view";
+import { api } from "../lib/api";
 
 const hiddenMarks = new Set([
   "HeaderMark",
@@ -55,8 +56,11 @@ class MarkerWidget extends WidgetType {
     if (this.kind === "image") {
       const image = document.createElement("img");
       image.className = "cm-lp-image-widget";
-      image.src = this.text;
-      image.alt = "Markdown image";
+      image.alt = this.text || "Markdown image";
+      void api.resolveAttachment(this.text).then((source) => { image.src = source; }).catch(() => {
+        image.classList.add("failed");
+        image.title = `Unable to load attachment: ${this.text}`;
+      });
       return image;
     }
     if (this.kind === "rule") {

@@ -4,6 +4,7 @@ use crate::model::{
     PropertyDefinition, PropertyOption, SaveTaskInput, Task, TaskQuery, TaskSummary,
     WorkspaceSnapshot,
 };
+use base64::Engine;
 use chrono::Utc;
 use serde_yaml::Value;
 use std::collections::{BTreeMap, HashMap, HashSet};
@@ -157,6 +158,57 @@ impl Workspace {
     ) -> Result<Option<Task>, String> {
         let task = self.get_task(id)?;
         Ok((task.content_hash != known_hash).then_some(task))
+    }
+
+    pub fn read_attachment(&self, relative_path: &str) -> Result<String, String> {
+        let relative = Path::new(relative_path)
+            .strip_prefix("attachments")
+            .unwrap_or_else(|_| Path::new(relative_path));
+        if relative.is_absolute()
+            || relative
+                .components()
+                .any(|component| matches!(component, std::path::Component::ParentDir))
+        {
+            return Err(
+                "Attachment paths must stay inside the workspace attachments folder.".into(),
+            );
+        }
+        let attachments = self
+            .root
+            .join("attachments")
+            .canonicalize()
+            .map_err(to_string)?;
+        let path = attachments
+            .join(relative)
+            .canonicalize()
+            .map_err(to_string)?;
+        if !path.starts_with(&attachments) {
+            return Err(
+                "Attachment paths must stay inside the workspace attachments folder.".into(),
+            );
+        }
+        let bytes = fs::read(&path).map_err(to_string)?;
+        if bytes.len() > 20 * 1024 * 1024 {
+            return Err("Live Preview images are limited to 20 MB.".into());
+        }
+        let mime = match path
+            .extension()
+            .and_then(|extension| extension.to_str())
+            .unwrap_or_default()
+            .to_lowercase()
+            .as_str()
+        {
+            "png" => "image/png",
+            "jpg" | "jpeg" => "image/jpeg",
+            "gif" => "image/gif",
+            "webp" => "image/webp",
+            "svg" => "image/svg+xml",
+            _ => return Err("Unsupported image attachment type.".into()),
+        };
+        Ok(format!(
+            "data:{mime};base64,{}",
+            base64::engine::general_purpose::STANDARD.encode(bytes)
+        ))
     }
 
     fn ensure_initialized(&self) -> Result<(), String> {
@@ -612,5 +664,23 @@ mod tests {
         assert_ne!(first.id, second.id);
         assert_eq!(workspace.get_task(&first.id).unwrap().id, first.id);
         assert_eq!(workspace.get_task(&second.id).unwrap().id, second.id);
+    }
+
+    #[test]
+    fn attachment_reader_is_confined_to_workspace_images() {
+        let temporary = tempfile::tempdir().unwrap();
+        let workspace = Workspace::new(temporary.path().to_path_buf());
+        workspace.initialize().unwrap();
+        fs::write(
+            temporary.path().join("attachments/pixel.png"),
+            [137, 80, 78, 71],
+        )
+        .unwrap();
+        assert!(workspace
+            .read_attachment("attachments/pixel.png")
+            .unwrap()
+            .starts_with("data:image/png;base64,"));
+        assert!(workspace.read_attachment("../outside.png").is_err());
+        assert!(workspace.read_attachment("/etc/passwd").is_err());
     }
 }

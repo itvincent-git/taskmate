@@ -191,4 +191,9 @@ export const api = {
     if (!isTauri) return () => undefined;
     return listen("workspace-file-change", callback);
   },
+  async resolveAttachment(path: string): Promise<string> {
+    if (/^(?:https?:|data:|blob:)/i.test(path)) return path;
+    if (isTauri) return invoke("read_attachment", { path });
+    return path;
+  },
 };

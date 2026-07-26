@@ -132,6 +132,11 @@ fn check_external_change(
 }
 
 #[tauri::command]
+fn read_attachment(path: String, state: State<'_, AppState>) -> Result<String, String> {
+    with_workspace(state, |workspace| workspace.read_attachment(&path))
+}
+
+#[tauri::command]
 fn git_status(state: State<'_, AppState>) -> Result<GitStatus, String> {
     with_workspace(state, |workspace| git::status(&workspace.root))
 }
@@ -201,6 +206,7 @@ pub fn run() {
             delete_task,
             save_properties,
             check_external_change,
+            read_attachment,
             git_status,
             git_initialize,
             git_set_remote,

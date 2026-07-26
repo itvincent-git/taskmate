@@ -219,6 +219,7 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); box-sha
 .cm-lp-marker-task { font-size: 1.05em; }
 .cm-lp-rule { display: block; height: 1px; background: var(--line); margin: .85em 0; }
 .cm-lp-image-widget { display: block; max-width: min(100%, 560px); max-height: 360px; object-fit: contain; border-radius: 8px; margin: 8px 0; border: 1px solid var(--line); }
+.cm-lp-image-widget.failed { min-width: 180px; min-height: 72px; padding: 12px; background: var(--surface-soft); color: var(--muted); }
 .property-panel { padding: 22px 28px 70px; }
 .section-title { display: flex; align-items: center; justify-content: space-between; margin-bottom: 17px; }
 .section-title h2 { margin: 0; font-size: 15px; }
