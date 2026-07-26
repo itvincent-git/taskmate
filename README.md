@@ -1,45 +1,71 @@
-# Your App
+# Taskmate
 
-A neutral, reusable desktop application template built with Tauri 2, React 19, and TypeScript. It targets macOS and Windows and includes a small application shell, system theme support, English and Simplified Chinese, tray residence, launch-at-login, signed updates, diagnostics logs, tests, and release automation.
+Taskmate is a local-first desktop task manager built with Tauri 2, React, TypeScript, CodeMirror 6, Lezer Markdown, Rust, and SQLite.
 
-## Requirements
+Every task is an independent Markdown file. YAML frontmatter holds task metadata and extensible properties; the Markdown body is the editor’s only content state. SQLite is a disposable query index and can be rebuilt from the files at any time.
 
-- Node.js 24.11.0
-- pnpm 11.5.1
-- Stable Rust and the [Tauri platform prerequisites](https://v2.tauri.app/start/prerequisites/)
+## Workspace format
 
-## Create an application from this template
-
-Create a repository from the GitHub template, clone it, install dependencies, commit the unchanged template, and run the one-time initializer from a clean worktree:
-
-```sh
-pnpm install
-TAURI_SIGNING_PRIVATE_KEY_PASSWORD='a-long-secret' pnpm template:init -- \
-  --name "My App" \
-  --slug my-app \
-  --identifier com.example.my-app \
-  --repo owner/repo \
-  --author "Name"
+```text
+workspace/
+├── tasks/                 # active task Markdown files
+├── archive/               # archived task Markdown files
+├── trash/                 # recoverable deleted task files
+├── attachments/
+├── .task-app/
+│   ├── properties.json    # workspace property schema
+│   ├── index.sqlite       # rebuildable and Git-ignored
+│   └── backups/
+└── .git/
 ```
 
-The initializer validates every value, updates the npm, Cargo, Tauri, HTML, UI, documentation, updater, and release identities, then generates an application-specific Tauri signing key. It refuses to run twice and rolls changes back if any step fails.
+A task is human-readable outside Taskmate:
 
-The private key is written to `.tauri-signing/<slug>.key`, which is ignored by Git. Back up the key and password securely; losing either prevents existing installations from accepting future updates. Configure these GitHub Actions secrets:
+```markdown
+---
+id: 65c16472-8ca8-40aa-bff1-1519948230f8
+title: Release Taskmate
+archived: false
+createdAt: 2026-07-26T10:00:00+08:00
+updatedAt: 2026-07-26T12:00:00+08:00
+status: in-progress
+priority: high
+tags:
+  - Tauri
+  - Markdown
+endDate: 2026-07-31
+---
 
-- `TAURI_SIGNING_PRIVATE_KEY`: the complete private key file contents
-- `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`: the password used during initialization
+# Release checklist
 
-The public key is stored in `src-tauri/tauri.conf.json`. Never commit the private key.
+- [ ] Run the full test suite
+```
+
+Unknown frontmatter values are preserved on read/write. The stable UUID, rather than the title-derived filename, identifies the task.
+
+## Architecture
+
+- `src-tauri/src/workspace.rs` owns directory creation, atomic save/rename, archive/trash lifecycle, incremental file scans, and index rebuilds.
+- `src-tauri/src/markdown.rs` parses and serializes YAML frontmatter without dropping extension values.
+- `src-tauri/src/index.rs` stores searchable task projections and applies dynamic property filters and type-aware sorts.
+- `src-tauri/src/git.rs` performs guarded Git operations. Authentication is delegated to the operating system Git credential manager; embedded credentials in remote URLs are rejected.
+- `src/lib/api.ts` is the typed Tauri command boundary and includes a browser-only local demo adapter for UI development.
+- `src/editor/` contains Markdown toolbar commands and Lezer-tree-driven CodeMirror decorations.
+
+Live Preview is a single CodeMirror editing surface. Decorations hide safe markers only when their parsed syntax node is inactive. Moving a cursor or selection into the node, or starting IME composition, reveals the original source without changing the document.
 
 ## Development
 
+Requirements: Node.js 24, pnpm 11, stable Rust, and the Tauri 2 platform prerequisites.
+
 ```sh
+pnpm install
 pnpm dev:app
 ```
 
-The browser-only UI is available with `pnpm dev`, although native IPC and plugins require the Tauri app. Updates are deliberately disabled before initialization and in development. Ordinary builds do not create signed updater artifacts.
+Browser-only UI development is available with `pnpm dev`. It uses a localStorage-backed demo workspace because browsers cannot access the Rust filesystem commands.
 
-## Quality checks
+## Verification
 
 ```sh
 pnpm test
@@ -49,20 +75,4 @@ cargo test --manifest-path src-tauri/Cargo.toml
 cargo check --manifest-path src-tauri/Cargo.toml
 ```
 
-## Release
-
-With a clean worktree:
-
-```sh
-pnpm release patch
-```
-
-`major`, `minor`, and an explicit stable version such as `1.2.0` are also accepted. The command synchronizes npm, Cargo, and Tauri versions, creates a Conventional Commit release commit, and adds an annotated `app-vX.Y.Z` tag. Push the commit and tag to build macOS Intel, macOS Apple Silicon, and Windows x64 installers. The workflow publishes one complete `latest.json` updater manifest.
-
-## Native behavior
-
-Closing the main window hides it while the tray icon remains active. The tray menu can show the window or quit. Launch-at-login uses `--hidden`; clicking the Dock icon on macOS reopens the main window.
-
-## License
-
-MIT
+The Rust tests cover frontmatter round trips and unknown values, atomic lifecycle behavior, safe filenames, archive/delete rules, index rebuild, numeric sorting, compound filters, and basic Git status. Frontend tests cover typed property controls, dynamic settings/filters, toolbar commands, Live Preview activation, and autosave state.
