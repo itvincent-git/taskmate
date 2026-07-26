@@ -120,6 +120,7 @@ export function App() {
   const [loading, setLoading] = useState(false);
   const [view, setView] = useState<AppView>("tasks");
   const [definitions, setDefinitions] = useState<PropertyDefinition[]>([]);
+  const [lockedPropertyIds, setLockedPropertyIds] = useState<Set<string>>(new Set());
   const [tasks, setTasks] = useState<TaskSummary[]>([]);
   const [task, setTask] = useState<Task | null>(null);
   const [query, setQuery] = useState<TaskQuery>({ search: "", archived: false, filters: [] });
@@ -141,6 +142,7 @@ export function App() {
       const snapshot = await api.openWorkspace(workspacePath.trim());
       localStorage.setItem("taskmate-workspace", workspacePath.trim());
       setDefinitions(snapshot.properties);
+      setLockedPropertyIds(new Set(snapshot.properties.map((definition) => definition.id)));
       setTasks(snapshot.tasks);
       setWorkspaceOpen(true);
       if (snapshot.tasks[0]) setTask(await api.getTask(snapshot.tasks[0].id));
@@ -337,12 +339,16 @@ export function App() {
       </aside>
       <main className="workspace">
         {error && <div className="toast" role="alert"><span>{error}</span><button onClick={() => setError("")}>×</button></div>}
-        {view === "properties" && <PropertySettings definitions={definitions} onChange={setDefinitions} saving={schemaSaving} onRebuild={async () => {
+        {view === "properties" && <PropertySettings definitions={definitions} lockedIds={lockedPropertyIds} onChange={setDefinitions} saving={schemaSaving} onRebuild={async () => {
           setSchemaSaving(true);
           try { setTasks(await api.rebuildIndex()); } catch (cause) { setError(errorMessage(cause)); } finally { setSchemaSaving(false); }
         }} onSave={async () => {
           setSchemaSaving(true);
-          try { setDefinitions(await api.saveProperties(definitions)); } catch (cause) { setError(errorMessage(cause)); } finally { setSchemaSaving(false); }
+          try {
+            const savedDefinitions = await api.saveProperties(definitions);
+            setDefinitions(savedDefinitions);
+            setLockedPropertyIds(new Set(savedDefinitions.map((definition) => definition.id)));
+          } catch (cause) { setError(errorMessage(cause)); } finally { setSchemaSaving(false); }
         }} />}
         {view === "backup" && <BackupView />}
         {view === "tasks" && (

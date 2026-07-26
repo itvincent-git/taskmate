@@ -4,6 +4,7 @@ import { PropertyInput } from "./PropertyInput";
 
 interface Props {
   definitions: PropertyDefinition[];
+  lockedIds: Set<string>;
   onChange(definitions: PropertyDefinition[]): void;
   onSave(): void;
   onRebuild(): void;
@@ -12,7 +13,7 @@ interface Props {
 
 const propertyTypes: PropertyType[] = ["text", "textarea", "number", "boolean", "select", "multiselect", "tags", "date", "datetime", "url"];
 
-export function PropertySettings({ definitions, onChange, onSave, onRebuild, saving }: Props) {
+export function PropertySettings({ definitions, lockedIds, onChange, onSave, onRebuild, saving }: Props) {
   const update = (id: string, patch: Partial<PropertyDefinition>) => onChange(definitions.map((definition) => definition.id === id ? { ...definition, ...patch } : definition));
   const move = (id: string, direction: -1 | 1) => {
     const ordered = definitions.slice().sort((a, b) => a.order - b.order);
@@ -48,7 +49,7 @@ export function PropertySettings({ definitions, onChange, onSave, onRebuild, sav
           <div className="property-row" key={definition.id}>
             <span className="field-name"><GripVertical size={15} /><input value={definition.name} onChange={(event) => update(definition.id, { name: event.target.value })} /><button className="mini" onClick={() => move(definition.id, -1)}><ChevronUp /></button><button className="mini" onClick={() => move(definition.id, 1)}><ChevronDown /></button></span>
             <input value={definition.key} disabled={definition.role === "status"} onChange={(event) => update(definition.id, { key: event.target.value.replace(/\W/g, "") })} />
-            <select value={definition.type} disabled={definition.role === "status"} onChange={(event) => update(definition.id, { type: event.target.value as PropertyType })}>{propertyTypes.map((type) => <option key={type}>{type}</option>)}</select>
+            <select aria-label={`${definition.name} type`} value={definition.type} disabled={lockedIds.has(definition.id)} title={lockedIds.has(definition.id) ? "Create a replacement field to migrate this type safely." : undefined} onChange={(event) => update(definition.id, { type: event.target.value as PropertyType })}>{propertyTypes.map((type) => <option key={type}>{type}</option>)}</select>
             {(["showInDetail", "showInCard", "enableFilter", "enableSort", "required"] as const).map((key) => <input key={key} type="checkbox" checked={Boolean(definition[key])} onChange={(event) => update(definition.id, { [key]: event.target.checked })} />)}
             <button className="icon danger" aria-label={`Delete ${definition.name}`} disabled={definition.role === "status"} onClick={() => onChange(definitions.filter((item) => item.id !== definition.id))}><Trash2 size={15} /></button>
             {(definition.type === "select" || definition.type === "multiselect" || definition.type === "tags") && (

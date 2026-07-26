@@ -36,6 +36,7 @@ describe("Taskmate application", () => {
     await user.click(screen.getByTitle("Properties"));
     expect(screen.getByRole("heading", { name: "Properties" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Delete Status" })).toBeDisabled();
+    expect(screen.getByLabelText("Priority type")).toBeDisabled();
     expect(screen.getByRole("button", { name: "Save changes" })).toBeInTheDocument();
   });
 
