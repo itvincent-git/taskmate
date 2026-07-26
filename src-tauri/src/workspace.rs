@@ -25,13 +25,7 @@ impl Workspace {
     }
 
     pub fn initialize(&self) -> Result<WorkspaceSnapshot, String> {
-        for directory in [
-            "tasks",
-            "archive",
-            "trash",
-            "attachments",
-            ".task-app/backups",
-        ] {
+        for directory in ["tasks", "archive", "attachments", ".task-app/backups"] {
             fs::create_dir_all(self.root.join(directory)).map_err(to_string)?;
         }
         self.ensure_gitignore()?;
@@ -131,14 +125,13 @@ impl Workspace {
         index.query(&TaskQuery::default(), &self.load_or_create_properties()?)
     }
 
-    pub fn move_to_trash(&self, id: &str) -> Result<(), String> {
+    pub fn delete_task(&self, id: &str) -> Result<(), String> {
         let path = self.find_task_path(id)?;
         let task = parse_task(&path, &fs::read_to_string(&path).map_err(to_string)?)?;
         if !task.archived {
-            return Err("Only archived tasks can be moved to trash.".into());
+            return Err("Only archived tasks can be permanently deleted.".into());
         }
-        let target = self.root.join("trash").join(&task.file_name);
-        fs::rename(&path, target).map_err(to_string)?;
+        fs::remove_file(&path).map_err(to_string)?;
         TaskIndex::open(&self.root.join(".task-app/index.sqlite"))?.remove(id)
     }
 
@@ -290,7 +283,6 @@ impl Workspace {
             ".task-app/index.sqlite-shm",
             ".task-app/index.sqlite-wal",
             ".task-app/git-sync.timestamp",
-            "trash/",
         ];
         let mut contents = fs::read_to_string(&path).unwrap_or_default();
         let mut changed = false;
@@ -579,7 +571,34 @@ mod tests {
         let temporary = tempfile::tempdir().unwrap();
         let workspace = Workspace::new(temporary.path().to_path_buf());
         let task = workspace.create_task(None).unwrap();
-        assert!(workspace.move_to_trash(&task.id).is_err());
+        assert!(workspace.delete_task(&task.id).is_err());
+    }
+
+    #[test]
+    fn permanently_deletes_an_archived_task_and_its_index_row() {
+        let temporary = tempfile::tempdir().unwrap();
+        let workspace = Workspace::new(temporary.path().to_path_buf());
+        let task = workspace.create_task(Some("Delete me".into())).unwrap();
+        let archived = workspace
+            .save_task(SaveTaskInput {
+                id: task.id.clone(),
+                title: task.title,
+                body: task.body,
+                archived: true,
+                created_at: task.created_at,
+                properties: task.properties,
+                expected_hash: Some(task.content_hash),
+            })
+            .unwrap();
+        workspace.delete_task(&archived.id).unwrap();
+        assert!(workspace.get_task(&archived.id).is_err());
+        assert!(workspace
+            .query(TaskQuery {
+                archived: true,
+                ..TaskQuery::default()
+            })
+            .unwrap()
+            .is_empty());
     }
 
     #[test]

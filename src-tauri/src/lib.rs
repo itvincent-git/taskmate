@@ -108,8 +108,8 @@ fn rebuild_index(state: State<'_, AppState>) -> Result<Vec<TaskSummary>, String>
 }
 
 #[tauri::command]
-fn move_task_to_trash(id: String, state: State<'_, AppState>) -> Result<(), String> {
-    with_workspace(state, |workspace| workspace.move_to_trash(&id))
+fn delete_task(id: String, state: State<'_, AppState>) -> Result<(), String> {
+    with_workspace(state, |workspace| workspace.delete_task(&id))
 }
 
 #[tauri::command]
@@ -198,7 +198,7 @@ pub fn run() {
             save_task,
             query_tasks,
             rebuild_index,
-            move_task_to_trash,
+            delete_task,
             save_properties,
             check_external_change,
             git_status,

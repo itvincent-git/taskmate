@@ -274,9 +274,9 @@ export function App() {
       setError("Archive this task before deleting it.");
       return;
     }
-    if (!window.confirm(`Move “${task.title}” to workspace trash?`)) return;
+    if (!window.confirm(`Permanently delete “${task.title}”? This cannot be undone.`)) return;
     try {
-      await api.moveToTrash(task.id);
+      await api.deleteTask(task.id);
       setTask(null);
       await refresh();
     } catch (cause) { setError(errorMessage(cause)); }

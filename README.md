@@ -10,7 +10,6 @@ Every task is an independent Markdown file. YAML frontmatter holds task metadata
 workspace/
 ├── tasks/                 # active task Markdown files
 ├── archive/               # archived task Markdown files
-├── trash/                 # recoverable deleted task files
 ├── attachments/
 ├── .task-app/
 │   ├── properties.json    # workspace property schema
@@ -45,7 +44,7 @@ Unknown frontmatter values are preserved on read/write. The stable UUID, rather 
 
 ## Architecture
 
-- `src-tauri/src/workspace.rs` owns directory creation, atomic save/rename, archive/trash lifecycle, incremental file scans, and index rebuilds.
+- `src-tauri/src/workspace.rs` owns directory creation, atomic save/rename, archive/delete lifecycle, incremental file scans, and index rebuilds.
 - `src-tauri/src/markdown.rs` parses and serializes YAML frontmatter without dropping extension values.
 - `src-tauri/src/index.rs` stores searchable task projections and applies dynamic property filters and type-aware sorts.
 - `src-tauri/src/git.rs` performs guarded Git operations. Authentication is delegated to the operating system Git credential manager; embedded credentials in remote URLs are rejected.

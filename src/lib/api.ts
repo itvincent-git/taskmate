@@ -163,11 +163,11 @@ export const api = {
     if (isTauri) return invoke("rebuild_index");
     return loadDemo().tasks.filter((task) => !task.archived).map(summary);
   },
-  async moveToTrash(id: string): Promise<void> {
-    if (isTauri) return invoke("move_task_to_trash", { id });
+  async deleteTask(id: string): Promise<void> {
+    if (isTauri) return invoke("delete_task", { id });
     const state = loadDemo();
     const task = state.tasks.find((candidate) => candidate.id === id);
-    if (!task?.archived) throw new Error("Only archived tasks can be moved to trash.");
+    if (!task?.archived) throw new Error("Only archived tasks can be permanently deleted.");
     state.tasks = state.tasks.filter((candidate) => candidate.id !== id);
     storeDemo(state);
   },
