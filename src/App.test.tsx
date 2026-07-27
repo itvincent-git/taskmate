@@ -200,6 +200,27 @@ describe("Taskmate application", () => {
     expect(screen.getByRole("button", { name: "Show task cards" })).toBeInTheDocument();
   });
 
+  it("persists the resized task list width and prevents text selection while dragging", async () => {
+    const user = userEvent.setup();
+    const { container, unmount } = render(<App />);
+    await user.click(screen.getByRole("button", { name: "Open workspace" }));
+    const splitter = container.querySelector(".splitter") as HTMLElement;
+
+    fireEvent(splitter, Object.assign(new MouseEvent("pointerdown", { bubbles: true, clientX: 390 }), { pointerId: 1 }));
+    expect(document.body.style.userSelect).toBe("none");
+    fireEvent(window, new MouseEvent("pointermove", { clientX: 510 }));
+    fireEvent(window, new MouseEvent("pointerup"));
+
+    expect(document.body.style.userSelect).toBe("");
+    expect(localStorage.getItem("taskmate-task-list-width.v1")).toBe("510");
+    expect(container.querySelector(".split-layout")).toHaveStyle({ gridTemplateColumns: "510px 5px minmax(0, 1fr)" });
+
+    unmount();
+    const restored = render(<App />);
+    await user.click(screen.getByRole("button", { name: "Open workspace" }));
+    expect(restored.container.querySelector(".split-layout")).toHaveStyle({ gridTemplateColumns: "510px 5px minmax(0, 1fr)" });
+  });
+
   it("switches between current and archived tasks from the list toolbar", async () => {
     const user = userEvent.setup();
     render(<App />);

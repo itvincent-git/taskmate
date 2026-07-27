@@ -50,6 +50,7 @@ const initialPath = localStorage.getItem("taskmate-workspace") || `${navigator.p
 const RECENT_WORKSPACES_KEY = "taskmate-workspaces.v1";
 const COMPACT_CARDS_KEY = "taskmate-compact-cards.v1";
 const TASK_LIST_VISIBLE_KEY = "taskmate-task-list-visible.v1";
+const TASK_LIST_WIDTH_KEY = "taskmate-task-list-width.v1";
 const MarkdownEditor = lazy(() => import("./components/MarkdownEditor").then((module) => ({ default: module.MarkdownEditor })));
 
 function loadRecentWorkspaces() {
@@ -66,6 +67,12 @@ function loadRecentWorkspaces() {
 
 function errorMessage(error: unknown) {
   return error instanceof Error ? error.message : String(error);
+}
+
+function loadTaskListWidth() {
+  const stored = localStorage.getItem(TASK_LIST_WIDTH_KEY);
+  const width = stored === null ? 390 : Number(stored);
+  return Number.isFinite(width) ? Math.max(290, Math.min(620, width)) : 390;
 }
 
 function SaveBadge({ state }: { state: SaveState }) {
@@ -162,7 +169,7 @@ function TaskmateApp() {
   const [error, setError] = useState("");
   const [schemaSaving, setSchemaSaving] = useState(false);
   const [dark, setDark] = useState(() => localStorage.getItem("taskmate-theme") === "dark");
-  const [leftWidth, setLeftWidth] = useState(390);
+  const [leftWidth, setLeftWidth] = useState(loadTaskListWidth);
   const [compactCards, setCompactCards] = useState(() => localStorage.getItem(COMPACT_CARDS_KEY) === "true");
   const [taskListVisible, setTaskListVisible] = useState(() => localStorage.getItem(TASK_LIST_VISIBLE_KEY) !== "false");
   const [externalTask, setExternalTask] = useState<Task | null>(null);
@@ -438,16 +445,27 @@ function TaskmateApp() {
     setQuery({ ...query, filters: [...without, ...filters] });
   };
   const beginResize = (event: React.PointerEvent) => {
+    event.preventDefault();
     event.currentTarget.setPointerCapture(event.pointerId);
     const start = event.clientX;
     const width = leftWidth;
-    const move = (moveEvent: PointerEvent) => setLeftWidth(Math.max(290, Math.min(620, width + moveEvent.clientX - start)));
+    const previousUserSelect = document.body.style.userSelect;
+    let resizedWidth = width;
+    document.body.style.userSelect = "none";
+    const move = (moveEvent: PointerEvent) => {
+      resizedWidth = Math.max(290, Math.min(620, width + moveEvent.clientX - start));
+      setLeftWidth(resizedWidth);
+    };
     const end = () => {
       window.removeEventListener("pointermove", move);
       window.removeEventListener("pointerup", end);
+      window.removeEventListener("pointercancel", end);
+      document.body.style.userSelect = previousUserSelect;
+      localStorage.setItem(TASK_LIST_WIDTH_KEY, String(resizedWidth));
     };
     window.addEventListener("pointermove", move);
     window.addEventListener("pointerup", end);
+    window.addEventListener("pointercancel", end);
   };
 
   if (!workspaceOpen) {
