@@ -468,7 +468,7 @@ function TaskmateApp() {
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-[var(--bg)]">
-      <header className="flex h-11 shrink-0 items-stretch border-b border-[var(--line)] bg-[var(--surface)] pl-[78px]" data-tauri-drag-region>
+      <header className="flex h-11 shrink-0 items-stretch border-b border-[var(--line)] bg-[var(--surface)] pl-[78px]" data-tauri-drag-region="deep">
         <div className="flex min-w-0 flex-1 items-end gap-1 overflow-x-auto px-2 pt-1" role="tablist" aria-label={t("editor.openFiles")}>
           {openTabs.map((tab) => (
             <div

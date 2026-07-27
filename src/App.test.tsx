@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "./App";
@@ -146,7 +146,15 @@ describe("Taskmate application", () => {
     await user.click(screen.getByRole("button", { name: "Open workspace" }));
     await user.click(await screen.findByRole("button", { name: "New task" }));
     await user.click(screen.getByRole("button", { name: "New task" }));
-    expect(screen.getAllByRole("tab")).toHaveLength(2);
+    const tabs = screen.getAllByRole("tab");
+    expect(tabs).toHaveLength(2);
+    expect(tabs[1]).toHaveAttribute("aria-selected", "true");
+    expect(tabs[0].closest("header")).toHaveAttribute("data-tauri-drag-region", "deep");
+
+    await user.click(within(tabs[0]).getByRole("button", { name: "Untitled task" }));
+    expect(tabs[0]).toHaveAttribute("aria-selected", "true");
+    await user.click(within(tabs[1]).getByRole("button", { name: "Close tab: Untitled task" }));
+    expect(screen.getAllByRole("tab")).toHaveLength(1);
 
     await user.click(screen.getByRole("button", { name: "Compact cards" }));
     expect(localStorage.getItem("taskmate-compact-cards.v1")).toBe("true");
