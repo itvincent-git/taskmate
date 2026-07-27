@@ -36,6 +36,7 @@ import type {
 import { PropertyInput } from "./components/PropertyInput";
 import { PropertySettings } from "./components/PropertySettings";
 import { TaskCard } from "./components/TaskCard";
+import { TaskProperties } from "./components/TaskProperties";
 import { DynamicFilter } from "./components/DynamicFilter";
 import { Button } from "./components/ui/Button";
 import { Dialog } from "./components/ui/Dialog";
@@ -166,8 +167,12 @@ function TaskmateApp() {
   const [taskListVisible, setTaskListVisible] = useState(() => localStorage.getItem(TASK_LIST_VISIBLE_KEY) !== "false");
   const [externalTask, setExternalTask] = useState<Task | null>(null);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [detailNarrow, setDetailNarrow] = useState(false);
+  const [propertiesDrawerOpen, setPropertiesDrawerOpen] = useState(false);
   const [fileSignal, setFileSignal] = useState(0);
   const listHost = useRef<HTMLDivElement>(null);
+  const detailPanel = useRef<HTMLElement>(null);
+  const propertiesButton = useRef<HTMLButtonElement>(null);
   const autoOpened = useRef(false);
   const selectedId = task?.id;
 
@@ -232,6 +237,20 @@ function TaskmateApp() {
     localStorage.setItem(COMPACT_CARDS_KEY, String(compactCards));
     localStorage.setItem(TASK_LIST_VISIBLE_KEY, String(taskListVisible));
   }, [compactCards, taskListVisible]);
+
+  useEffect(() => {
+    const element = detailPanel.current;
+    if (!workspaceOpen || !element || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(([entry]) => {
+      setDetailNarrow(entry.contentRect.width < 760);
+    });
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [workspaceOpen]);
+
+  useEffect(() => {
+    setPropertiesDrawerOpen(false);
+  }, [detailNarrow, selectedId]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => setQuery((current) => ({ ...current, search: searchDraft })), 260);
@@ -565,7 +584,7 @@ function TaskmateApp() {
                 </div>
               </section>
               <div className={`splitter ${taskListVisible ? "" : "invisible"}`} onPointerDown={beginResize} />
-              <section className="detail-panel">
+              <section className="detail-panel" ref={detailPanel}>
                 {!task ? <div className="detail-empty"><div className="empty-illustration"><Check /></div><h2>{t("tasks.select")}</h2><p>{t("tasks.selectHint")}</p></div> : (
                   <div className="detail-scroll">
                     <header className="detail-header">
@@ -575,20 +594,26 @@ function TaskmateApp() {
                       </div>
                       {statusDefinition && <PropertyInput definition={statusDefinition} value={task.properties[statusDefinition.key]} onChange={(value) => editProperty(statusDefinition.key, value)} />}
                       <SaveBadge state={saveState} />
+                      {detailNarrow ? (
+                        <Tooltip label={t("editor.openProperties")}>
+                          <Button ref={propertiesButton} variant="outline" size="icon" aria-label={t("editor.openProperties")} onClick={() => setPropertiesDrawerOpen(true)}><Settings2 /></Button>
+                        </Tooltip>
+                      ) : null}
                       <Tooltip label={task.archived ? t("tasks.restore") : t("tasks.archiveAction")}><Button variant="ghost" size="icon" aria-label={task.archived ? t("tasks.restore") : t("tasks.archiveAction")} onClick={() => void archive()}>{task.archived ? <ArchiveRestore /> : <Archive />}</Button></Tooltip>
                       <Tooltip label={t("tasks.deleteAction")}><Button variant="ghost" size="icon" className="danger" aria-label={t("tasks.deleteAction")} onClick={() => void remove()}><Trash2 /></Button></Tooltip>
                     </header>
-                    <Suspense fallback={<div className="editor-loading"><LoaderCircle className="spin" />{t("editor.loading")}</div>}>
-                      <MarkdownEditor value={task.body} onChange={(body) => editTask({ body })} />
-                    </Suspense>
-                    <section className="property-panel">
-                      <div className="section-title"><h2>{t("editor.properties")}</h2><span>{t("editor.frontmatter")}</span></div>
-                      <div className="property-grid">
-                        {detailDefinitions.map((definition) => (
-                          <label key={definition.id}><span>{localizedPropertyName(definition, locale)}{definition.required && <em>*</em>}</span><PropertyInput definition={definition} value={task.properties[definition.key]} onChange={(value) => editProperty(definition.key, value)} /></label>
-                        ))}
+                    <div className="detail-content">
+                      <div className="detail-editor">
+                        <Suspense fallback={<div className="editor-loading"><LoaderCircle className="spin" />{t("editor.loading")}</div>}>
+                          <MarkdownEditor value={task.body} onChange={(body) => editTask({ body })} />
+                        </Suspense>
                       </div>
-                    </section>
+                      {!detailNarrow ? (
+                        <aside className="property-panel">
+                          <TaskProperties definitions={detailDefinitions} task={task} onChange={editProperty} />
+                        </aside>
+                      ) : null}
+                    </div>
                   </div>
                 )}
               </section>
@@ -596,10 +621,21 @@ function TaskmateApp() {
           </>
         )}
         <Dialog
+          open={propertiesDrawerOpen && detailNarrow && Boolean(task)}
+          onOpenChange={setPropertiesDrawerOpen}
+          title={t("editor.properties")}
+          drawer
+          closeLabel={t("common.close")}
+          returnFocusRef={propertiesButton}
+        >
+          {task ? <TaskProperties definitions={detailDefinitions} task={task} onChange={editProperty} showHeading={false} /> : null}
+        </Dialog>
+        <Dialog
           open={Boolean(externalTask && task)}
           onOpenChange={(open) => { if (!open) setExternalTask(null); }}
           title={t("external.title", { title: task?.title ?? "" })}
           description={t("external.description")}
+          closeLabel={t("common.close")}
           footer={<><Button variant="outline" onClick={() => { setExternalTask(null); setSaveState("dirty"); }}>{t("external.keep")}</Button><Button onClick={() => { if (externalTask) setTask(externalTask); setExternalTask(null); setSaveState("saved"); }}>{t("external.reload")}</Button></>}
         >
           {externalTask && task ? <div className="diff-grid"><div><strong>{t("external.editor")}</strong><pre>{task.body}</pre></div><div><strong>{t("external.disk")}</strong><pre>{externalTask.body}</pre></div></div> : null}
@@ -609,6 +645,7 @@ function TaskmateApp() {
           onOpenChange={setDeleteConfirmOpen}
           title={t("tasks.deleteAction")}
           description={t("tasks.deleteConfirm", { title: task?.title ?? "" })}
+          closeLabel={t("common.close")}
           footer={<><Button variant="outline" onClick={() => setDeleteConfirmOpen(false)}>{t("common.cancel")}</Button><Button variant="destructive" onClick={() => void confirmDelete()}>{t("common.delete")}</Button></>}
         />
       </main>

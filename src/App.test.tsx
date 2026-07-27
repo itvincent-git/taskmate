@@ -1,13 +1,45 @@
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "./App";
 import { api } from "./lib/api";
 
+let detailWidth = 1000;
+let resizeCallbacks: ResizeObserverCallback[] = [];
+
+class ResizeObserverMock {
+  private callback: ResizeObserverCallback;
+
+  constructor(callback: ResizeObserverCallback) {
+    this.callback = callback;
+    resizeCallbacks.push(callback);
+  }
+
+  observe(target: Element) {
+    this.callback([{ target, contentRect: { width: detailWidth } } as ResizeObserverEntry], this as unknown as ResizeObserver);
+  }
+
+  disconnect() {
+    resizeCallbacks = resizeCallbacks.filter((callback) => callback !== this.callback);
+  }
+
+  unobserve() {}
+}
+
+function resizeDetail(width: number) {
+  detailWidth = width;
+  act(() => {
+    resizeCallbacks.forEach((callback) => callback([{ contentRect: { width } } as ResizeObserverEntry], {} as ResizeObserver));
+  });
+}
+
 describe("Taskmate application", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
     localStorage.clear();
+    detailWidth = 1000;
+    resizeCallbacks = [];
+    vi.stubGlobal("ResizeObserver", ResizeObserverMock);
   });
 
   it("keeps manual workspace entry available and hides the native picker in browser mode", async () => {
@@ -182,5 +214,63 @@ describe("Taskmate application", () => {
     expect(returnButton).toHaveClass("active");
     await user.click(returnButton);
     expect(within(toolbar).getByRole("button", { name: "Archive" })).not.toHaveClass("active");
+  });
+
+  it("shows one fixed property sidebar when the task detail is wide", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(screen.getByRole("button", { name: "Open workspace" }));
+    await user.click(await screen.findByRole("button", { name: "New task" }));
+
+    expect(screen.getByRole("heading", { name: "Properties" })).toBeInTheDocument();
+    expect(screen.getByLabelText("Priority")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Open task properties" })).not.toBeInTheDocument();
+  });
+
+  it("opens narrow task properties in a drawer, autosaves edits, and returns focus on Escape", async () => {
+    detailWidth = 700;
+    const user = userEvent.setup();
+    const saveTask = vi.spyOn(api, "saveTask");
+    render(<App />);
+    await user.click(screen.getByRole("button", { name: "Open workspace" }));
+    await user.click(await screen.findByRole("button", { name: "New task" }));
+
+    const openProperties = await screen.findByRole("button", { name: "Open task properties" });
+    expect(screen.queryByRole("heading", { name: "Properties" })).not.toBeInTheDocument();
+    await user.click(openProperties);
+
+    const drawer = screen.getByRole("dialog", { name: "Properties" });
+    expect(within(drawer).getByLabelText("Priority")).toBeInTheDocument();
+    expect(screen.getAllByLabelText("Priority")).toHaveLength(1);
+    await user.click(within(drawer).getByLabelText("Priority"));
+    await user.click(await screen.findByRole("option", { name: "High" }));
+    await waitFor(() => {
+      expect(saveTask).toHaveBeenCalledWith(expect.objectContaining({
+        properties: expect.objectContaining({ priority: "high" }),
+      }));
+    }, { timeout: 2500 });
+
+    await user.keyboard("{Escape}");
+    expect(screen.queryByRole("dialog", { name: "Properties" })).not.toBeInTheDocument();
+    await waitFor(() => expect(openProperties).toHaveFocus());
+  });
+
+  it("closes the property drawer when the breakpoint or selected task changes", async () => {
+    detailWidth = 700;
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(screen.getByRole("button", { name: "Open workspace" }));
+    await user.click(await screen.findByRole("button", { name: "New task" }));
+
+    await user.click(await screen.findByRole("button", { name: "Open task properties" }));
+    expect(screen.getByRole("dialog", { name: "Properties" })).toBeInTheDocument();
+    resizeDetail(800);
+    expect(screen.queryByRole("dialog", { name: "Properties" })).not.toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Properties" })).toBeInTheDocument();
+
+    resizeDetail(700);
+    await user.click(await screen.findByRole("button", { name: "Open task properties" }));
+    fireEvent.click(screen.getByRole("button", { name: "New task", hidden: true }));
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Properties" })).not.toBeInTheDocument());
   });
 });

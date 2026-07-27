@@ -184,11 +184,10 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); box-sha
 .list-empty h2, .detail-empty h2 { margin: 12px 0 3px; font-size: 16px; color: var(--text); }
 .list-empty p, .detail-empty p { margin: 0; font-size: 13px; }
 .detail-panel { background: var(--surface); }
-.detail-scroll { height: 100%; overflow: auto; }
+.detail-scroll { height: 100%; display: flex; flex-direction: column; overflow: hidden; }
 .detail-header {
   min-height: 86px;
-  position: sticky;
-  top: 0;
+  flex: 0 0 auto;
   z-index: 5;
   background: color-mix(in srgb, var(--surface) 92%, transparent);
   backdrop-filter: blur(12px);
@@ -205,6 +204,8 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); box-sha
 .save-badge { display: inline-flex; align-items: center; gap: 5px; color: var(--muted); font-size: 11px; white-space: nowrap; }
 .save-badge.failed, .save-badge.external { color: var(--danger); }
 .save-badge.dirty { color: #d97706; }
+.detail-content { min-height: 0; flex: 1 1 auto; display: flex; overflow: hidden; }
+.detail-editor { min-width: 0; min-height: 0; flex: 1 1 auto; overflow: hidden; }
 .editor-section { min-height: 370px; border-bottom: 1px solid var(--line); }
 .markdown-toolbar { display: flex; gap: 2px; min-height: 43px; align-items: center; padding: 5px 20px; border-bottom: 1px solid var(--line); position: sticky; top: 86px; z-index: 4; background: var(--surface); overflow-x: auto; }
 .markdown-toolbar button { border: 0; background: transparent; color: var(--muted); width: 30px; height: 30px; border-radius: 6px; display: grid; place-items: center; flex: 0 0 auto; }
@@ -229,11 +230,19 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); box-sha
 .cm-lp-rule { display: block; height: 1px; background: var(--line); margin: .85em 0; }
 .cm-lp-image-widget { display: block; max-width: min(100%, 560px); max-height: 360px; object-fit: contain; border-radius: 8px; margin: 8px 0; border: 1px solid var(--line); }
 .cm-lp-image-widget.failed { min-width: 180px; min-height: 72px; padding: 12px; background: var(--surface-soft); color: var(--muted); }
-.property-panel { padding: 22px 28px 70px; }
-.section-title { display: flex; align-items: center; justify-content: space-between; margin-bottom: 17px; }
+.property-panel {
+  width: clamp(280px, 30%, 340px);
+  min-height: 0;
+  flex: 0 0 clamp(280px, 30%, 340px);
+  border-left: 1px solid var(--line);
+  overflow: hidden;
+}
+.task-properties { height: 100%; min-height: 0; display: flex; flex-direction: column; }
+.section-title { flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between; margin: 0; padding: 20px; border-bottom: 1px solid var(--line); }
 .section-title h2 { margin: 0; font-size: 15px; }
 .section-title span { color: var(--muted); font-size: 10px; text-transform: uppercase; letter-spacing: .1em; }
-.property-grid { display: grid; grid-template-columns: repeat(2, minmax(180px, 1fr)); gap: 14px 18px; }
+.property-scroll { min-height: 0; flex: 1 1 auto; overflow-y: auto; overscroll-behavior: contain; padding: 18px 20px 40px; }
+.property-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; }
 .property-grid label { display: grid; gap: 6px; }
 .property-grid label > span { font-size: 11px; font-weight: 680; color: var(--muted); }
 .property-grid em { color: var(--danger); font-style: normal; }
@@ -425,6 +434,21 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); box-sha
 .ui-dialog-body { margin-top: 20px; }
 .ui-dialog-footer { margin-top: 24px; display: flex; justify-content: flex-end; gap: 8px; }
 .ui-dialog-close { position: absolute; right: 14px; top: 14px; }
+.ui-dialog-drawer {
+  inset: 0 0 0 auto;
+  width: min(380px, calc(100vw - 24px));
+  max-height: none;
+  height: 100vh;
+  transform: none;
+  border-width: 0 0 0 1px;
+  border-radius: 12px 0 0 12px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.ui-dialog-drawer > h2 { flex: 0 0 auto; }
+.ui-dialog-drawer > .ui-dialog-body { min-height: 0; flex: 1 1 auto; overflow: hidden; }
+.ui-dialog-drawer .property-scroll { padding-inline: 0; }
 .ui-popover { min-width: 210px; padding: 8px; }
 
 /* DESIGN.md layout */
@@ -462,7 +486,7 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); box-sha
 
 /* Dedicated CodeMirror viewport: fixes vertical editor scrolling. */
 .editor-section {
-  height: clamp(380px, 56vh, 640px);
+  height: 100%;
   min-height: 0;
   display: flex;
   flex-direction: column;
