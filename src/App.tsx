@@ -536,15 +536,23 @@ function TaskmateApp() {
                 ]} />
                 {query.sort ? <Select ariaLabel={t("tasks.emptyLast")} value={query.sort.nulls} onValueChange={(value) => setQuery({ ...query, sort: { ...query.sort!, nulls: value as "first" | "last" } })} options={[{ value: "last", label: t("tasks.emptyLast") }, { value: "first", label: t("tasks.emptyFirst") }]} /> : null}
               </div>
-              <Tooltip label={compactCards ? t("tasks.comfortable") : t("tasks.compact")}>
-                <Button variant="outline" size="icon" className={compactCards ? "active" : ""} aria-label={compactCards ? t("tasks.comfortable") : t("tasks.compact")} onClick={() => setCompactCards((compact) => !compact)}><Rows3 size={17} /></Button>
-              </Tooltip>
-              <Button variant="outline" className={query.archived ? "active" : ""} onClick={() => { setTask(null); setQuery({ ...query, archived: !query.archived }); }}>{query.archived ? <ArchiveRestore size={16} /> : <Archive size={16} />}{query.archived ? t("tasks.active") : t("tasks.archive")}</Button>
-              <Button onClick={create}><Plus size={17} />{t("tasks.new")}</Button>
             </header>
             <div className="split-layout" style={{ gridTemplateColumns: taskListVisible ? `${leftWidth}px 5px minmax(0, 1fr)` : "0 0 minmax(0, 1fr)" }}>
               <section className={`task-list-panel ${taskListVisible ? "" : "invisible overflow-hidden"}`} aria-hidden={!taskListVisible}>
-                <div className="list-heading"><div><p className="eyebrow">{query.archived ? t("tasks.archive") : t("tasks.workspace")}</p><h1>{query.archived ? t("tasks.archived") : t("tasks.myTasks")}</h1></div><span>{tasks.length}</span></div>
+                <div className="list-toolbar" role="toolbar" aria-label={t("tasks.listToolbar")}>
+                  <span className="task-count" aria-label={t("tasks.taskCount", { count: tasks.length })}><LayoutList size={17} />{tasks.length}</span>
+                  <div className="list-toolbar-actions">
+                    <Tooltip label={compactCards ? t("tasks.comfortable") : t("tasks.compact")}>
+                      <Button variant="outline" size="icon" className={compactCards ? "active" : ""} aria-label={compactCards ? t("tasks.comfortable") : t("tasks.compact")} onClick={() => setCompactCards((compact) => !compact)}><Rows3 size={17} /></Button>
+                    </Tooltip>
+                    <Tooltip label={query.archived ? t("tasks.returnActive") : t("tasks.archive")}>
+                      <Button variant="outline" size="icon" className={query.archived ? "active" : ""} aria-label={query.archived ? t("tasks.returnActive") : t("tasks.archive")} onClick={() => { setTask(null); setQuery({ ...query, archived: !query.archived }); }}>{query.archived ? <ArchiveRestore size={17} /> : <Archive size={17} />}</Button>
+                    </Tooltip>
+                    <Tooltip label={t("tasks.new")}>
+                      <Button size="icon" aria-label={t("tasks.new")} onClick={create}><Plus size={17} /></Button>
+                    </Tooltip>
+                  </div>
+                </div>
                 <div className="task-list" ref={listHost}>
                   {tasks.length === 0 ? <div className="list-empty"><LayoutList /><h2>{searchDraft || query.filters.length ? t("tasks.noMatches") : t("tasks.nothing")}</h2><p>{query.archived ? t("tasks.archivedHint") : t("tasks.createHint")}</p></div> : (
                     <div style={{ height: virtualizer.getTotalSize(), position: "relative" }}>

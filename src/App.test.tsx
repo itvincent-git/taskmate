@@ -19,7 +19,7 @@ describe("Taskmate application", () => {
     await user.clear(input);
     await user.type(input, "/tmp/manual{Enter}");
 
-    expect(await screen.findByRole("heading", { name: "My tasks" })).toBeInTheDocument();
+    expect(await screen.findByRole("toolbar", { name: "Task list" })).toBeInTheDocument();
   });
 
   it("shows the native picker when desktop support is available", () => {
@@ -37,7 +37,7 @@ describe("Taskmate application", () => {
 
     await user.click(screen.getByRole("button", { name: "Choose folder" }));
 
-    expect(await screen.findByRole("heading", { name: "My tasks" })).toBeInTheDocument();
+    expect(await screen.findByRole("toolbar", { name: "Task list" })).toBeInTheDocument();
     expect(localStorage.getItem("taskmate-workspace")).toBe("/tmp/picked");
     expect(localStorage.getItem("taskmate-workspaces.v1")).toContain("/tmp/picked");
   });
@@ -78,9 +78,14 @@ describe("Taskmate application", () => {
     await user.clear(screen.getByLabelText("Workspace folder"));
     await user.type(screen.getByLabelText("Workspace folder"), "/tmp/tasks");
     await user.click(screen.getByRole("button", { name: "Open workspace" }));
-    expect(await screen.findByRole("heading", { name: "My tasks" })).toBeInTheDocument();
+    const listToolbar = await screen.findByRole("toolbar", { name: "Task list" });
+    expect(within(listToolbar).getByLabelText("Tasks: 0")).toHaveTextContent("0");
 
-    await user.click(screen.getByRole("button", { name: "New task" }));
+    const newTaskButton = within(listToolbar).getByRole("button", { name: "New task" });
+    expect(newTaskButton).toHaveClass("ui-button-default", "ui-button-icon");
+    expect(newTaskButton).not.toHaveTextContent("New task");
+    await user.click(newTaskButton);
+    expect(await within(listToolbar).findByLabelText("Tasks: 1")).toHaveTextContent("1");
     const title = await screen.findByLabelText("Task title");
     expect(title).toHaveValue("Untitled task");
     await user.clear(title);
@@ -132,7 +137,7 @@ describe("Taskmate application", () => {
     await user.clear(screen.getByLabelText("Workspace folder"));
     await user.type(screen.getByLabelText("Workspace folder"), "/tmp/remembered");
     await user.click(screen.getByRole("button", { name: "Open workspace" }));
-    expect(await screen.findByRole("heading", { name: "My tasks" })).toBeInTheDocument();
+    expect(await screen.findByRole("toolbar", { name: "Task list" })).toBeInTheDocument();
     expect(localStorage.getItem("taskmate-workspaces.v1")).toContain("/tmp/remembered");
 
     await user.click(screen.getByRole("button", { name: "Switch workspace" }));
@@ -161,5 +166,21 @@ describe("Taskmate application", () => {
     await user.click(screen.getByRole("button", { name: "Hide task cards" }));
     expect(localStorage.getItem("taskmate-task-list-visible.v1")).toBe("false");
     expect(screen.getByRole("button", { name: "Show task cards" })).toBeInTheDocument();
+  });
+
+  it("switches between current and archived tasks from the list toolbar", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(screen.getByRole("button", { name: "Open workspace" }));
+    const toolbar = await screen.findByRole("toolbar", { name: "Task list" });
+    const archiveButton = within(toolbar).getByRole("button", { name: "Archive" });
+
+    expect(archiveButton).not.toHaveClass("active");
+    await user.click(archiveButton);
+
+    const returnButton = within(toolbar).getByRole("button", { name: "Return to current tasks" });
+    expect(returnButton).toHaveClass("active");
+    await user.click(returnButton);
+    expect(within(toolbar).getByRole("button", { name: "Archive" })).not.toHaveClass("active");
   });
 });

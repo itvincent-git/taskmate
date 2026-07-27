@@ -150,9 +150,10 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); box-sha
 .splitter:hover { background: var(--accent); }
 .task-list-panel, .detail-panel { min-width: 0; min-height: 0; background: var(--bg); }
 .task-list-panel { display: flex; flex-direction: column; }
-.list-heading { height: 77px; flex: 0 0 auto; padding: 16px 18px 11px; display: flex; align-items: end; justify-content: space-between; }
-.list-heading h1 { font-size: 20px; letter-spacing: -.02em; margin: 0; }
-.list-heading > span { min-width: 27px; height: 27px; border-radius: 14px; display: grid; place-items: center; font-size: 12px; color: var(--muted); background: var(--surface); border: 1px solid var(--line); }
+.list-toolbar { min-height: 60px; flex: 0 0 auto; padding: 11px 12px; display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.task-count { min-width: 0; display: inline-flex; align-items: center; gap: 7px; color: var(--muted); font-size: 13px; font-weight: 650; }
+.task-count svg { flex: 0 0 auto; }
+.list-toolbar-actions { display: flex; align-items: center; gap: 7px; }
 .task-list { min-height: 0; flex: 1; overflow: auto; padding: 0 12px 20px; }
 .virtual-row { position: absolute; top: 0; left: 0; width: 100%; padding-bottom: 10px; }
 .task-card {
@@ -437,7 +438,6 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); box-sha
 .task-card { border-radius: 12px; box-shadow: none; transition: transform 200ms, box-shadow 200ms, border-color 200ms; }
 .task-card:hover { transform: translateY(-2px); box-shadow: var(--shadow); }
 .task-card.selected { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
-.list-heading h1 { font-size: 24px; }
 .eyebrow { font-size: 11px; color: var(--muted); }
 .empty-panel, .settings-card, .property-table { box-shadow: none; }
 .settings-card:hover { box-shadow: var(--shadow); }
