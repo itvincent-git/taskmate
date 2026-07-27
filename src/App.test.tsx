@@ -5,7 +5,71 @@ import { App } from "./App";
 import { api } from "./lib/api";
 
 describe("Taskmate application", () => {
-  beforeEach(() => localStorage.clear());
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    localStorage.clear();
+  });
+
+  it("keeps manual workspace entry available and hides the native picker in browser mode", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    expect(screen.queryByRole("button", { name: "Choose folder" })).not.toBeInTheDocument();
+    const input = screen.getByLabelText("Workspace folder");
+    await user.clear(input);
+    await user.type(input, "/tmp/manual{Enter}");
+
+    expect(await screen.findByRole("heading", { name: "My tasks" })).toBeInTheDocument();
+  });
+
+  it("shows the native picker when desktop support is available", () => {
+    vi.spyOn(api, "supportsNativeFolderPicker").mockReturnValue(true);
+    render(<App />);
+
+    expect(screen.getByRole("button", { name: "Choose folder" })).toBeInTheDocument();
+  });
+
+  it("opens a picked folder immediately and remembers it", async () => {
+    const user = userEvent.setup();
+    vi.spyOn(api, "supportsNativeFolderPicker").mockReturnValue(true);
+    vi.spyOn(api, "pickWorkspaceFolder").mockResolvedValue("/tmp/picked");
+    render(<App />);
+
+    await user.click(screen.getByRole("button", { name: "Choose folder" }));
+
+    expect(await screen.findByRole("heading", { name: "My tasks" })).toBeInTheDocument();
+    expect(localStorage.getItem("taskmate-workspace")).toBe("/tmp/picked");
+    expect(localStorage.getItem("taskmate-workspaces.v1")).toContain("/tmp/picked");
+  });
+
+  it("leaves the welcome page and current path unchanged when folder picking is cancelled", async () => {
+    const user = userEvent.setup();
+    vi.spyOn(api, "supportsNativeFolderPicker").mockReturnValue(true);
+    const picker = vi.spyOn(api, "pickWorkspaceFolder").mockResolvedValue(null);
+    render(<App />);
+    const input = screen.getByLabelText("Workspace folder");
+    await user.clear(input);
+    await user.type(input, "/tmp/unchanged");
+
+    await user.click(screen.getByRole("button", { name: "Choose folder" }));
+
+    expect(picker).toHaveBeenCalledWith("/tmp/unchanged");
+    expect(input).toHaveValue("/tmp/unchanged");
+    expect(screen.getByRole("heading", { name: "Taskmate" })).toBeInTheDocument();
+    expect(localStorage.getItem("taskmate-workspace")).toBeNull();
+  });
+
+  it("shows the existing error banner when folder picking fails", async () => {
+    const user = userEvent.setup();
+    vi.spyOn(api, "supportsNativeFolderPicker").mockReturnValue(true);
+    vi.spyOn(api, "pickWorkspaceFolder").mockRejectedValue(new Error("picker unavailable"));
+    render(<App />);
+
+    await user.click(screen.getByRole("button", { name: "Choose folder" }));
+
+    expect(await screen.findByText("picker unavailable")).toHaveClass("banner", "error");
+    expect(screen.getByRole("heading", { name: "Taskmate" })).toBeInTheDocument();
+  });
 
   it("opens a workspace, creates a task, and persists edits", async () => {
     const user = userEvent.setup();

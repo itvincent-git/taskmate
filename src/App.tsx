@@ -6,6 +6,7 @@ import {
   Check,
   Cloud,
   Database,
+  FolderOpen,
   FolderSync,
   GitBranch,
   LayoutList,
@@ -203,6 +204,18 @@ function TaskmateApp() {
       setLoading(false);
     }
   }, [recentWorkspaces, workspacePath]);
+
+  const chooseWorkspaceFolder = useCallback(async () => {
+    setError("");
+    try {
+      const selectedPath = await api.pickWorkspaceFolder(workspacePath.trim() || undefined);
+      if (!selectedPath) return;
+      setWorkspacePath(selectedPath);
+      await openWorkspace(selectedPath);
+    } catch (cause) {
+      setError(errorMessage(cause));
+    }
+  }, [openWorkspace, workspacePath]);
 
   useEffect(() => {
     if (autoOpened.current || recentWorkspaces.length === 0) return;
@@ -426,7 +439,15 @@ function TaskmateApp() {
         <p className="eyebrow">{t("app.tagline")}</p>
         <h1>{t("app.name")}</h1>
         <p>{t("app.description")}</p>
-        <label>{t("workspace.folder")}<Input value={workspacePath} onChange={(event) => setWorkspacePath(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") void openWorkspace(); }} /></label>
+        <label htmlFor="workspace-path">{t("workspace.folder")}</label>
+        <div className="workspace-picker">
+          <Input id="workspace-path" value={workspacePath} onChange={(event) => setWorkspacePath(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") void openWorkspace(); }} />
+          {api.supportsNativeFolderPicker() ? (
+            <Button variant="outline" className="h-11 shrink-0" onClick={() => void chooseWorkspaceFolder()} disabled={loading}>
+              <FolderOpen />{t("workspace.chooseFolder")}
+            </Button>
+          ) : null}
+        </div>
         <Button size="lg" onClick={() => void openWorkspace()} disabled={loading || !workspacePath.trim()}>{loading ? <LoaderCircle className="spin" /> : <Database />}{t("workspace.open")}</Button>
         {recentWorkspaces.length > 0 ? (
           <section className="mt-7 w-full max-w-md">

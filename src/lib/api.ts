@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { open } from "@tauri-apps/plugin-dialog";
 import type {
   GitStatus,
   PropertyDefinition,
@@ -82,6 +83,18 @@ function summary(task: Task): TaskSummary {
 }
 
 export const api = {
+  supportsNativeFolderPicker(): boolean {
+    return isTauri;
+  },
+  async pickWorkspaceFolder(defaultPath?: string): Promise<string | null> {
+    if (!isTauri) return null;
+    const selected = await open({
+      directory: true,
+      multiple: false,
+      defaultPath,
+    });
+    return typeof selected === "string" ? selected : null;
+  },
   async openWorkspace(path: string): Promise<WorkspaceSnapshot> {
     if (isTauri) return invoke("open_workspace", { path });
     const state = loadDemo(path);
