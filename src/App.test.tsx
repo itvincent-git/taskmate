@@ -200,6 +200,41 @@ describe("Taskmate application", () => {
     expect(screen.getByRole("button", { name: "Show task cards" })).toBeInTheDocument();
   });
 
+  it("does not save unchanged tasks when switching between different bodies", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(screen.getByRole("button", { name: "Open workspace" }));
+    await user.click(await screen.findByRole("button", { name: "New task" }));
+    await user.click(screen.getByRole("button", { name: "New task" }));
+    const getTask = api.getTask.bind(api);
+    vi.spyOn(api, "getTask").mockImplementation(async (id) => ({ ...await getTask(id), body: `Body for ${id}` }));
+    const saveTask = vi.spyOn(api, "saveTask");
+    const tabs = screen.getAllByRole("tab");
+
+    await user.click(within(tabs[0]).getByRole("button", { name: "Untitled task" }));
+    await user.click(within(tabs[1]).getByRole("button", { name: "Untitled task" }));
+    await act(() => new Promise((resolve) => window.setTimeout(resolve, 750)));
+
+    expect(saveTask).not.toHaveBeenCalled();
+  });
+
+  it("saves a dirty task once before switching tabs", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(screen.getByRole("button", { name: "Open workspace" }));
+    await user.click(await screen.findByRole("button", { name: "New task" }));
+    await user.click(screen.getByRole("button", { name: "New task" }));
+    const tabs = screen.getAllByRole("tab");
+    await user.click(within(tabs[0]).getByRole("button", { name: "Untitled task" }));
+    const saveTask = vi.spyOn(api, "saveTask");
+
+    await user.type(await screen.findByLabelText("Task title"), " changed");
+    await user.click(within(tabs[1]).getByRole("button", { name: "Untitled task" }));
+
+    expect(saveTask).toHaveBeenCalledOnce();
+    expect(saveTask).toHaveBeenCalledWith(expect.objectContaining({ title: "Untitled task changed" }));
+  });
+
   it("persists the resized task list width and prevents text selection while dragging", async () => {
     const user = userEvent.setup();
     const { container, unmount } = render(<App />);

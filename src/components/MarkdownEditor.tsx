@@ -3,7 +3,7 @@ import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirro
 import { markdown } from "@codemirror/lang-markdown";
 import { GFM } from "@lezer/markdown";
 import { syntaxHighlighting, defaultHighlightStyle } from "@codemirror/language";
-import { EditorState } from "@codemirror/state";
+import { Annotation, EditorState } from "@codemirror/state";
 import { keymap, EditorView, placeholder } from "@codemirror/view";
 import {
   Bold,
@@ -49,6 +49,8 @@ const tools: Array<[MarkdownAction, string, typeof Bold]> = [
   ["rule", "Horizontal rule", Minus],
 ];
 
+const syncValue = Annotation.define<boolean>();
+
 export function MarkdownEditor({ value, onChange }: Props) {
   const { locale, t } = useTaskmateI18n();
   const host = useRef<HTMLDivElement>(null);
@@ -71,7 +73,9 @@ export function MarkdownEditor({ value, onChange }: Props) {
           keymap.of([indentWithTab, ...defaultKeymap, ...historyKeymap]),
           EditorView.lineWrapping,
           EditorView.updateListener.of((update) => {
-            if (update.docChanged) changeHandler.current(update.state.doc.toString());
+            if (update.docChanged && !update.transactions.some((transaction) => transaction.annotation(syncValue))) {
+              changeHandler.current(update.state.doc.toString());
+            }
           }),
           EditorView.theme({
             "&": { height: "100%" },
@@ -94,7 +98,10 @@ export function MarkdownEditor({ value, onChange }: Props) {
   useEffect(() => {
     const view = editor.current;
     if (!view || view.state.doc.toString() === value) return;
-    view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: value } });
+    view.dispatch({
+      changes: { from: 0, to: view.state.doc.length, insert: value },
+      annotations: syncValue.of(true),
+    });
   }, [value]);
 
   return (
