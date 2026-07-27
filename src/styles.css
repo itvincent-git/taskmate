@@ -171,9 +171,9 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); box-sha
 .task-card-title { font-weight: 720; font-size: 15px; margin-bottom: 12px; }
 .task-card-properties { display: flex; align-items: center; gap: 6px; min-height: 30px; flex-wrap: wrap; }
 .card-property { position: relative; }
-.quick-editor { display: none; }
-.card-property:hover > :not(.quick-editor) { opacity: 0; }
-.card-property:hover .quick-editor { display: block; position: absolute; inset: -5px auto auto -5px; z-index: 3; min-width: 120px; }
+.quick-editor { visibility: hidden; pointer-events: none; position: absolute; inset: -5px auto auto -5px; z-index: 3; min-width: 120px; }
+.card-property:hover > :not(.quick-editor), .card-property:has(.ui-select-trigger[data-state="open"]) > :not(.quick-editor) { opacity: 0; }
+.card-property:hover .quick-editor, .card-property:has(.ui-select-trigger[data-state="open"]) .quick-editor { visibility: visible; pointer-events: auto; }
 .property-input.compact { min-height: 30px; padding: 4px 7px; max-width: 160px; }
 .chip { display: inline-flex; align-items: center; height: 25px; padding: 0 9px; border-radius: 13px; font-size: 11px; font-weight: 650; color: color-mix(in srgb, var(--chip) 80%, var(--text)); background: color-mix(in srgb, var(--chip) 14%, var(--surface)); border: 1px solid color-mix(in srgb, var(--chip) 24%, transparent); }
 .chip.neutral { --chip: var(--muted); }
