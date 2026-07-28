@@ -6,12 +6,15 @@ import {
   ArchiveRestore,
   Check,
   Cloud,
+  Copy,
   Database,
+  FileText,
   FolderOpen,
   FolderSync,
   GitBranch,
   LayoutList,
   LoaderCircle,
+  MoreHorizontal,
   Moon,
   PanelLeftClose,
   PanelLeftOpen,
@@ -347,6 +350,20 @@ function TaskmateApp() {
     setSaveState("dirty");
   };
   const editProperty = (key: string, value: unknown) => editTask({ properties: { ...task?.properties, [key]: value } });
+  const copyText = async (text: string) => {
+    try {
+      await api.copyText(text);
+    } catch (cause) {
+      setError(errorMessage(cause));
+    }
+  };
+  const copyTaskFilePath = async (current: Task) => {
+    try {
+      await api.copyText(await api.resolveTaskFilePath(workspacePath, current));
+    } catch (cause) {
+      setError(errorMessage(cause));
+    }
+  };
   const chooseTask = async (id: string) => {
     if (id === selectedId) return;
     if (task && saveState === "dirty") await save(task);
@@ -437,7 +454,6 @@ function TaskmateApp() {
     setWorkspaceOpen(false);
   };
 
-  const statusDefinition = definitions.find((definition) => definition.role === "status");
   const workspaceName = workspacePath.split(/[\\/]/).filter(Boolean).at(-1) || workspacePath;
   const filterDefinitions = definitions.filter((definition) => definition.enableFilter);
   const sortDefinitions = definitions.filter((definition) => definition.enableSort);
@@ -627,19 +643,34 @@ function TaskmateApp() {
                 {!task ? <div className="detail-empty"><div className="empty-illustration"><Check /></div><h2>{t("tasks.select")}</h2><p>{t("tasks.selectHint")}</p></div> : (
                   <div className="detail-scroll">
                     <header className="detail-header">
-                      <div className="title-block">
-                        <Input className="title-input" aria-label={t("tasks.title")} value={task.title} onChange={(event) => editTask({ title: event.target.value })} />
-                        <div className="file-name">{task.fileName}</div>
-                      </div>
-                      {statusDefinition && <PropertyInput definition={statusDefinition} value={task.properties[statusDefinition.key]} onChange={(value) => editProperty(statusDefinition.key, value)} />}
+                      <Input className="title-input" aria-label={t("tasks.title")} value={task.title} onChange={(event) => editTask({ title: event.target.value })} />
+                      <DropdownMenu.Root>
+                        <Tooltip label={t("editor.moreActions")}>
+                          <DropdownMenu.Trigger asChild>
+                            <Button variant="ghost" size="icon" className="detail-header-button" aria-label={t("editor.moreActions")}><MoreHorizontal /></Button>
+                          </DropdownMenu.Trigger>
+                        </Tooltip>
+                        <DropdownMenu.Portal>
+                          <DropdownMenu.Content className="task-menu" align="end" sideOffset={5} collisionPadding={8}>
+                            <DropdownMenu.Item className="workspace-menu-item" onSelect={() => void copyText(task.title)}>
+                              <Copy size={15} />
+                              {t("editor.copyTitle")}
+                            </DropdownMenu.Item>
+                            <DropdownMenu.Item className="workspace-menu-item" onSelect={() => void copyTaskFilePath(task)}>
+                              <FileText size={15} />
+                              {t("editor.copyFilePath")}
+                            </DropdownMenu.Item>
+                          </DropdownMenu.Content>
+                        </DropdownMenu.Portal>
+                      </DropdownMenu.Root>
                       <SaveBadge state={saveState} />
                       {detailNarrow ? (
                         <Tooltip label={t("editor.openProperties")}>
-                          <Button ref={propertiesButton} variant="outline" size="icon" aria-label={t("editor.openProperties")} onClick={() => setPropertiesDrawerOpen(true)}><Settings2 /></Button>
+                          <Button ref={propertiesButton} variant="outline" size="icon" className="detail-header-button" aria-label={t("editor.openProperties")} onClick={() => setPropertiesDrawerOpen(true)}><Settings2 /></Button>
                         </Tooltip>
                       ) : null}
-                      <Tooltip label={task.archived ? t("tasks.restore") : t("tasks.archiveAction")}><Button variant="ghost" size="icon" aria-label={task.archived ? t("tasks.restore") : t("tasks.archiveAction")} onClick={() => void archive()}>{task.archived ? <ArchiveRestore /> : <Archive />}</Button></Tooltip>
-                      <Tooltip label={t("tasks.deleteAction")}><Button variant="ghost" size="icon" className="danger" aria-label={t("tasks.deleteAction")} onClick={() => void remove()}><Trash2 /></Button></Tooltip>
+                      <Tooltip label={task.archived ? t("tasks.restore") : t("tasks.archiveAction")}><Button variant="ghost" size="icon" className="detail-header-button" aria-label={task.archived ? t("tasks.restore") : t("tasks.archiveAction")} onClick={() => void archive()}>{task.archived ? <ArchiveRestore /> : <Archive />}</Button></Tooltip>
+                      <Tooltip label={t("tasks.deleteAction")}><Button variant="ghost" size="icon" className="detail-header-button danger" aria-label={t("tasks.deleteAction")} onClick={() => void remove()}><Trash2 /></Button></Tooltip>
                     </header>
                     <div className="detail-content">
                       <div className="detail-editor">

@@ -11,6 +11,7 @@
     "autostart:allow-disable",
     "autostart:allow-is-enabled",
     "dialog:allow-open",
+    "clipboard-manager:allow-write-text",
     "updater:default",
     "process:allow-restart"
   ]

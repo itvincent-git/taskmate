@@ -186,28 +186,28 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); box-sha
 .detail-panel { background: var(--surface); }
 .detail-scroll { height: 100%; display: flex; flex-direction: column; overflow: hidden; }
 .detail-header {
-  min-height: 86px;
+  height: 44px;
   flex: 0 0 auto;
   z-index: 5;
   background: color-mix(in srgb, var(--surface) 92%, transparent);
   backdrop-filter: blur(12px);
   border-bottom: 1px solid var(--line);
-  padding: 13px 20px;
+  padding: 5px 10px 5px 16px;
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 5px;
 }
-.title-block { flex: 1; min-width: 160px; }
-.title-input { border: 0; border-radius: 0; box-shadow: none; width: 100%; font-size: 21px; font-weight: 730; letter-spacing: -.025em; padding: 0; background: transparent; }
+.title-input { min-width: 80px; flex: 1; border: 0; border-radius: 0; box-shadow: none; width: 100%; min-height: 32px; font-size: 18px; font-weight: 730; letter-spacing: -.025em; padding: 0; background: transparent; }
 .title-input:focus { box-shadow: none; }
-.file-name { color: var(--muted); font-size: 10px; margin-top: 4px; }
+.detail-header-button { width: 32px; height: 32px; flex: 0 0 32px; }
+.detail-header-button svg { width: 17px; height: 17px; }
 .save-badge { display: inline-flex; align-items: center; gap: 5px; color: var(--muted); font-size: 11px; white-space: nowrap; }
 .save-badge.failed, .save-badge.external { color: var(--danger); }
 .save-badge.dirty { color: #d97706; }
 .detail-content { min-height: 0; flex: 1 1 auto; display: flex; overflow: hidden; }
 .detail-editor { min-width: 0; min-height: 0; flex: 1 1 auto; overflow: hidden; }
 .editor-section { min-height: 370px; border-bottom: 1px solid var(--line); }
-.markdown-toolbar { display: flex; gap: 2px; min-height: 43px; align-items: center; padding: 5px 20px; border-bottom: 1px solid var(--line); position: sticky; top: 86px; z-index: 4; background: var(--surface); overflow-x: auto; }
+.markdown-toolbar { display: flex; gap: 2px; min-height: 43px; align-items: center; padding: 5px 20px; border-bottom: 1px solid var(--line); position: sticky; top: 44px; z-index: 4; background: var(--surface); overflow-x: auto; }
 .markdown-toolbar button { border: 0; background: transparent; color: var(--muted); width: 30px; height: 30px; border-radius: 6px; display: grid; place-items: center; flex: 0 0 auto; }
 .markdown-toolbar button:hover { color: var(--accent); background: var(--accent-soft); }
 .editor-host { min-height: 330px; }
@@ -402,6 +402,15 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); box-sha
   border-radius: 8px;
   background: var(--surface);
   padding: 5px;
+  box-shadow: 0 12px 30px rgba(0,0,0,.14);
+}
+.task-menu {
+  z-index: 200;
+  width: 180px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  padding: 4px;
   box-shadow: 0 12px 30px rgba(0,0,0,.14);
 }
 .workspace-menu-label {

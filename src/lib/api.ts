@@ -1,5 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { resolve } from "@tauri-apps/api/path";
+import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { open } from "@tauri-apps/plugin-dialog";
 import type {
   GitStatus,
@@ -82,6 +84,14 @@ function summary(task: Task): TaskSummary {
   return rest;
 }
 
+export function taskFilePath(workspacePath: string, task: Pick<Task, "archived" | "fileName">): string {
+  const separator = workspacePath.includes("\\") && !workspacePath.includes("/") ? "\\" : "/";
+  const trimmedRoot = workspacePath.replace(/[\\/]+$/, "");
+  const root = trimmedRoot || separator;
+  const directory = task.archived ? "archive" : "tasks";
+  return `${root}${root.endsWith(separator) ? "" : separator}${directory}${separator}${task.fileName}`;
+}
+
 export const api = {
   supportsNativeFolderPicker(): boolean {
     return isTauri;
@@ -94,6 +104,14 @@ export const api = {
       defaultPath,
     });
     return typeof selected === "string" ? selected : null;
+  },
+  async copyText(text: string): Promise<void> {
+    if (isTauri) return writeText(text);
+    return navigator.clipboard.writeText(text);
+  },
+  async resolveTaskFilePath(workspacePath: string, task: Pick<Task, "archived" | "fileName">): Promise<string> {
+    if (isTauri) return resolve(workspacePath, task.archived ? "archive" : "tasks", task.fileName);
+    return taskFilePath(workspacePath, task);
   },
   async openWorkspace(path: string): Promise<WorkspaceSnapshot> {
     if (isTauri) return invoke("open_workspace", { path });

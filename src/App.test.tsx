@@ -129,6 +129,72 @@ describe("Taskmate application", () => {
     expect(stored).toContain("not-started");
   });
 
+  it("keeps status in task properties while simplifying the editor header", async () => {
+    const user = userEvent.setup();
+    const { container } = render(<App />);
+    await user.click(screen.getByRole("button", { name: "Open workspace" }));
+    await user.click(await screen.findByRole("button", { name: "New task" }));
+
+    const header = container.querySelector(".detail-header");
+    expect(header).not.toBeNull();
+    expect(header).not.toHaveTextContent("Untitled task.md");
+    expect(header?.querySelector(".file-name")).not.toBeInTheDocument();
+    expect(within(header as HTMLElement).queryByLabelText("Status")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Status")).toBeInTheDocument();
+  });
+
+  it("copies the current title and file path from the keyboard-accessible task menu", async () => {
+    const user = userEvent.setup();
+    const copyText = vi.spyOn(api, "copyText").mockResolvedValue();
+    render(<App />);
+    await user.clear(screen.getByLabelText("Workspace folder"));
+    await user.type(screen.getByLabelText("Workspace folder"), "/tmp/workspace");
+    await user.click(screen.getByRole("button", { name: "Open workspace" }));
+    await user.click(await screen.findByRole("button", { name: "New task" }));
+    await screen.findByRole("toolbar", { name: "Markdown formatting" });
+
+    const trigger = screen.getByRole("button", { name: "Task actions" });
+    await user.click(trigger);
+    await user.keyboard("{End}{Enter}");
+    expect(copyText).toHaveBeenLastCalledWith("/tmp/workspace/tasks/Untitled task.md");
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+
+    const title = await screen.findByLabelText("Task title");
+    fireEvent.change(title, { target: { value: "Latest title" } });
+    await user.click(trigger);
+    expect(screen.getAllByRole("menuitem")).toHaveLength(2);
+    expect(screen.getByRole("menuitem", { name: "Copy title" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Copy file path" })).toBeInTheDocument();
+    await user.click(screen.getByRole("menuitem", { name: "Copy title" }));
+
+    expect(copyText).toHaveBeenLastCalledWith("Latest title");
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+  });
+
+  it("shows copy failures through the existing error toast", async () => {
+    const user = userEvent.setup();
+    vi.spyOn(api, "copyText").mockRejectedValue(new Error("clipboard unavailable"));
+    render(<App />);
+    await user.click(screen.getByRole("button", { name: "Open workspace" }));
+    await user.click(await screen.findByRole("button", { name: "New task" }));
+    await user.click(screen.getByRole("button", { name: "Task actions" }));
+    await user.click(screen.getByRole("menuitem", { name: "Copy title" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("clipboard unavailable");
+  });
+
+  it("localizes the task copy menu in Simplified Chinese", async () => {
+    localStorage.setItem("taskmate.locale.v1", "zh-CN");
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(screen.getByRole("button", { name: "打开工作区" }));
+    await user.click(await screen.findByRole("button", { name: "新建任务" }));
+    await user.click(screen.getByRole("button", { name: "任务操作" }));
+
+    expect(screen.getByRole("menuitem", { name: "复制标题" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "复制文件路径" })).toBeInTheDocument();
+  });
+
   it("renders dynamic filters and field visibility settings", async () => {
     const user = userEvent.setup();
     render(<App />);
