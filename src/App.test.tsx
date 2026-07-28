@@ -171,10 +171,18 @@ describe("Taskmate application", () => {
     await user.click(screen.getByRole("button", { name: "Open workspace" }));
     expect(await screen.findByRole("toolbar", { name: "Task list" })).toBeInTheDocument();
     expect(localStorage.getItem("taskmate-workspaces.v1")).toContain("/tmp/remembered");
+    expect(screen.queryByText("remembered")).not.toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "Switch workspace" }));
+    expect(screen.getByRole("menu")).toBeInTheDocument();
+    expect(screen.getByText("Current workspace")).toBeInTheDocument();
+    expect(screen.getByText("remembered")).toBeInTheDocument();
+    expect(screen.getByTitle("/tmp/remembered")).toHaveTextContent("/tmp/remembered");
+
+    await user.click(screen.getByRole("menuitem", { name: "Switch workspace" }));
     expect(screen.getByRole("button", { name: /\/tmp\/remembered/ })).toBeInTheDocument();
     expect(screen.getByLabelText("Workspace folder")).toHaveValue("/tmp/remembered");
+    expect(localStorage.getItem("taskmate-workspaces.v1")).toContain("/tmp/remembered");
   });
 
   it("opens Markdown tasks in tabs and persists card display controls", async () => {

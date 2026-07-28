@@ -395,6 +395,45 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); box-sha
 }
 .ui-select-item[data-highlighted] { background: var(--accent-soft); color: var(--accent); }
 .ui-select-item > span:first-child { position: absolute; left: 9px; }
+.workspace-menu {
+  z-index: 200;
+  width: min(320px, calc(100vw - 80px));
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  padding: 5px;
+  box-shadow: 0 12px 30px rgba(0,0,0,.14);
+}
+.workspace-menu-label {
+  padding: 7px 9px 3px;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+.workspace-menu-current { min-width: 0; padding: 3px 9px 8px; }
+.workspace-menu-name, .workspace-menu-path {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.workspace-menu-name { font-size: 13px; font-weight: 650; }
+.workspace-menu-path { margin-top: 2px; color: var(--muted); font-size: 11px; }
+.workspace-menu-separator { height: 1px; margin: 4px; background: var(--line); }
+.workspace-menu-item {
+  min-height: 34px;
+  padding: 7px 9px;
+  border-radius: 5px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  outline: none;
+  cursor: default;
+}
+.workspace-menu-item[data-highlighted] { background: var(--accent-soft); color: var(--accent); }
 .ui-checkbox {
   width: 20px;
   height: 20px;

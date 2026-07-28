@@ -1,4 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
+import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import {
   Archive,
@@ -437,6 +438,7 @@ function TaskmateApp() {
   };
 
   const statusDefinition = definitions.find((definition) => definition.role === "status");
+  const workspaceName = workspacePath.split(/[\\/]/).filter(Boolean).at(-1) || workspacePath;
   const filterDefinitions = definitions.filter((definition) => definition.enableFilter);
   const sortDefinitions = definitions.filter((definition) => definition.enableSort);
   const detailDefinitions = definitions.filter((definition) => definition.showInDetail).sort((a, b) => a.order - b.order);
@@ -519,7 +521,6 @@ function TaskmateApp() {
             </div>
           ))}
         </div>
-        <div className="flex shrink-0 items-center px-3 text-[10px] text-[var(--muted)]">{workspacePath.split(/[\\/]/).filter(Boolean).at(-1)}</div>
       </header>
       <div className="flex min-h-0 flex-1">
         <aside className="flex w-14 shrink-0 flex-col items-center border-r border-[var(--line)] bg-[var(--surface)] py-3">
@@ -530,7 +531,27 @@ function TaskmateApp() {
             <Tooltip label={t("nav.backup")}><Button variant="ghost" size="icon" className={view === "backup" ? "active" : ""} aria-label={t("nav.backup")} onClick={() => setView("backup")}><GitBranch size={18} /></Button></Tooltip>
           </nav>
           <div className="mt-auto grid gap-1">
-            <Tooltip label={t("workspace.switch")}><Button variant="ghost" size="icon" aria-label={t("workspace.switch")} onClick={() => void switchWorkspace()}><FolderSync size={18} /></Button></Tooltip>
+            <DropdownMenu.Root>
+              <Tooltip label={t("workspace.switch")}>
+                <DropdownMenu.Trigger asChild>
+                  <Button variant="ghost" size="icon" aria-label={t("workspace.switch")}><FolderSync size={18} /></Button>
+                </DropdownMenu.Trigger>
+              </Tooltip>
+              <DropdownMenu.Portal>
+                <DropdownMenu.Content className="workspace-menu" side="right" align="end" sideOffset={8} collisionPadding={8}>
+                  <DropdownMenu.Label className="workspace-menu-label">{t("workspace.current")}</DropdownMenu.Label>
+                  <div className="workspace-menu-current">
+                    <span className="workspace-menu-name">{workspaceName}</span>
+                    <span className="workspace-menu-path" title={workspacePath}>{workspacePath}</span>
+                  </div>
+                  <DropdownMenu.Separator className="workspace-menu-separator" />
+                  <DropdownMenu.Item className="workspace-menu-item" onSelect={() => void switchWorkspace()}>
+                    <FolderSync size={16} />
+                    {t("workspace.switch")}
+                  </DropdownMenu.Item>
+                </DropdownMenu.Content>
+              </DropdownMenu.Portal>
+            </DropdownMenu.Root>
             <Select className="!h-9 !w-9 !min-w-9 !px-1" ariaLabel={t("nav.language")} value={locale} onValueChange={(value) => setLocale(value as typeof locale)} options={[{ value: "en", label: "EN" }, { value: "zh-CN", label: "中" }]} />
             <Tooltip label={t("nav.theme")}><Button variant="ghost" size="icon" aria-label={t("nav.theme")} onClick={() => setDark((value) => !value)}>{dark ? <Sun size={18} /> : <Moon size={18} />}</Button></Tooltip>
           </div>
