@@ -49,7 +49,7 @@ pub fn commit(root: &Path, message: &str) -> Result<GitStatus, String> {
 
 pub fn push(root: &Path) -> Result<GitStatus, String> {
     reject_conflicts(root)?;
-    run(root, &["push"])?;
+    run(root, &["push", "--set-upstream", "origin", "HEAD"])?;
     record_sync(root)?;
     status(root)
 }
@@ -193,5 +193,35 @@ mod tests {
             .iter()
             .any(|change| change.contains("task.md")));
         assert!(status.conflicts.is_empty());
+    }
+
+    #[test]
+    fn push_sets_upstream_for_current_branch() {
+        let remote = tempfile::tempdir().unwrap();
+        run(remote.path(), &["init", "--bare"]).unwrap();
+
+        let workspace = tempfile::tempdir().unwrap();
+        initialize(workspace.path()).unwrap();
+        run(workspace.path(), &["config", "user.email", "test@example.com"]).unwrap();
+        run(workspace.path(), &["config", "user.name", "Taskmate Test"]).unwrap();
+        std::fs::write(workspace.path().join("task.md"), "# Task").unwrap();
+        commit(workspace.path(), "Initial task").unwrap();
+        set_remote(
+            workspace.path(),
+            remote.path().to_str().expect("temporary path is UTF-8"),
+        )
+        .unwrap();
+
+        push(workspace.path()).unwrap();
+
+        let branch = run(workspace.path(), &["branch", "--show-current"]).unwrap();
+        assert_eq!(
+            run(
+                workspace.path(),
+                &["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}"],
+            )
+            .unwrap(),
+            format!("origin/{branch}")
+        );
     }
 }
