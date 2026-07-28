@@ -114,9 +114,17 @@ function buildDecorations(view: EditorView): DecorationSet {
         } else if (!active && node.name === "QuoteMark") {
           ranges.push({ from: node.from, to: node.to, decoration: Decoration.replace({ widget: new MarkerWidget("quote") }) });
         } else if (!active && hiddenMarks.has(node.name) && node.to > node.from) {
+          let to = node.to;
+          if (
+            node.name === "HeaderMark" &&
+            node.node.parent &&
+            /^[ \t]*$/.test(view.state.sliceDoc(node.node.parent.from, node.from))
+          ) {
+            while (/[ \t]/.test(view.state.sliceDoc(to, to + 1))) to += 1;
+          }
           ranges.push({
             from: node.from,
-            to: node.to,
+            to,
             decoration: Decoration.replace({ inclusive: false }),
           });
         }

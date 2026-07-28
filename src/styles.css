@@ -213,6 +213,7 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); box-sha
 .editor-host { min-height: 330px; }
 .editor-loading { min-height: 370px; display: flex; align-items: center; justify-content: center; gap: 8px; color: var(--muted); }
 .cm-editor { color: var(--text); background: var(--surface); }
+.cm-lp-h1, .cm-lp-h2, .cm-lp-h3, .cm-lp-h4, .cm-lp-h5, .cm-lp-h6 { text-decoration: none; }
 .cm-lp-h1 { font-size: 1.85em; font-weight: 760; line-height: 1.45; }
 .cm-lp-h2 { font-size: 1.52em; font-weight: 730; line-height: 1.5; }
 .cm-lp-h3 { font-size: 1.3em; font-weight: 700; }

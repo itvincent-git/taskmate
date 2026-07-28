@@ -33,4 +33,45 @@ describe("Live Preview activation", () => {
     view.destroy();
     host.remove();
   });
+
+  it("hides heading markers and separator whitespace for h1 through h6", () => {
+    const host = document.createElement("div");
+    document.body.append(host);
+    const headings = Array.from({ length: 6 }, (_, index) => `${"#".repeat(index + 1)} Heading ${index + 1}`);
+    const view = new EditorView({
+      parent: host,
+      state: EditorState.create({
+        doc: ["plain", ...headings].join("\n"),
+        extensions: [markdown(), livePreview],
+      }),
+    });
+
+    expect(Array.from(host.querySelectorAll(".cm-line"), (line) => line.textContent)).toEqual([
+      "plain",
+      ...headings.map((_, index) => `Heading ${index + 1}`),
+    ]);
+
+    view.destroy();
+    host.remove();
+  });
+
+  it("hides all heading separator whitespace and restores it when active", () => {
+    const host = document.createElement("div");
+    document.body.append(host);
+    const view = new EditorView({
+      parent: host,
+      state: EditorState.create({
+        doc: "plain\n### \t  Heading",
+        extensions: [markdown(), livePreview],
+      }),
+    });
+
+    expect(host.querySelectorAll(".cm-line")[1]?.textContent).toBe("Heading");
+    view.dispatch({ selection: { anchor: 10 } });
+    expect(host.querySelectorAll(".cm-line")[1]?.textContent).toBe("### \t  Heading");
+    expect(view.state.doc.toString()).toBe("plain\n### \t  Heading");
+
+    view.destroy();
+    host.remove();
+  });
 });
