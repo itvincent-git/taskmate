@@ -6,3 +6,4 @@ src-tauri/gen/
 *.log
 .tauri-signing/
 !.tauri-signing/.gitkeep
+.playwright-cli
