@@ -229,6 +229,10 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); box-sha
 .cm-lp-marker-quote { color: color-mix(in srgb, var(--accent) 65%, transparent); margin-right: 10px; }
 .cm-lp-marker-task { font-size: 1.05em; }
 .cm-lp-rule { display: block; height: 1px; background: var(--line); margin: .85em 0; }
+.cm-lp-table-row { display: inline-grid; width: 100%; vertical-align: top; font-size: .92em; border-left: 1px solid var(--line); }
+.cm-lp-table-row > span { min-width: 0; padding: 7px 10px; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+.cm-lp-table-header { background: var(--surface-soft); font-weight: 700; border-top: 1px solid var(--line); }
+.cm-editor .cm-lp-table-separator { display: none; }
 .cm-lp-image-widget { display: block; max-width: min(100%, 560px); max-height: 360px; object-fit: contain; border-radius: 8px; margin: 8px 0; border: 1px solid var(--line); }
 .cm-lp-image-widget.failed { min-width: 180px; min-height: 72px; padding: 12px; background: var(--surface-soft); color: var(--muted); }
 .property-panel {

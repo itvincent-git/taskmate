@@ -9,6 +9,7 @@ const hiddenMarks = new Set([
   "EmphasisMark",
   "StrikethroughMark",
   "CodeMark",
+  "CodeInfo",
   "QuoteMark",
   "LinkMark",
   "URL",
@@ -45,6 +46,8 @@ function nodeIsActive(state: EditorState, node: SyntaxNode, composing: boolean) 
   return rangeIsActive(node.from, node.to, state.selection.ranges, composing);
 }
 
+type TableAlignment = "left" | "center" | "right" | undefined;
+
 class MarkerWidget extends WidgetType {
   constructor(readonly kind: "bullet" | "ordered" | "task" | "quote" | "rule" | "image", readonly text = "") {
     super();
@@ -70,12 +73,80 @@ class MarkerWidget extends WidgetType {
     }
     const marker = document.createElement("span");
     marker.className = `cm-lp-marker cm-lp-marker-${this.kind}`;
-    marker.textContent = this.kind === "bullet" ? "•" : this.kind === "quote" ? "│" : this.kind === "task" ? "☐" : this.text.trim();
+    marker.textContent = this.kind === "bullet"
+      ? "•"
+      : this.kind === "quote"
+        ? "│"
+        : this.kind === "task"
+          ? /^\[[xX]\]$/.test(this.text.trim()) ? "☑" : "☐"
+          : this.text.trim();
     return marker;
   }
   ignoreEvent() {
     return false;
   }
+}
+
+class TableRowWidget extends WidgetType {
+  constructor(
+    readonly values: string[],
+    readonly alignments: TableAlignment[],
+    readonly header: boolean,
+  ) {
+    super();
+  }
+  eq(other: TableRowWidget) {
+    return this.header === other.header
+      && JSON.stringify(this.values) === JSON.stringify(other.values)
+      && JSON.stringify(this.alignments) === JSON.stringify(other.alignments);
+  }
+  toDOM() {
+    const row = document.createElement("span");
+    row.className = `cm-lp-table-row${this.header ? " cm-lp-table-header" : ""}`;
+    row.setAttribute("role", "row");
+    row.style.gridTemplateColumns = `repeat(${this.values.length}, minmax(0, 1fr))`;
+    this.values.forEach((value, index) => {
+      const cell = document.createElement("span");
+      cell.setAttribute("role", this.header ? "columnheader" : "cell");
+      cell.textContent = value;
+      cell.style.textAlign = this.alignments[index] ?? "left";
+      row.append(cell);
+    });
+    return row;
+  }
+  ignoreEvent() {
+    return false;
+  }
+}
+
+function tableDecorations(state: EditorState, node: SyntaxNode) {
+  const header = node.getChild("TableHeader");
+  const rows = node.getChildren("TableRow");
+  const separator = node.getChildren("TableDelimiter")[0];
+  const cells = (row: SyntaxNode | null) =>
+    row?.getChildren("TableCell").map((cell) => state.sliceDoc(cell.from, cell.to).trim()) ?? [];
+  const alignments = separator
+    ? state.sliceDoc(separator.from, separator.to).split("|").filter((part) => part.trim()).map((part): TableAlignment => {
+      const value = part.trim();
+      if (value.startsWith(":") && value.endsWith(":")) return "center";
+      if (value.endsWith(":")) return "right";
+      return "left";
+    })
+    : [];
+  const tableRows = [
+    ...(header ? [{ node: header, values: cells(header), header: true }] : []),
+    ...rows.map((row) => ({ node: row, values: cells(row), header: false })),
+  ];
+  return {
+    separator,
+    rows: tableRows.map((row) => ({
+      from: row.node.from,
+      to: row.node.to,
+      decoration: Decoration.replace({
+        widget: new TableRowWidget(row.values, alignments, row.header),
+      }),
+    })),
+  };
 }
 
 function buildDecorations(view: EditorView): DecorationSet {
@@ -86,8 +157,27 @@ function buildDecorations(view: EditorView): DecorationSet {
       from: viewport.from,
       to: viewport.to,
       enter(node) {
-        const activeNode = node.node.parent ?? node.node;
+        const activeNode = node.node.parent?.name === "Document"
+          ? node.node
+          : node.node.parent ?? node.node;
         const active = nodeIsActive(view.state, activeNode, view.composing);
+        if (!active && node.name === "Table") {
+          const table = tableDecorations(view.state, node.node);
+          ranges.push(...table.rows);
+          if (table.separator) {
+            ranges.push({
+              from: table.separator.from,
+              to: table.separator.from,
+              decoration: Decoration.line({ class: "cm-lp-table-separator" }),
+            });
+            ranges.push({
+              from: table.separator.from,
+              to: table.separator.to,
+              decoration: Decoration.replace({}),
+            });
+          }
+          return false;
+        }
         if (!active && node.name === "Image") {
           const source = view.state.sliceDoc(node.from, node.to).match(/\]\(([^)\s]+)(?:\s+"[^"]*")?\)/)?.[1] || "";
           ranges.push({ from: node.from, to: node.to, decoration: Decoration.replace({ widget: new MarkerWidget("image", source) }) });
@@ -110,7 +200,13 @@ function buildDecorations(view: EditorView): DecorationSet {
           const kind = /^\d/.test(marker) ? "ordered" : "bullet";
           ranges.push({ from: node.from, to: node.to, decoration: Decoration.replace({ widget: new MarkerWidget(kind, marker) }) });
         } else if (!active && node.name === "TaskMarker") {
-          ranges.push({ from: node.from, to: node.to, decoration: Decoration.replace({ widget: new MarkerWidget("task") }) });
+          ranges.push({
+            from: node.from,
+            to: node.to,
+            decoration: Decoration.replace({
+              widget: new MarkerWidget("task", view.state.sliceDoc(node.from, node.to)),
+            }),
+          });
         } else if (!active && node.name === "QuoteMark") {
           ranges.push({ from: node.from, to: node.to, decoration: Decoration.replace({ widget: new MarkerWidget("quote") }) });
         } else if (!active && hiddenMarks.has(node.name) && node.to > node.from) {
