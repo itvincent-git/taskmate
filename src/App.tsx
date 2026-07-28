@@ -15,6 +15,7 @@ import {
   FolderSync,
   GitBranch,
   LayoutList,
+  ListFilter,
   LoaderCircle,
   MoreHorizontal,
   Moon,
@@ -260,6 +261,7 @@ function WorkspaceSession() {
   const externalTask = useWorkspaceState((state) => state.externalTask);
   const setExternalTask = useWorkspaceState((state) => state.setExternalTask);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [filterDialogOpen, setFilterDialogOpen] = useState(false);
   const [detailNarrow, setDetailNarrow] = useState(false);
   const [propertiesDrawerOpen, setPropertiesDrawerOpen] = useState(false);
   const fileSignal = useWorkspaceState((state) => state.fileSignal);
@@ -267,6 +269,7 @@ function WorkspaceSession() {
   const listHost = useRef<HTMLDivElement>(null);
   const [detailPanel, setDetailPanel] = useState<HTMLElement | null>(null);
   const propertiesButton = useRef<HTMLButtonElement>(null);
+  const filterButton = useRef<HTMLButtonElement>(null);
   const autoOpened = useRef(false);
   const selectedId = task?.id;
   const location = useLocation();
@@ -549,6 +552,7 @@ function WorkspaceSession() {
   const filterDefinitions = definitions.filter((definition) => definition.enableFilter);
   const sortDefinitions = definitions.filter((definition) => definition.enableSort);
   const detailDefinitions = definitions.filter((definition) => definition.showInDetail).sort((a, b) => a.order - b.order);
+  const filterSortActive = query.filters.length > 0 || query.sort !== undefined;
   const updateFilters = (definition: PropertyDefinition, filters: TaskFilter[]) => {
     const without = query.filters.filter((filter) => filter.key !== definition.key);
     setQuery({ ...query, filters: [...without, ...filters] });
@@ -619,6 +623,13 @@ function WorkspaceSession() {
   return (
     <div className="flex h-full min-h-0 flex-col bg-[var(--bg)]">
       <header className="flex h-11 shrink-0 items-stretch border-b border-[var(--line)] bg-[var(--surface)] pl-[78px]" data-tauri-drag-region="deep">
+        {page === "/tasks" ? (
+          <Tooltip label={taskListVisible ? t("tasks.hideList") : t("tasks.showList")}>
+            <Button variant="ghost" size="icon" className="my-1 shrink-0" aria-label={taskListVisible ? t("tasks.hideList") : t("tasks.showList")} onClick={() => setTaskListVisible((visible) => !visible)}>
+              {taskListVisible ? <PanelLeftClose size={17} /> : <PanelLeftOpen size={17} />}
+            </Button>
+          </Tooltip>
+        ) : null}
         <div className="flex min-w-0 flex-1 items-end gap-1 overflow-x-auto px-2 pt-1" role="tablist" aria-label={t("editor.openFiles")}>
           {openTabs.map((tab) => (
             <div
@@ -684,33 +695,44 @@ function WorkspaceSession() {
         {page === "/tasks" && (
           <>
             <header className="topbar">
-              <Tooltip label={taskListVisible ? t("tasks.hideList") : t("tasks.showList")}>
-                <Button variant="ghost" size="icon" aria-label={taskListVisible ? t("tasks.hideList") : t("tasks.showList")} onClick={() => setTaskListVisible((visible) => !visible)}>
-                  {taskListVisible ? <PanelLeftClose size={17} /> : <PanelLeftOpen size={17} />}
-                </Button>
-              </Tooltip>
               <div className="search"><Search size={17} /><Input aria-label={t("tasks.search")} placeholder={t("tasks.search")} value={searchDraft} onChange={(event) => setSearchDraft(event.target.value)} /></div>
-              <div className="filters">
-                {filterDefinitions.map((definition) => <DynamicFilter key={definition.id} definition={definition} current={query.filters.filter((filter) => filter.key === definition.key)} onChange={(filters) => updateFilters(definition, filters)} />)}
-                <Select ariaLabel={t("properties.sort")} value={query.sort ? `${query.sort.key}:${query.sort.direction}` : "__recent"} onValueChange={(value) => {
-                  const [key, direction] = value === "__recent" ? ["", ""] : value.split(":");
-                  setQuery({ ...query, sort: key ? { key, direction: direction as "asc" | "desc", nulls: "last" } : undefined });
-                }} options={[
-                  { value: "__recent", label: t("tasks.sortRecent") },
-                  { value: "title:asc", label: t("tasks.sortTitle") },
-                  ...sortDefinitions.flatMap((definition) => [
-                    { value: `${definition.key}:asc`, label: `${localizedPropertyName(definition, locale)} · ${t("filter.asc")}` },
-                    { value: `${definition.key}:desc`, label: `${localizedPropertyName(definition, locale)} · ${t("filter.desc")}` },
-                  ]),
-                ]} />
-                {query.sort ? <Select ariaLabel={t("tasks.emptyLast")} value={query.sort.nulls} onValueChange={(value) => setQuery({ ...query, sort: { ...query.sort!, nulls: value as "first" | "last" } })} options={[{ value: "last", label: t("tasks.emptyLast") }, { value: "first", label: t("tasks.emptyFirst") }]} /> : null}
-              </div>
             </header>
+            <Dialog
+              open={filterDialogOpen}
+              onOpenChange={setFilterDialogOpen}
+              title={t("tasks.filterSort")}
+              description={t("tasks.filterSortDescription")}
+              closeLabel={t("common.close")}
+              returnFocusRef={filterButton}
+            >
+              <div className="filter-dialog">
+                <div className="filter-dialog-fields">
+                  {filterDefinitions.map((definition) => <DynamicFilter key={definition.id} definition={definition} current={query.filters.filter((filter) => filter.key === definition.key)} onChange={(filters) => updateFilters(definition, filters)} />)}
+                </div>
+                <div className="filter-dialog-sort">
+                  <Select ariaLabel={t("properties.sort")} value={query.sort ? `${query.sort.key}:${query.sort.direction}` : "__recent"} onValueChange={(value) => {
+                    const [key, direction] = value === "__recent" ? ["", ""] : value.split(":");
+                    setQuery({ ...query, sort: key ? { key, direction: direction as "asc" | "desc", nulls: "last" } : undefined });
+                  }} options={[
+                    { value: "__recent", label: t("tasks.sortRecent") },
+                    { value: "title:asc", label: t("tasks.sortTitle") },
+                    ...sortDefinitions.flatMap((definition) => [
+                      { value: `${definition.key}:asc`, label: `${localizedPropertyName(definition, locale)} · ${t("filter.asc")}` },
+                      { value: `${definition.key}:desc`, label: `${localizedPropertyName(definition, locale)} · ${t("filter.desc")}` },
+                    ]),
+                  ]} />
+                  {query.sort ? <Select ariaLabel={t("tasks.emptyLast")} value={query.sort.nulls} onValueChange={(value) => setQuery({ ...query, sort: { ...query.sort!, nulls: value as "first" | "last" } })} options={[{ value: "last", label: t("tasks.emptyLast") }, { value: "first", label: t("tasks.emptyFirst") }]} /> : null}
+                </div>
+              </div>
+            </Dialog>
             <div className="split-layout" style={{ gridTemplateColumns: taskListVisible ? `${leftWidth}px 5px minmax(0, 1fr)` : "0 0 minmax(0, 1fr)" }}>
               <section className={`task-list-panel ${taskListVisible ? "" : "invisible overflow-hidden"}`} aria-hidden={!taskListVisible}>
                 <div className="list-toolbar" role="toolbar" aria-label={t("tasks.listToolbar")}>
                   <span className="task-count" aria-label={t("tasks.taskCount", { count: tasks.length })}><LayoutList size={17} />{tasks.length}</span>
                   <div className="list-toolbar-actions">
+                    <Tooltip label={t("tasks.openFilterSort")}>
+                      <Button ref={filterButton} variant="outline" size="icon" className={filterSortActive ? "active" : ""} aria-label={t("tasks.openFilterSort")} onClick={() => setFilterDialogOpen(true)}><ListFilter size={17} /></Button>
+                    </Tooltip>
                     <Tooltip label={compactCards ? t("tasks.comfortable") : t("tasks.compact")}>
                       <Button variant="outline" size="icon" className={compactCards ? "active" : ""} aria-label={compactCards ? t("tasks.comfortable") : t("tasks.compact")} onClick={() => setCompactCards((compact) => !compact)}><Rows3 size={17} /></Button>
                     </Tooltip>

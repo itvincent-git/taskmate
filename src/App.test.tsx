@@ -196,11 +196,49 @@ describe("Taskmate application", () => {
     expect(screen.getByRole("menuitem", { name: "复制文件路径" })).toBeInTheDocument();
   });
 
-  it("renders dynamic filters and field visibility settings", async () => {
+  it("opens filters and sorting from the task list toolbar and applies changes immediately", async () => {
+    const user = userEvent.setup();
+    const queryTasks = vi.spyOn(api, "queryTasks");
+    render(<App />);
+    await user.click(screen.getByRole("button", { name: "Open workspace" }));
+    const toolbar = await screen.findByRole("toolbar", { name: "Task list" });
+    const filterButton = within(toolbar).getByRole("button", { name: "Open filters and sorting" });
+
+    expect(screen.queryByLabelText("Status Filter")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Sort")).not.toBeInTheDocument();
+    expect(filterButton).not.toHaveClass("active");
+
+    await user.click(filterButton);
+    const dialog = screen.getByRole("dialog", { name: "Filter & sort" });
+    expect(within(dialog).getByText("Changes apply immediately.", { exact: false })).toBeInTheDocument();
+    await user.click(within(dialog).getByLabelText("Status Filter"));
+    await user.click(await screen.findByRole("option", { name: "Done" }));
+    await waitFor(() => expect(queryTasks).toHaveBeenLastCalledWith(expect.objectContaining({
+      filters: [{ key: "status", operator: "eq", value: "done" }],
+    })));
+    expect(filterButton).toHaveClass("active");
+
+    await user.click(within(dialog).getByLabelText("Sort"));
+    await user.click(await screen.findByRole("option", { name: "Status · Asc" }));
+    await waitFor(() => expect(queryTasks).toHaveBeenLastCalledWith(expect.objectContaining({
+      sort: { key: "status", direction: "asc", nulls: "last" },
+    })));
+    await user.click(within(dialog).getByLabelText("Empty last"));
+    await user.click(await screen.findByRole("option", { name: "Empty first" }));
+    await waitFor(() => expect(queryTasks).toHaveBeenLastCalledWith(expect.objectContaining({
+      sort: { key: "status", direction: "asc", nulls: "first" },
+    })));
+
+    await user.keyboard("{Escape}");
+    expect(screen.queryByRole("dialog", { name: "Filter & sort" })).not.toBeInTheDocument();
+    await waitFor(() => expect(filterButton).toHaveFocus());
+  });
+
+  it("keeps field visibility settings on the properties page", async () => {
     const user = userEvent.setup();
     render(<App />);
     await user.click(screen.getByRole("button", { name: "Open workspace" }));
-    expect(await screen.findByLabelText("Status Filter")).toBeInTheDocument();
+    await screen.findByRole("toolbar", { name: "Task list" });
     await user.click(screen.getByRole("link", { name: "Properties" }));
     expect(screen.getByRole("heading", { name: "Properties" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Delete Status" })).toBeDisabled();
@@ -262,6 +300,12 @@ describe("Taskmate application", () => {
     expect(tabs).toHaveLength(2);
     expect(tabs[1]).toHaveAttribute("aria-selected", "true");
     expect(tabs[0].closest("header")).toHaveAttribute("data-tauri-drag-region", "deep");
+    const tablist = screen.getByRole("tablist", { name: "Open Markdown files" });
+    const hideListButton = screen.getByRole("button", { name: "Hide task cards" });
+    expect(tablist).not.toContainElement(hideListButton);
+    expect(hideListButton.compareDocumentPosition(tablist) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(document.querySelector(".topbar")).not.toContainElement(hideListButton);
+    expect(screen.getByRole("toolbar", { name: "Task list" })).not.toContainElement(hideListButton);
 
     await user.click(within(tabs[0]).getByRole("button", { name: "Untitled task" }));
     expect(tabs[0]).toHaveAttribute("aria-selected", "true");
@@ -270,9 +314,12 @@ describe("Taskmate application", () => {
 
     await user.click(screen.getByRole("button", { name: "Compact cards" }));
     expect(localStorage.getItem("taskmate-compact-cards.v1")).toBe("true");
-    await user.click(screen.getByRole("button", { name: "Hide task cards" }));
+    await user.click(hideListButton);
     expect(localStorage.getItem("taskmate-task-list-visible.v1")).toBe("false");
     expect(screen.getByRole("button", { name: "Show task cards" })).toBeInTheDocument();
+
+    await user.click(screen.getByRole("link", { name: "Properties" }));
+    expect(screen.queryByRole("button", { name: "Show task cards" })).not.toBeInTheDocument();
   });
 
   it("does not save unchanged tasks when switching between different bodies", async () => {
