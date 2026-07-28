@@ -37,6 +37,7 @@ describe("Taskmate application", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
     localStorage.clear();
+    window.location.hash = "#/";
     detailWidth = 1000;
     resizeCallbacks = [];
     vi.stubGlobal("ResizeObserver", ResizeObserverMock);
@@ -200,7 +201,7 @@ describe("Taskmate application", () => {
     render(<App />);
     await user.click(screen.getByRole("button", { name: "Open workspace" }));
     expect(await screen.findByLabelText("Status Filter")).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "Properties" }));
+    await user.click(screen.getByRole("link", { name: "Properties" }));
     expect(screen.getByRole("heading", { name: "Properties" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Delete Status" })).toBeDisabled();
     expect(screen.getByLabelText("Priority type")).toBeDisabled();
@@ -313,6 +314,7 @@ describe("Taskmate application", () => {
     const user = userEvent.setup();
     const { container, unmount } = render(<App />);
     await user.click(screen.getByRole("button", { name: "Open workspace" }));
+    await screen.findByRole("toolbar", { name: "Task list" });
     const splitter = container.querySelector(".splitter") as HTMLElement;
 
     fireEvent(splitter, Object.assign(new MouseEvent("pointerdown", { bubbles: true, clientX: 390 }), { pointerId: 1 }));
@@ -327,6 +329,7 @@ describe("Taskmate application", () => {
     unmount();
     const restored = render(<App />);
     await user.click(screen.getByRole("button", { name: "Open workspace" }));
+    await screen.findByRole("toolbar", { name: "Task list" });
     expect(restored.container.querySelector(".split-layout")).toHaveStyle({ gridTemplateColumns: "510px 5px minmax(0, 1fr)" });
   });
 
@@ -402,5 +405,21 @@ describe("Taskmate application", () => {
     await user.click(await screen.findByRole("button", { name: "Open task properties" }));
     fireEvent.click(screen.getByRole("button", { name: "New task", hidden: true }));
     await waitFor(() => expect(screen.queryByRole("dialog", { name: "Properties" })).not.toBeInTheDocument());
+  });
+
+  it("remeasures the detail panel after returning from properties", async () => {
+    detailWidth = 700;
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(screen.getByRole("button", { name: "Open workspace" }));
+    await user.click(await screen.findByRole("button", { name: "New task" }));
+    expect(await screen.findByRole("button", { name: "Open task properties" })).toBeInTheDocument();
+
+    await user.click(screen.getByRole("link", { name: "Properties" }));
+    detailWidth = 800;
+    await user.click(screen.getByRole("link", { name: "Tasks" }));
+
+    expect(await screen.findByRole("heading", { name: "Properties" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Open task properties" })).not.toBeInTheDocument();
   });
 });

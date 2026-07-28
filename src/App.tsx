@@ -1,6 +1,8 @@
-import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
+import { createContext, lazy, Suspense, useCallback, useContext, useEffect, useRef, useState, type Dispatch, type ReactNode, type SetStateAction } from "react";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { useVirtualizer } from "@tanstack/react-virtual";
+import { HashRouter, Navigate, NavLink, Route, Routes, useLocation, useNavigate } from "react-router";
+import { createStore, useStore } from "zustand";
 import {
   Archive,
   ArchiveRestore,
@@ -28,7 +30,6 @@ import {
 } from "lucide-react";
 import { api } from "./lib/api";
 import type {
-  AppView,
   GitStatus,
   PropertyDefinition,
   SaveState,
@@ -56,6 +57,73 @@ const COMPACT_CARDS_KEY = "taskmate-compact-cards.v1";
 const TASK_LIST_VISIBLE_KEY = "taskmate-task-list-visible.v1";
 const TASK_LIST_WIDTH_KEY = "taskmate-task-list-width.v1";
 const MarkdownEditor = lazy(() => import("./components/MarkdownEditor").then((module) => ({ default: module.MarkdownEditor })));
+
+type StateUpdate<T> = SetStateAction<T>;
+type WorkspaceData = {
+  workspacePath: string;
+  recentWorkspaces: string[];
+  workspaceOpen: boolean;
+  loading: boolean;
+  definitions: PropertyDefinition[];
+  lockedPropertyIds: Set<string>;
+  tasks: TaskSummary[];
+  task: Task | null;
+  openTabs: Array<Pick<Task, "id" | "title" | "fileName">>;
+  query: TaskQuery;
+  searchDraft: string;
+  saveState: SaveState;
+  error: string;
+  schemaSaving: boolean;
+  externalTask: Task | null;
+  fileSignal: number;
+};
+type WorkspaceActions = {
+  [K in keyof WorkspaceData as `set${Capitalize<K>}`]: Dispatch<StateUpdate<WorkspaceData[K]>>;
+};
+type WorkspaceState = WorkspaceData & WorkspaceActions;
+
+function createWorkspaceStore() {
+  const initialState: WorkspaceData = {
+    workspacePath: initialPath,
+    recentWorkspaces: loadRecentWorkspaces(),
+    workspaceOpen: false,
+    loading: false,
+    definitions: [],
+    lockedPropertyIds: new Set(),
+    tasks: [],
+    task: null,
+    openTabs: [],
+    query: { search: "", archived: false, filters: [] },
+    searchDraft: "",
+    saveState: "saved",
+    error: "",
+    schemaSaving: false,
+    externalTask: null,
+    fileSignal: 0,
+  };
+  return createStore<WorkspaceState>()((set) => {
+    const state = { ...initialState } as WorkspaceState;
+    for (const key of Object.keys(initialState) as Array<keyof typeof initialState>) {
+      const setter = `set${key.charAt(0).toUpperCase()}${key.slice(1)}` as keyof WorkspaceState;
+      (state as Record<string, unknown>)[setter] = (value: StateUpdate<unknown>) => set((current) => ({ [key]: typeof value === "function" ? (value as (current: unknown) => unknown)(current[key]) : value }));
+    }
+    return state;
+  });
+}
+
+type WorkspaceStore = ReturnType<typeof createWorkspaceStore>;
+const WorkspaceStoreContext = createContext<WorkspaceStore | null>(null);
+
+function WorkspaceStoreProvider({ children }: { children: ReactNode }) {
+  const store = useState(createWorkspaceStore)[0];
+  return <WorkspaceStoreContext.Provider value={store}>{children}</WorkspaceStoreContext.Provider>;
+}
+
+function useWorkspaceState<T>(selector: (state: WorkspaceState) => T) {
+  const store = useContext(WorkspaceStoreContext);
+  if (!store) throw new Error("Workspace store is unavailable");
+  return useStore(store, selector);
+}
 
 function loadRecentWorkspaces() {
   try {
@@ -155,37 +223,55 @@ function BackupView() {
   );
 }
 
-function TaskmateApp() {
+function WorkspaceSession() {
   const { locale, setLocale, t } = useTaskmateI18n();
-  const [workspacePath, setWorkspacePath] = useState(initialPath);
-  const [recentWorkspaces, setRecentWorkspaces] = useState<string[]>(loadRecentWorkspaces);
-  const [workspaceOpen, setWorkspaceOpen] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [view, setView] = useState<AppView>("tasks");
-  const [definitions, setDefinitions] = useState<PropertyDefinition[]>([]);
-  const [lockedPropertyIds, setLockedPropertyIds] = useState<Set<string>>(new Set());
-  const [tasks, setTasks] = useState<TaskSummary[]>([]);
-  const [task, setTask] = useState<Task | null>(null);
-  const [openTabs, setOpenTabs] = useState<Array<Pick<Task, "id" | "title" | "fileName">>>([]);
-  const [query, setQuery] = useState<TaskQuery>({ search: "", archived: false, filters: [] });
-  const [searchDraft, setSearchDraft] = useState("");
-  const [saveState, setSaveState] = useState<SaveState>("saved");
-  const [error, setError] = useState("");
-  const [schemaSaving, setSchemaSaving] = useState(false);
+  const workspacePath = useWorkspaceState((state) => state.workspacePath);
+  const setWorkspacePath = useWorkspaceState((state) => state.setWorkspacePath);
+  const recentWorkspaces = useWorkspaceState((state) => state.recentWorkspaces);
+  const setRecentWorkspaces = useWorkspaceState((state) => state.setRecentWorkspaces);
+  const workspaceOpen = useWorkspaceState((state) => state.workspaceOpen);
+  const setWorkspaceOpen = useWorkspaceState((state) => state.setWorkspaceOpen);
+  const loading = useWorkspaceState((state) => state.loading);
+  const setLoading = useWorkspaceState((state) => state.setLoading);
+  const definitions = useWorkspaceState((state) => state.definitions);
+  const setDefinitions = useWorkspaceState((state) => state.setDefinitions);
+  const lockedPropertyIds = useWorkspaceState((state) => state.lockedPropertyIds);
+  const setLockedPropertyIds = useWorkspaceState((state) => state.setLockedPropertyIds);
+  const tasks = useWorkspaceState((state) => state.tasks);
+  const setTasks = useWorkspaceState((state) => state.setTasks);
+  const task = useWorkspaceState((state) => state.task);
+  const setTask = useWorkspaceState((state) => state.setTask);
+  const openTabs = useWorkspaceState((state) => state.openTabs);
+  const setOpenTabs = useWorkspaceState((state) => state.setOpenTabs);
+  const query = useWorkspaceState((state) => state.query);
+  const setQuery = useWorkspaceState((state) => state.setQuery);
+  const searchDraft = useWorkspaceState((state) => state.searchDraft);
+  const setSearchDraft = useWorkspaceState((state) => state.setSearchDraft);
+  const saveState = useWorkspaceState((state) => state.saveState);
+  const setSaveState = useWorkspaceState((state) => state.setSaveState);
+  const error = useWorkspaceState((state) => state.error);
+  const setError = useWorkspaceState((state) => state.setError);
+  const schemaSaving = useWorkspaceState((state) => state.schemaSaving);
+  const setSchemaSaving = useWorkspaceState((state) => state.setSchemaSaving);
   const [dark, setDark] = useState(() => localStorage.getItem("taskmate-theme") === "dark");
   const [leftWidth, setLeftWidth] = useState(loadTaskListWidth);
   const [compactCards, setCompactCards] = useState(() => localStorage.getItem(COMPACT_CARDS_KEY) === "true");
   const [taskListVisible, setTaskListVisible] = useState(() => localStorage.getItem(TASK_LIST_VISIBLE_KEY) !== "false");
-  const [externalTask, setExternalTask] = useState<Task | null>(null);
+  const externalTask = useWorkspaceState((state) => state.externalTask);
+  const setExternalTask = useWorkspaceState((state) => state.setExternalTask);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [detailNarrow, setDetailNarrow] = useState(false);
   const [propertiesDrawerOpen, setPropertiesDrawerOpen] = useState(false);
-  const [fileSignal, setFileSignal] = useState(0);
+  const fileSignal = useWorkspaceState((state) => state.fileSignal);
+  const setFileSignal = useWorkspaceState((state) => state.setFileSignal);
   const listHost = useRef<HTMLDivElement>(null);
-  const detailPanel = useRef<HTMLElement>(null);
+  const [detailPanel, setDetailPanel] = useState<HTMLElement | null>(null);
   const propertiesButton = useRef<HTMLButtonElement>(null);
   const autoOpened = useRef(false);
   const selectedId = task?.id;
+  const location = useLocation();
+  const navigate = useNavigate();
+  const page = location.pathname;
 
   const openWorkspace = useCallback(async (requestedPath?: string) => {
     const path = (requestedPath ?? workspacePath).trim();
@@ -204,8 +290,8 @@ function TaskmateApp() {
       setTasks(snapshot.tasks);
       setQuery({ search: "", archived: false, filters: [] });
       setSearchDraft("");
-      setView("tasks");
       setWorkspaceOpen(true);
+      navigate("/tasks", { replace: true });
       if (snapshot.tasks[0]) {
         const first = await api.getTask(snapshot.tasks[0].id);
         setTask(first);
@@ -219,7 +305,7 @@ function TaskmateApp() {
     } finally {
       setLoading(false);
     }
-  }, [recentWorkspaces, workspacePath]);
+  }, [navigate, recentWorkspaces, workspacePath]);
 
   const chooseWorkspaceFolder = useCallback(async () => {
     setError("");
@@ -250,14 +336,18 @@ function TaskmateApp() {
   }, [compactCards, taskListVisible]);
 
   useEffect(() => {
-    const element = detailPanel.current;
+    const element = detailPanel;
     if (!workspaceOpen || !element || typeof ResizeObserver === "undefined") return;
     const observer = new ResizeObserver(([entry]) => {
       setDetailNarrow(entry.contentRect.width < 760);
     });
     observer.observe(element);
     return () => observer.disconnect();
-  }, [workspaceOpen]);
+  }, [detailPanel, workspaceOpen]);
+
+  useEffect(() => {
+    if (!workspaceOpen && page !== "/") navigate("/", { replace: true });
+  }, [navigate, page, workspaceOpen]);
 
   useEffect(() => {
     setPropertiesDrawerOpen(false);
@@ -452,6 +542,7 @@ function TaskmateApp() {
     setTask(null);
     setOpenTabs([]);
     setWorkspaceOpen(false);
+    navigate("/", { replace: true });
   };
 
   const workspaceName = workspacePath.split(/[\\/]/).filter(Boolean).at(-1) || workspacePath;
@@ -521,6 +612,10 @@ function TaskmateApp() {
     );
   }
 
+  if (page !== "/tasks" && page !== "/properties" && page !== "/backup") {
+    return <Navigate to="/tasks" replace />;
+  }
+
   return (
     <div className="flex h-full min-h-0 flex-col bg-[var(--bg)]">
       <header className="flex h-11 shrink-0 items-stretch border-b border-[var(--line)] bg-[var(--surface)] pl-[78px]" data-tauri-drag-region="deep">
@@ -528,11 +623,11 @@ function TaskmateApp() {
           {openTabs.map((tab) => (
             <div
               key={tab.id}
-              className={`group flex h-9 min-w-32 max-w-56 items-center rounded-t-md border border-b-0 px-2 text-xs ${tab.id === selectedId && view === "tasks" ? "border-[var(--line)] bg-[var(--bg)] text-[var(--text)]" : "border-transparent text-[var(--muted)] hover:bg-[var(--surface-soft)]"}`}
+              className={`group flex h-9 min-w-32 max-w-56 items-center rounded-t-md border border-b-0 px-2 text-xs ${tab.id === selectedId && page === "/tasks" ? "border-[var(--line)] bg-[var(--bg)] text-[var(--text)]" : "border-transparent text-[var(--muted)] hover:bg-[var(--surface-soft)]"}`}
               role="tab"
-              aria-selected={tab.id === selectedId && view === "tasks"}
+              aria-selected={tab.id === selectedId && page === "/tasks"}
             >
-              <button className="min-w-0 flex-1 truncate text-left" onClick={() => { setView("tasks"); void chooseTask(tab.id); }}>{tab.title}</button>
+              <button className="min-w-0 flex-1 truncate text-left" onClick={() => { navigate("/tasks"); void chooseTask(tab.id); }}>{tab.title}</button>
               <button className="ml-2 grid size-5 shrink-0 place-items-center rounded opacity-0 hover:bg-[var(--line)] group-hover:opacity-100 focus:opacity-100" aria-label={`${t("tasks.closeTab")}: ${tab.title}`} onClick={() => void closeTab(tab.id)}><X size={12} /></button>
             </div>
           ))}
@@ -542,9 +637,9 @@ function TaskmateApp() {
         <aside className="flex w-14 shrink-0 flex-col items-center border-r border-[var(--line)] bg-[var(--surface)] py-3">
           <div className="mb-4 grid size-8 place-items-center rounded-lg bg-[var(--accent)] text-white"><Check size={16} /></div>
           <nav className="grid gap-1" aria-label={t("nav.application")}>
-            <Tooltip label={t("nav.tasks")}><Button variant="ghost" size="icon" className={view === "tasks" ? "active" : ""} aria-label={t("nav.tasks")} onClick={() => setView("tasks")}><LayoutList size={18} /></Button></Tooltip>
-            <Tooltip label={t("nav.properties")}><Button variant="ghost" size="icon" className={view === "properties" ? "active" : ""} aria-label={t("nav.properties")} onClick={() => setView("properties")}><Settings2 size={18} /></Button></Tooltip>
-            <Tooltip label={t("nav.backup")}><Button variant="ghost" size="icon" className={view === "backup" ? "active" : ""} aria-label={t("nav.backup")} onClick={() => setView("backup")}><GitBranch size={18} /></Button></Tooltip>
+            <Tooltip label={t("nav.tasks")}><NavLink to="/tasks" aria-label={t("nav.tasks")} className={`ui-button ui-button-ghost ui-button-icon ${page === "/tasks" ? "active" : ""}`}><LayoutList size={18} /></NavLink></Tooltip>
+            <Tooltip label={t("nav.properties")}><NavLink to="/properties" aria-label={t("nav.properties")} className={`ui-button ui-button-ghost ui-button-icon ${page === "/properties" ? "active" : ""}`}><Settings2 size={18} /></NavLink></Tooltip>
+            <Tooltip label={t("nav.backup")}><NavLink to="/backup" aria-label={t("nav.backup")} className={`ui-button ui-button-ghost ui-button-icon ${page === "/backup" ? "active" : ""}`}><GitBranch size={18} /></NavLink></Tooltip>
           </nav>
           <div className="mt-auto grid gap-1">
             <DropdownMenu.Root>
@@ -574,7 +669,7 @@ function TaskmateApp() {
         </aside>
         <main className="workspace !h-full flex-1">
         {error && <div className="toast" role="alert"><span>{error}</span><Button variant="ghost" size="icon" aria-label={t("common.close")} onClick={() => setError("")}>×</Button></div>}
-        {view === "properties" && <PropertySettings definitions={definitions} lockedIds={lockedPropertyIds} onChange={setDefinitions} saving={schemaSaving} onRebuild={async () => {
+        {page === "/properties" && <PropertySettings definitions={definitions} lockedIds={lockedPropertyIds} onChange={setDefinitions} saving={schemaSaving} onRebuild={async () => {
           setSchemaSaving(true);
           try { setTasks(await api.rebuildIndex()); } catch (cause) { setError(errorMessage(cause)); } finally { setSchemaSaving(false); }
         }} onSave={async () => {
@@ -585,8 +680,8 @@ function TaskmateApp() {
             setLockedPropertyIds(new Set(savedDefinitions.map((definition) => definition.id)));
           } catch (cause) { setError(errorMessage(cause)); } finally { setSchemaSaving(false); }
         }} />}
-        {view === "backup" && <BackupView />}
-        {view === "tasks" && (
+        {page === "/backup" && <BackupView />}
+        {page === "/tasks" && (
           <>
             <header className="topbar">
               <Tooltip label={taskListVisible ? t("tasks.hideList") : t("tasks.showList")}>
@@ -639,7 +734,7 @@ function TaskmateApp() {
                 </div>
               </section>
               <div className={`splitter ${taskListVisible ? "" : "invisible"}`} onPointerDown={beginResize} />
-              <section className="detail-panel" ref={detailPanel}>
+              <section className="detail-panel" ref={setDetailPanel}>
                 {!task ? <div className="detail-empty"><div className="empty-illustration"><Check /></div><h2>{t("tasks.select")}</h2><p>{t("tasks.selectHint")}</p></div> : (
                   <div className="detail-scroll">
                     <header className="detail-header">
@@ -725,5 +820,13 @@ function TaskmateApp() {
 }
 
 export function App() {
-  return <TaskmateI18nProvider><TaskmateApp /></TaskmateI18nProvider>;
+  return (
+    <TaskmateI18nProvider>
+      <HashRouter>
+        <WorkspaceStoreProvider>
+          <Routes><Route path="*" element={<WorkspaceSession />} /></Routes>
+        </WorkspaceStoreProvider>
+      </HashRouter>
+    </TaskmateI18nProvider>
+  );
 }
