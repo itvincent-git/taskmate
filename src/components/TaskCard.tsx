@@ -35,21 +35,18 @@ export function TaskCard({ task, selected, definitions, compact = false, onSelec
   const stop = (event: MouseEvent) => event.stopPropagation();
   return (
     <article className={`task-card ${selected ? "selected" : ""} ${compact ? "!px-3 !py-2.5" : ""}`} onClick={onSelect}>
-      <div className={`task-card-title ${compact ? "!mb-0 truncate !text-sm" : ""}`}>{task.title}</div>
+      <div className={`task-card-title ${compact ? "!mb-0 !text-sm" : ""}`} title={task.title}>{task.title}</div>
       {!compact ? (
-        <>
-          <div className="task-card-properties">
-            {visible.map((definition) => (
-              <div className="card-property" key={definition.id} onClick={stop}>
-                <PropertyValue definition={definition} value={task.properties[definition.key]} />
-                <div className="quick-editor">
-                  <PropertyInput compact definition={definition} value={task.properties[definition.key]} onChange={(value) => onQuickEdit(definition.key, value)} />
-                </div>
+        <div className="task-card-properties">
+          {visible.map((definition) => (
+            <div className="card-property" key={definition.id} onClick={stop}>
+              <PropertyValue definition={definition} value={task.properties[definition.key]} />
+              <div className="quick-editor">
+                <PropertyInput compact definition={definition} value={task.properties[definition.key]} onChange={(value) => onQuickEdit(definition.key, value)} />
               </div>
-            ))}
-          </div>
-          <div className="task-card-footer"><span>{task.fileName}</span><time>{new Date(task.updatedAt).toLocaleDateString()}</time></div>
-        </>
+            </div>
+          ))}
+        </div>
       ) : null}
     </article>
   );

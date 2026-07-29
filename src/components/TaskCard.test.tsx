@@ -27,6 +27,13 @@ const task: TaskSummary = {
 };
 
 describe("TaskCard quick editing", () => {
+  it("shows a single-line title with the full title available on hover and no file metadata", () => {
+    const { container } = render(<TaskCard task={task} selected={false} definitions={[status]} onSelect={vi.fn()} onQuickEdit={vi.fn()} />);
+    expect(screen.getByTitle("Card task")).toHaveClass("task-card-title");
+    expect(screen.queryByText("Card task.md")).not.toBeInTheDocument();
+    expect(container.querySelector("time")).not.toBeInTheDocument();
+  });
+
   it("edits a property without selecting the card", async () => {
     const user = userEvent.setup();
     const onSelect = vi.fn();

@@ -166,7 +166,7 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); box-sha
 }
 .task-card:hover { border-color: color-mix(in srgb, var(--accent) 48%, var(--line)); transform: translateY(-1px); box-shadow: var(--shadow); }
 .task-card.selected { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent), var(--shadow); }
-.task-card-title { font-weight: 720; font-size: 15px; margin-bottom: 12px; }
+.task-card-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 720; font-size: 15px; margin-bottom: 12px; }
 .task-card-properties { display: flex; align-items: center; gap: 6px; min-height: 30px; flex-wrap: wrap; }
 .card-property { position: relative; }
 .quick-editor { visibility: hidden; pointer-events: none; position: absolute; inset: -5px auto auto -5px; z-index: 3; min-width: 120px; }
@@ -176,8 +176,6 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); box-sha
 .chip { display: inline-flex; align-items: center; height: 25px; padding: 0 9px; border-radius: 13px; font-size: 11px; font-weight: 650; color: color-mix(in srgb, var(--chip) 80%, var(--text)); background: color-mix(in srgb, var(--chip) 14%, var(--surface)); border: 1px solid color-mix(in srgb, var(--chip) 24%, transparent); }
 .chip.neutral { --chip: var(--muted); }
 .property-text { color: var(--muted); font-size: 12px; }
-.task-card-footer { display: flex; justify-content: space-between; gap: 8px; border-top: 1px solid var(--line); margin-top: 13px; padding-top: 10px; color: var(--muted); font-size: 10px; }
-.task-card-footer span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .list-empty, .detail-empty { height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; color: var(--muted); text-align: center; }
 .list-empty h2, .detail-empty h2 { margin: 12px 0 3px; font-size: 16px; color: var(--text); }
 .list-empty p, .detail-empty p { margin: 0; font-size: 13px; }
