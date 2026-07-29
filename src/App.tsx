@@ -9,6 +9,7 @@ import {
   Check,
   Cloud,
   Copy,
+  Download,
   Database,
   FileText,
   FolderOpen,
@@ -50,6 +51,7 @@ import { Input } from "./components/ui/Input";
 import { Select } from "./components/ui/Select";
 import { Tooltip } from "./components/ui/Tooltip";
 import { TaskmateI18nProvider, localizedPropertyName, useTaskmateI18n } from "./lib/taskmate-i18n";
+import { useUpdater } from "./hooks/useUpdater";
 import "./styles.css";
 
 const initialPath = localStorage.getItem("taskmate-workspace") || `${navigator.platform.includes("Mac") ? "/Users/Shared" : "."}/Taskmate`;
@@ -224,8 +226,41 @@ function BackupView() {
   );
 }
 
+function updateMessage(phase: ReturnType<typeof useUpdater>["phase"], version: string | undefined, t: ReturnType<typeof useTaskmateI18n>["t"]) {
+  if (phase === "disabled") return t("updates.disabled");
+  if (phase === "checking") return t("updates.checking");
+  if (phase === "current") return t("updates.current");
+  if (phase === "available") return t("updates.available", { version: version ?? "" });
+  if (phase === "downloading") return t("updates.downloading");
+  if (phase === "ready" || phase === "restarting") return t("updates.ready");
+  if (phase === "error") return t("updates.error");
+  return t("updates.description");
+}
+
+function UpdateSettingsView({ updater }: { updater: ReturnType<typeof useUpdater> }) {
+  const { t } = useTaskmateI18n();
+  const message = updateMessage(updater.phase, updater.info?.version, t);
+  return (
+    <div className="settings-view">
+      <div className="view-heading"><div><p className="eyebrow">{t("updates.eyebrow")}</p><h1>{t("updates.title")}</h1><p>{t("updates.description")}</p></div></div>
+      <section className="settings-card update-settings-card">
+        <div className="update-status"><Download size={20} /><p>{message}</p></div>
+        {updater.phase === "downloading" ? <progress max={100} value={updater.progress.percent ?? undefined} /> : null}
+        <div className="button-row">
+          <Button variant="outline" disabled={updater.phase === "checking" || updater.phase === "disabled"} onClick={() => void updater.checkForUpdate()}>{updater.phase === "error" ? t("updates.retry") : t("updates.check")}</Button>
+          {updater.phase === "available" ? <Button onClick={() => void updater.downloadAndInstall()}>{t("updates.install")}</Button> : null}
+          {updater.phase === "ready" ? <Button onClick={() => void updater.restart()}>{t("updates.restart")}</Button> : null}
+        </div>
+        {updater.error ? <p role="alert" className="banner error">{updater.error}</p> : null}
+      </section>
+    </div>
+  );
+}
+
 function WorkspaceSession() {
   const { locale, setLocale, t } = useTaskmateI18n();
+  const updater = useUpdater();
+  const [dismissedUpdate, setDismissedUpdate] = useState<string | null>(null);
   const workspacePath = useWorkspaceState((state) => state.workspacePath);
   const setWorkspacePath = useWorkspaceState((state) => state.setWorkspacePath);
   const recentWorkspaces = useWorkspaceState((state) => state.recentWorkspaces);
@@ -616,7 +651,7 @@ function WorkspaceSession() {
     );
   }
 
-  if (page !== "/tasks" && page !== "/properties" && page !== "/backup") {
+  if (page !== "/tasks" && page !== "/properties" && page !== "/backup" && page !== "/settings") {
     return <Navigate to="/tasks" replace />;
   }
 
@@ -651,6 +686,7 @@ function WorkspaceSession() {
             <Tooltip label={t("nav.tasks")}><NavLink to="/tasks" aria-label={t("nav.tasks")} className={`ui-button ui-button-ghost ui-button-icon ${page === "/tasks" ? "active" : ""}`}><LayoutList size={18} /></NavLink></Tooltip>
             <Tooltip label={t("nav.properties")}><NavLink to="/properties" aria-label={t("nav.properties")} className={`ui-button ui-button-ghost ui-button-icon ${page === "/properties" ? "active" : ""}`}><Settings2 size={18} /></NavLink></Tooltip>
             <Tooltip label={t("nav.backup")}><NavLink to="/backup" aria-label={t("nav.backup")} className={`ui-button ui-button-ghost ui-button-icon ${page === "/backup" ? "active" : ""}`}><GitBranch size={18} /></NavLink></Tooltip>
+            <Tooltip label={t("nav.settings")}><NavLink to="/settings" aria-label={t("nav.settings")} className={`ui-button ui-button-ghost ui-button-icon ${page === "/settings" ? "active" : ""}`}><Settings2 size={18} /></NavLink></Tooltip>
           </nav>
           <div className="mt-auto grid gap-1">
             <DropdownMenu.Root>
@@ -692,6 +728,7 @@ function WorkspaceSession() {
           } catch (cause) { setError(errorMessage(cause)); } finally { setSchemaSaving(false); }
         }} />}
         {page === "/backup" && <BackupView />}
+        {page === "/settings" && <UpdateSettingsView updater={updater} />}
         {page === "/tasks" && (
           <>
             <header className="topbar">
@@ -807,6 +844,14 @@ function WorkspaceSession() {
             </div>
           </>
         )}
+        <Dialog
+          open={updater.phase === "available" && updater.info?.version !== dismissedUpdate}
+          onOpenChange={(open) => { if (!open) setDismissedUpdate(updater.info?.version ?? null); }}
+          title={t("updates.availableTitle")}
+          description={t("updates.availableDescription", { version: updater.info?.version ?? "" })}
+          closeLabel={t("common.close")}
+          footer={<><Button variant="outline" onClick={() => setDismissedUpdate(updater.info?.version ?? null)}>{t("updates.later")}</Button><Button onClick={() => void updater.downloadAndInstall()}>{t("updates.install")}</Button></>}
+        />
         <Dialog
           open={propertiesDrawerOpen && detailNarrow && Boolean(task)}
           onOpenChange={setPropertiesDrawerOpen}

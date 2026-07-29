@@ -48,14 +48,13 @@ jobs:
           version="$(node -p "require('./src-tauri/tauri.conf.json').version")"
           test "${RELEASE_TAG}" = "app-v${version}"
       - name: Build and publish
-        uses: tauri-apps/tauri-action@v0
+        uses: tauri-apps/tauri-action@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           tagName: ${{ env.RELEASE_TAG }}
-          releaseName: Your App ${{ env.RELEASE_TAG }}
+          releaseName: Taskmate ${{ env.RELEASE_TAG }}
           releaseDraft: false
           prerelease: false
           args: --target ${{ matrix.target }} --config src-tauri/tauri.release.conf.json
@@ -65,12 +64,12 @@ jobs:
           mkdir -p normalized
           if [[ "${RUNNER_OS}" == "macOS" ]]; then
             archive="$(find "src-tauri/target/${{ matrix.target }}/release/bundle/macos" -name '*.app.tar.gz' -type f | head -1)"
-            cp "${archive}" "normalized/your-app-${{ matrix.suffix }}.app.tar.gz"
-            cp "${archive}.sig" "normalized/your-app-${{ matrix.suffix }}.app.tar.gz.sig"
+            cp "${archive}" "normalized/taskmate-${{ matrix.suffix }}.app.tar.gz"
+            cp "${archive}.sig" "normalized/taskmate-${{ matrix.suffix }}.app.tar.gz.sig"
           else
             setup="$(find "src-tauri/target/${{ matrix.target }}/release/bundle/nsis" -name '*-setup.exe' -type f | head -1)"
-            cp "${setup}" "normalized/your-app-${{ matrix.suffix }}-setup.exe"
-            cp "${setup}.sig" "normalized/your-app-${{ matrix.suffix }}-setup.exe.sig"
+            cp "${setup}" "normalized/taskmate-${{ matrix.suffix }}-setup.exe"
+            cp "${setup}.sig" "normalized/taskmate-${{ matrix.suffix }}-setup.exe.sig"
           fi
       - uses: softprops/action-gh-release@v2
         with:
@@ -85,7 +84,7 @@ jobs:
         env: { GH_TOKEN: "${{ secrets.GITHUB_TOKEN }}" }
         run: |
           mkdir assets
-          gh release download "${RELEASE_TAG}" --repo "${GITHUB_REPOSITORY}" --dir assets --pattern 'your-app-*.app.tar.gz*' --pattern 'your-app-*-setup.exe*'
+          gh release download "${RELEASE_TAG}" --repo "${GITHUB_REPOSITORY}" --dir assets --pattern 'taskmate-*.app.tar.gz*' --pattern 'taskmate-*-setup.exe*'
       - name: Build complete latest.json
         shell: bash
         run: |
@@ -94,14 +93,14 @@ jobs:
           jq -n \
             --arg version "${version}" \
             --arg date "$(date -u +'%Y-%m-%dT%H:%M:%SZ')" \
-            --arg mx "$(cat assets/your-app-macos-x64.app.tar.gz.sig)" \
-            --arg ma "$(cat assets/your-app-macos-arm64.app.tar.gz.sig)" \
-            --arg wx "$(cat assets/your-app-windows-x64-setup.exe.sig)" \
+            --arg mx "$(cat assets/taskmate-macos-x64.app.tar.gz.sig)" \
+            --arg ma "$(cat assets/taskmate-macos-arm64.app.tar.gz.sig)" \
+            --arg wx "$(cat assets/taskmate-windows-x64-setup.exe.sig)" \
             --arg base "${base}" \
             '{version:$version,notes:"See the release notes.",pub_date:$date,platforms:{
-              "darwin-x86_64":{signature:$mx,url:($base+"/your-app-macos-x64.app.tar.gz")},
-              "darwin-aarch64":{signature:$ma,url:($base+"/your-app-macos-arm64.app.tar.gz")},
-              "windows-x86_64":{signature:$wx,url:($base+"/your-app-windows-x64-setup.exe")}
+              "darwin-x86_64":{signature:$mx,url:($base+"/taskmate-macos-x64.app.tar.gz")},
+              "darwin-aarch64":{signature:$ma,url:($base+"/taskmate-macos-arm64.app.tar.gz")},
+              "windows-x86_64":{signature:$wx,url:($base+"/taskmate-windows-x64-setup.exe")}
             }}' > latest.json
       - uses: softprops/action-gh-release@v2
         with:

@@ -4,11 +4,15 @@ import { check, type Update } from "@tauri-apps/plugin-updater";
 import { relaunch } from "@tauri-apps/plugin-process";
 import type { UpdateInfo, UpdatePhase, UpdateProgress } from "../types";
 
-const initializedMarker: string = "__TEMPLATE_INITIALIZED__";
-const initialized = initializedMarker === "true";
+let startupCheckScheduled = false;
+
 function canUpdate() {
   const testing = (globalThis as typeof globalThis & { __TEST_UPDATER__?: boolean }).__TEST_UPDATER__ === true;
-  return testing || (initialized && !import.meta.env.DEV);
+  return testing || (!import.meta.env.DEV && "__TAURI_INTERNALS__" in window);
+}
+
+function canCheckOnStartup() {
+  return !import.meta.env.DEV && "__TAURI_INTERNALS__" in window;
 }
 
 export function useUpdater() {
@@ -42,7 +46,8 @@ export function useUpdater() {
   }, []);
 
   useEffect(() => {
-    if (!canUpdate()) return;
+    if (!canCheckOnStartup() || startupCheckScheduled) return;
+    startupCheckScheduled = true;
     const timeout = window.setTimeout(() => void checkForUpdate(), 1500);
     return () => window.clearTimeout(timeout);
   }, [checkForUpdate]);

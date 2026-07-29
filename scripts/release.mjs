@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { execFileSync } from "node:child_process";
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { nextVersion } from "./version-lib.mjs";
@@ -14,7 +14,6 @@ function git(args) {
 
 try {
   if (!target || process.argv.length !== 3) throw new Error("Usage: pnpm release <major|minor|patch|x.y.z>");
-  if (!existsSync(join(root, ".template-initialized.json"))) throw new Error("Run template:init before releasing.");
   const status = git(["status", "--porcelain", "--untracked-files=all"]);
   if (status) throw new Error(`Git working tree must be clean:\n${status}`);
 

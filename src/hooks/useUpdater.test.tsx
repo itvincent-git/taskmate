@@ -46,3 +46,23 @@ it("checks, reports progress, installs, and restarts an update", async () => {
   await act(() => result.current.restart());
   await waitFor(() => expect(mocks.relaunch).toHaveBeenCalledOnce());
 });
+
+it("reports when no update is available", async () => {
+  mocks.check.mockResolvedValue(null);
+  const { useUpdater } = await import("./useUpdater");
+  const { result } = renderHook(() => useUpdater());
+  await act(() => result.current.checkForUpdate());
+  expect(result.current.phase).toBe("current");
+  expect(result.current.info).toBeNull();
+});
+
+it("allows a failed update check to be retried", async () => {
+  mocks.check.mockRejectedValueOnce(new Error("offline")).mockResolvedValueOnce(null);
+  const { useUpdater } = await import("./useUpdater");
+  const { result } = renderHook(() => useUpdater());
+  await act(() => result.current.checkForUpdate());
+  expect(result.current.phase).toBe("error");
+  expect(result.current.error).toContain("offline");
+  await act(() => result.current.checkForUpdate());
+  expect(result.current.phase).toBe("current");
+});

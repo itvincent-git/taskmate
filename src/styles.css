@@ -284,6 +284,10 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); box-sha
 .backup-grid { max-width: 1160px; margin: auto; display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
 .settings-card { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 21px; box-shadow: var(--shadow); }
 .settings-card h2 { margin: 0 0 17px; font-size: 16px; }
+.update-settings-card { max-width: 1160px; margin: auto; }
+.update-status { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; color: var(--muted); }
+.update-status p { margin: 0; }
+.update-settings-card progress { width: min(360px, 100%); margin: 0 0 16px; }
 .settings-card label { display: grid; gap: 7px; margin-bottom: 12px; color: var(--muted); font-size: 12px; font-weight: 650; }
 .settings-card dl { margin: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
 .settings-card dl div { border-bottom: 1px solid var(--line); padding-bottom: 10px; }

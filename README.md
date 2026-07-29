@@ -64,6 +64,14 @@ pnpm dev:app
 
 Browser-only UI development is available with `pnpm dev`. It uses a localStorage-backed demo workspace because browsers cannot access the Rust filesystem commands.
 
+## Releases and updates
+
+Taskmate publishes signed macOS (Intel and Apple Silicon) and Windows x64 installers from tags named `app-v<version>`. The updater reads the public manifest at `releases/latest/download/latest.json`.
+
+The updater private key is deliberately excluded from Git at `.tauri-signing/taskmate.key`. Before the first release, store its exact contents in the repository's `TAURI_SIGNING_PRIVATE_KEY` GitHub Actions secret and keep an offline backup. Losing that key prevents installed clients from accepting future updates.
+
+For a new version, run `pnpm release <patch|minor|major|x.y.z>`, then push the resulting commit and annotated tag. The GitHub workflow verifies that the tag matches the app version, builds all three platforms, and publishes `latest.json` with signed updater artifacts. macOS is ad-hoc signed for internal distribution, so Gatekeeper may require user confirmation; Windows SmartScreen may do the same.
+
 ## Verification
 
 ```sh

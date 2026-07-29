@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "A local-first Markdown task manager for the desktop."
 authors = ["Taskmate contributors"]
 license = "MIT"
-repository = "https://github.com/vincent/taskmate"
+repository = "https://github.com/itvincent-git/taskmate"
 edition = "2021"
 
 [lib]
