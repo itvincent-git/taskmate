@@ -67,8 +67,8 @@ Strong success criteria let you loop independently. Weak criteria ("make it work
 Recommended workflow in this repo:
 - Start the app with `pnpm tauri dev`, not just `pnpm dev`. The UI depends on Tauri commands backed by the native Rust usage pipeline.
 - If the issue looks like loading, sync, or missing data, inspect the Tauri command path and Rust logs before blaming React.
-- Use `playwright-cli` against `http://localhost:5173` to inspect the rendered UI state:
-  - `playwright-cli open http://localhost:5173`
+- Use `playwright-cli` against `http://localhost:5273` to inspect the rendered UI state:
+  - `playwright-cli open http://localhost:5273`
   - `playwright-cli snapshot`
   - `playwright-cli console`
   - `playwright-cli network`
@@ -83,7 +83,7 @@ Preferred `playwright-cli` usage:
 
 Known pitfalls to avoid:
 - Do not assume `Data sync failed` or `Load failed` means the React code is broken. In this app it can mean a Tauri command, Rust scanner, app data path, or Codex log parsing failure.
-- Do not run `pnpm dev` and `pnpm tauri dev` independently on the same port unless you intend to. Port `5173` conflicts will break Tauri startup and look unrelated.
+- Do not run `pnpm dev` and `pnpm tauri dev` independently on the same port unless you intend to. Port `5273` conflicts will break Tauri startup and look unrelated.
 - Do not rely on `playwright-cli` alone to prove a Tauri-only bug. It is useful for React/UI behavior, but it is still a browser approximation of the WebView path.
 - In React dev mode, `StrictMode` re-runs effects. If startup logic lives in `useEffect`, guard against duplicate bootstrap requests and loading-state flicker.
 - If data is already on screen, avoid replacing the whole view with a full-page loading card for background refreshes unless that behavior is explicitly desired.
