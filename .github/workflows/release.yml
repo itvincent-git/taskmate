@@ -24,9 +24,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { label: "macOS Intel", os: macos-latest, target: x86_64-apple-darwin, suffix: macos-x64 }
-          - { label: "macOS Apple Silicon", os: macos-latest, target: aarch64-apple-darwin, suffix: macos-arm64 }
-          - { label: "Windows x64", os: windows-latest, target: x86_64-pc-windows-msvc, suffix: windows-x64 }
+          - { label: "macOS Intel", os: macos-latest, target: x86_64-apple-darwin, bundles: "app,dmg", suffix: macos-x64 }
+          - { label: "macOS Apple Silicon", os: macos-latest, target: aarch64-apple-darwin, bundles: "app,dmg", suffix: macos-arm64 }
+          - { label: "Windows x64", os: windows-latest, target: x86_64-pc-windows-msvc, bundles: "nsis", suffix: windows-x64 }
     steps:
       - uses: actions/checkout@v4
         with: { ref: "${{ env.RELEASE_TAG }}", fetch-depth: 0 }
@@ -57,7 +57,7 @@ jobs:
           releaseName: Taskmate ${{ env.RELEASE_TAG }}
           releaseDraft: false
           prerelease: false
-          args: --target ${{ matrix.target }} --config src-tauri/tauri.release.conf.json
+          args: --target ${{ matrix.target }} --bundles ${{ matrix.bundles }} --config src-tauri/tauri.release.conf.json
       - name: Normalize updater assets
         shell: bash
         run: |
