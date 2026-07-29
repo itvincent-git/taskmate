@@ -155,7 +155,6 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); box-sha
 .task-list { min-height: 0; flex: 1; overflow: auto; padding: 0 12px 20px; }
 .virtual-row { position: absolute; top: 0; left: 0; width: 100%; padding-bottom: 10px; }
 .task-card {
-  min-height: 142px;
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: 12px;
