@@ -61,15 +61,64 @@ jobs:
       - name: Normalize updater assets
         shell: bash
         run: |
+          set -euo pipefail
+
           mkdir -p normalized
           if [[ "${RUNNER_OS}" == "macOS" ]]; then
-            archive="$(find "src-tauri/target/${{ matrix.target }}/release/bundle/macos" -name '*.app.tar.gz' -type f | head -1)"
+            search_dirs=()
+            for dir in \
+              "src-tauri/target/${{ matrix.target }}/release/bundle/macos" \
+              "src-tauri/target/release/bundle/macos"
+            do
+              if [[ -d "${dir}" ]]; then
+                search_dirs+=("${dir}")
+              fi
+            done
+
+            if [[ "${#search_dirs[@]}" -eq 0 ]]; then
+              echo "No Tauri macOS bundle directories were found."
+              exit 1
+            fi
+
+            archive="$(find "${search_dirs[@]}" -maxdepth 1 -type f -name '*.app.tar.gz' | head -n 1)"
+            signature="$(find "${search_dirs[@]}" -maxdepth 1 -type f -name '*.app.tar.gz.sig' | head -n 1)"
+            if [[ -z "${archive}" || -z "${signature}" ]]; then
+              echo "The macOS updater archive or signature is missing."
+              exit 1
+            fi
+
             cp "${archive}" "normalized/taskmate-${{ matrix.suffix }}.app.tar.gz"
-            cp "${archive}.sig" "normalized/taskmate-${{ matrix.suffix }}.app.tar.gz.sig"
+            cp "${signature}" "normalized/taskmate-${{ matrix.suffix }}.app.tar.gz.sig"
           else
-            setup="$(find "src-tauri/target/${{ matrix.target }}/release/bundle/nsis" -name '*-setup.exe' -type f | head -1)"
+            search_dirs=()
+            for dir in \
+              "src-tauri/target/${{ matrix.target }}/release/bundle/nsis" \
+              "src-tauri/target/release/bundle/nsis"
+            do
+              if [[ -d "${dir}" ]]; then
+                search_dirs+=("${dir}")
+              fi
+            done
+
+            if [[ "${#search_dirs[@]}" -eq 0 ]]; then
+              echo "No Tauri NSIS bundle directories were found."
+              exit 1
+            fi
+
+            setup="$(find "${search_dirs[@]}" -maxdepth 1 -type f -name '*-setup.exe' | head -n 1)"
+            if [[ -z "${setup}" ]]; then
+              echo "The Windows setup executable is missing."
+              exit 1
+            fi
+
+            signature="${setup}.sig"
+            if [[ ! -f "${signature}" ]]; then
+              echo "The Windows setup executable signature is missing: ${signature}"
+              exit 1
+            fi
+
             cp "${setup}" "normalized/taskmate-${{ matrix.suffix }}-setup.exe"
-            cp "${setup}.sig" "normalized/taskmate-${{ matrix.suffix }}-setup.exe.sig"
+            cp "${signature}" "normalized/taskmate-${{ matrix.suffix }}-setup.exe.sig"
           fi
       - uses: softprops/action-gh-release@v2
         with:
