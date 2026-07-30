@@ -1,6 +1,5 @@
 import { createContext, lazy, Suspense, useCallback, useContext, useEffect, useRef, useState, type Dispatch, type ReactNode, type SetStateAction } from "react";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
-import { useVirtualizer } from "@tanstack/react-virtual";
 import { HashRouter, Navigate, NavLink, Route, Routes, useLocation, useNavigate } from "react-router";
 import { createStore, useStore } from "zustand";
 import {
@@ -40,9 +39,8 @@ import type {
   TaskQuery,
   TaskSummary,
 } from "./types";
-import { PropertyInput } from "./components/PropertyInput";
 import { PropertySettings } from "./components/PropertySettings";
-import { TaskCard } from "./components/TaskCard";
+import { TaskList } from "./components/TaskList";
 import { TaskProperties } from "./components/TaskProperties";
 import { DynamicFilter } from "./components/DynamicFilter";
 import { Button, buttonVariants } from "./components/ui/Button";
@@ -323,7 +321,6 @@ function WorkspaceSession() {
   const [propertiesDrawerOpen, setPropertiesDrawerOpen] = useState(false);
   const fileSignal = useWorkspaceState((state) => state.fileSignal);
   const setFileSignal = useWorkspaceState((state) => state.setFileSignal);
-  const listHost = useRef<HTMLDivElement>(null);
   const [detailPanel, setDetailPanel] = useState<HTMLElement | null>(null);
   const propertiesButton = useRef<HTMLButtonElement>(null);
   const filterButton = useRef<HTMLButtonElement>(null);
@@ -572,17 +569,6 @@ function WorkspaceSession() {
     } catch (cause) { setError(errorMessage(cause)); }
   };
 
-  const virtualizer = useVirtualizer({
-    count: tasks.length,
-    getScrollElement: () => listHost.current,
-    estimateSize: () => compactCards ? 48 : 130,
-    overscan: 6,
-  });
-
-  useEffect(() => {
-    virtualizer.measure();
-  }, [compactCards, virtualizer]);
-
   const closeTab = async (id: string) => {
     if (task?.id === id && saveState === "dirty") await save(task);
     const index = openTabs.findIndex((tab) => tab.id === id);
@@ -809,16 +795,15 @@ function WorkspaceSession() {
                     </Tooltip>
                   </div>
                 </div>
-                <div className="min-h-0 flex-1 overflow-auto px-2.5 pb-3.5" ref={listHost}>
-                  {tasks.length === 0 ? <div className="flex h-full flex-col items-center justify-center text-center text-muted [&>h2]:mt-3 [&>h2]:mb-[3px] [&>h2]:font-heading [&>h2]:text-base [&>h2]:text-foreground [&>p]:m-0 [&>p]:text-xs"><LayoutList /><h2>{searchDraft || query.filters.length ? t("tasks.noMatches") : t("tasks.nothing")}</h2><p>{query.archived ? t("tasks.archivedHint") : t("tasks.createHint")}</p></div> : (
-                    <div style={{ height: virtualizer.getTotalSize(), position: "relative" }}>
-                      {virtualizer.getVirtualItems().map((item) => {
-                        const summary = tasks[item.index];
-                        return <div key={summary.id} ref={virtualizer.measureElement} data-index={item.index} className="absolute top-0 left-0 w-full pb-2" style={{ transform: `translateY(${item.start}px)` }}><TaskCard task={summary} selected={summary.id === selectedId} definitions={definitions} compact={compactCards} onSelect={() => void chooseTask(summary.id)} onQuickEdit={(key, value) => void quickEdit(summary, key, value)} /></div>;
-                      })}
-                    </div>
-                  )}
-                </div>
+                <TaskList
+                  tasks={tasks}
+                  definitions={definitions}
+                  selectedId={selectedId}
+                  compact={compactCards}
+                  emptyState={<div className="flex h-full flex-col items-center justify-center text-center text-muted [&>h2]:mt-3 [&>h2]:mb-[3px] [&>h2]:font-heading [&>h2]:text-base [&>h2]:text-foreground [&>p]:m-0 [&>p]:text-xs"><LayoutList /><h2>{searchDraft || query.filters.length ? t("tasks.noMatches") : t("tasks.nothing")}</h2><p>{query.archived ? t("tasks.archivedHint") : t("tasks.createHint")}</p></div>}
+                  onSelect={(summary) => void chooseTask(summary.id)}
+                  onQuickEdit={(summary, key, value) => void quickEdit(summary, key, value)}
+                />
               </section>
               <div className={cn("relative z-[2] cursor-col-resize bg-line hover:bg-accent", !taskListVisible && "invisible")} data-testid="splitter" onPointerDown={beginResize} />
               <section className="min-h-0 min-w-0 bg-surface" ref={setDetailPanel}>
