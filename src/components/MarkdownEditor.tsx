@@ -80,7 +80,7 @@ export function MarkdownEditor({ value, onChange }: Props) {
           EditorView.theme({
             "&": { height: "100%", fontSize: "14px" },
             ".cm-scroller": { overflow: "auto", fontFamily: "inherit" },
-            ".cm-content": { minHeight: "300px", padding: "22px 28px 80px", caretColor: "var(--accent)" },
+            ".cm-content": { minHeight: "300px", padding: "16px 20px 48px", caretColor: "var(--accent)" },
             ".cm-line": { lineHeight: "1.72" },
             ".cm-gutters": { display: "none" },
             "&.cm-focused": { outline: "none" },
@@ -106,7 +106,7 @@ export function MarkdownEditor({ value, onChange }: Props) {
 
   return (
     <section className="flex h-full min-h-0 flex-col overflow-hidden border-b border-line">
-      <div className="flex min-h-11 shrink-0 items-center gap-0.5 overflow-x-auto border-b border-line bg-surface px-5 py-[5px] [&_button]:size-[30px] [&_button]:min-h-0 [&_button]:p-0" role="toolbar" aria-label={t("editor.toolbar")}>
+      <div className="flex min-h-[38px] shrink-0 items-center gap-0.5 overflow-x-auto border-b border-line bg-surface px-3.5 py-1 [&_button]:size-7 [&_button]:min-h-0 [&_button]:p-0" role="toolbar" aria-label={t("editor.toolbar")}>
         {tools.map(([action, label, Icon]) => (
           <Tooltip label={locale === "zh-CN" ? toolbarLabel(action) : label} key={action}>
             <Button variant="ghost" size="icon" aria-label={locale === "zh-CN" ? toolbarLabel(action) : label} onMouseDown={(event) => {
