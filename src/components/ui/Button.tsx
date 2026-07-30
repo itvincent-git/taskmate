@@ -2,24 +2,27 @@ import { forwardRef, type ButtonHTMLAttributes } from "react";
 import { cva, type VariantProps } from "class-variance-authority";
 import { cn } from "../../lib/utils";
 
-const buttonVariants = cva("ui-button", {
-  variants: {
-    variant: {
-      default: "ui-button-default",
-      secondary: "ui-button-secondary",
-      ghost: "ui-button-ghost",
-      destructive: "ui-button-destructive",
-      outline: "ui-button-outline",
+export const buttonVariants = cva(
+  "inline-flex cursor-pointer items-center justify-center gap-2 whitespace-nowrap rounded-md border border-transparent font-semibold transition-[color,background-color,border-color,box-shadow,transform] duration-160 enabled:hover:-translate-y-px focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-[color-mix(in_srgb,var(--accent)_14%,transparent)] disabled:cursor-default disabled:opacity-50",
+  {
+    variants: {
+      variant: {
+        default: "bg-accent text-[#fdfdfd] enabled:hover:bg-accent-hover enabled:hover:shadow-[0_4px_12px_color-mix(in_srgb,var(--accent)_35%,transparent)]",
+        secondary: "bg-surface-soft text-foreground",
+        ghost: "bg-transparent text-muted enabled:hover:bg-surface-soft enabled:hover:text-foreground aria-pressed:bg-surface-soft aria-pressed:text-foreground",
+        destructive: "border-[color-mix(in_srgb,var(--danger)_40%,transparent)] bg-[color-mix(in_srgb,var(--danger)_8%,var(--surface))] text-danger enabled:hover:bg-danger enabled:hover:text-[#fdfdfd]",
+        outline: "border-line bg-surface text-foreground enabled:hover:border-accent enabled:hover:text-accent aria-pressed:border-accent aria-pressed:text-accent",
+      },
+      size: {
+        default: "h-[38px] px-4",
+        sm: "h-8 px-3 text-[13px]",
+        lg: "h-11 px-6",
+        icon: "size-9 p-0",
+      },
     },
-    size: {
-      default: "ui-button-md",
-      sm: "ui-button-sm",
-      lg: "ui-button-lg",
-      icon: "ui-button-icon",
-    },
+    defaultVariants: { variant: "default", size: "default" },
   },
-  defaultVariants: { variant: "default", size: "default" },
-});
+);
 
 export interface ButtonProps
   extends ButtonHTMLAttributes<HTMLButtonElement>,

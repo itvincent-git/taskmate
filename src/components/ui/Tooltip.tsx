@@ -6,7 +6,7 @@ export function Tooltip({ label, children }: { label: string; children: ReactEle
     <TooltipPrimitive.Provider delayDuration={350}>
       <TooltipPrimitive.Root>
         <TooltipPrimitive.Trigger asChild>{children}</TooltipPrimitive.Trigger>
-        <TooltipPrimitive.Portal><TooltipPrimitive.Content className="ui-tooltip" sideOffset={6}>{label}<TooltipPrimitive.Arrow className="ui-tooltip-arrow" /></TooltipPrimitive.Content></TooltipPrimitive.Portal>
+        <TooltipPrimitive.Portal><TooltipPrimitive.Content className="z-[250] rounded-md bg-foreground px-[9px] py-1.5 text-xs text-surface shadow-panel" sideOffset={6}>{label}<TooltipPrimitive.Arrow className="fill-foreground" /></TooltipPrimitive.Content></TooltipPrimitive.Portal>
       </TooltipPrimitive.Root>
     </TooltipPrimitive.Provider>
   );

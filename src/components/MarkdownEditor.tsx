@@ -105,8 +105,8 @@ export function MarkdownEditor({ value, onChange }: Props) {
   }, [value]);
 
   return (
-    <section className="editor-section">
-      <div className="markdown-toolbar" role="toolbar" aria-label={t("editor.toolbar")}>
+    <section className="flex h-full min-h-0 flex-col overflow-hidden border-b border-line">
+      <div className="flex min-h-11 shrink-0 items-center gap-0.5 overflow-x-auto border-b border-line bg-surface px-5 py-[5px] [&_button]:size-[30px] [&_button]:min-h-0 [&_button]:p-0" role="toolbar" aria-label={t("editor.toolbar")}>
         {tools.map(([action, label, Icon]) => (
           <Tooltip label={locale === "zh-CN" ? toolbarLabel(action) : label} key={action}>
             <Button variant="ghost" size="icon" aria-label={locale === "zh-CN" ? toolbarLabel(action) : label} onMouseDown={(event) => {
@@ -116,7 +116,7 @@ export function MarkdownEditor({ value, onChange }: Props) {
           </Tooltip>
         ))}
       </div>
-      <div className="editor-host" ref={host} />
+      <div className="min-h-0 flex-1 overflow-hidden [&_.cm-content]:min-h-full [&_.cm-editor]:h-full [&_.cm-editor]:min-h-0 [&_.cm-editor]:bg-surface [&_.cm-editor]:text-foreground [&_.cm-scroller]:h-full [&_.cm-scroller]:overscroll-contain [&_.cm-scroller]:overflow-y-auto!" ref={host} />
     </section>
   );
 }

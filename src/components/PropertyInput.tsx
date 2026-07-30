@@ -15,7 +15,7 @@ interface Props {
 export function PropertyInput({ definition, value, compact, onChange }: Props) {
   const { locale, t } = useTaskmateI18n();
   const name = localizedPropertyName(definition, locale);
-  const className = compact ? "property-input compact" : "property-input";
+  const className = compact ? "min-h-[30px] w-full max-w-40 px-[7px] py-1" : "w-full";
   if (definition.type === "select") {
     return (
       <Select

@@ -87,7 +87,7 @@ describe("Live Preview activation", () => {
       }),
     });
 
-    expect(Array.from(host.querySelectorAll(".cm-lp-marker-task"), (marker) => marker.textContent)).toEqual(["☐", "☑"]);
+    expect(Array.from(host.querySelectorAll('[data-marker-kind="task"]'), (marker) => marker.textContent)).toEqual(["☐", "☑"]);
 
     view.destroy();
     host.remove();
@@ -104,7 +104,7 @@ describe("Live Preview activation", () => {
       }),
     });
 
-    expect(host.querySelector(".cm-lp-rule")).not.toBeNull();
+    expect(host.querySelector('[data-preview-kind="rule"]')).not.toBeNull();
     expect(host.textContent).not.toContain("---");
 
     view.destroy();
@@ -143,7 +143,7 @@ describe("Live Preview activation", () => {
       }),
     });
 
-    const tableRows = host.querySelectorAll(".cm-lp-table-row");
+    const tableRows = host.querySelectorAll('[data-preview-kind="table-row"]');
     expect(tableRows).toHaveLength(2);
     expect(tableRows[0]?.querySelectorAll('[role="columnheader"]')).toHaveLength(2);
     expect(tableRows[1]?.querySelectorAll('[role="cell"]')).toHaveLength(2);
@@ -151,7 +151,7 @@ describe("Live Preview activation", () => {
     expect(host.textContent).not.toContain("| --- |");
 
     view.dispatch({ selection: { anchor: source.indexOf("Item") } });
-    expect(host.querySelector(".cm-lp-table-row")).toBeNull();
+    expect(host.querySelector('[data-preview-kind="table-row"]')).toBeNull();
     expect(host.textContent).toContain("| Item | State |");
 
     view.destroy();

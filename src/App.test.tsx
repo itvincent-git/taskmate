@@ -100,7 +100,7 @@ describe("Taskmate application", () => {
 
     await user.click(screen.getByRole("button", { name: "Choose folder" }));
 
-    expect(await screen.findByText("picker unavailable")).toHaveClass("banner", "error");
+    expect(await screen.findByText("picker unavailable")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Taskmate" })).toBeInTheDocument();
   });
 
@@ -115,7 +115,7 @@ describe("Taskmate application", () => {
     expect(within(listToolbar).getByLabelText("Tasks: 0")).toHaveTextContent("0");
 
     const newTaskButton = within(listToolbar).getByRole("button", { name: "New task" });
-    expect(newTaskButton).toHaveClass("ui-button-default", "ui-button-icon");
+    expect(newTaskButton).toBeEnabled();
     expect(newTaskButton).not.toHaveTextContent("New task");
     await user.click(newTaskButton);
     expect(await within(listToolbar).findByLabelText("Tasks: 1")).toHaveTextContent("1");
@@ -136,10 +136,10 @@ describe("Taskmate application", () => {
     await user.click(screen.getByRole("button", { name: "Open workspace" }));
     await user.click(await screen.findByRole("button", { name: "New task" }));
 
-    const header = container.querySelector(".detail-header");
+    const header = container.querySelector('[data-testid="detail-header"]');
     expect(header).not.toBeNull();
     expect(header).not.toHaveTextContent("Untitled task.md");
-    expect(header?.querySelector(".file-name")).not.toBeInTheDocument();
+    expect(within(header as HTMLElement).queryByText("Untitled task.md")).not.toBeInTheDocument();
     expect(within(header as HTMLElement).queryByLabelText("Status")).not.toBeInTheDocument();
     expect(screen.getByLabelText("Status")).toBeInTheDocument();
   });
@@ -206,7 +206,7 @@ describe("Taskmate application", () => {
 
     expect(screen.queryByLabelText("Status Filter")).not.toBeInTheDocument();
     expect(screen.queryByLabelText("Sort")).not.toBeInTheDocument();
-    expect(filterButton).not.toHaveClass("active");
+    expect(filterButton).toHaveAttribute("aria-pressed", "false");
 
     await user.click(filterButton);
     const dialog = screen.getByRole("dialog", { name: "Filter & sort" });
@@ -216,7 +216,7 @@ describe("Taskmate application", () => {
     await waitFor(() => expect(queryTasks).toHaveBeenLastCalledWith(expect.objectContaining({
       filters: [{ key: "status", operator: "eq", value: "done" }],
     })));
-    expect(filterButton).toHaveClass("active");
+    expect(filterButton).toHaveAttribute("aria-pressed", "true");
 
     await user.click(within(dialog).getByLabelText("Sort"));
     await user.click(await screen.findByRole("option", { name: "Status · Asc" }));
@@ -304,7 +304,6 @@ describe("Taskmate application", () => {
     const hideListButton = screen.getByRole("button", { name: "Hide task cards" });
     expect(tablist).not.toContainElement(hideListButton);
     expect(hideListButton.compareDocumentPosition(tablist) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(document.querySelector(".topbar")).not.toContainElement(hideListButton);
     expect(screen.getByRole("toolbar", { name: "Task list" })).not.toContainElement(hideListButton);
 
     await user.click(within(tabs[0]).getByRole("button", { name: "Untitled task" }));
@@ -362,7 +361,7 @@ describe("Taskmate application", () => {
     const { container, unmount } = render(<App />);
     await user.click(screen.getByRole("button", { name: "Open workspace" }));
     await screen.findByRole("toolbar", { name: "Task list" });
-    const splitter = container.querySelector(".splitter") as HTMLElement;
+    const splitter = container.querySelector('[data-testid="splitter"]') as HTMLElement;
 
     fireEvent(splitter, Object.assign(new MouseEvent("pointerdown", { bubbles: true, clientX: 390 }), { pointerId: 1 }));
     expect(document.body.style.userSelect).toBe("none");
@@ -371,13 +370,13 @@ describe("Taskmate application", () => {
 
     expect(document.body.style.userSelect).toBe("");
     expect(localStorage.getItem("taskmate-task-list-width.v1")).toBe("510");
-    expect(container.querySelector(".split-layout")).toHaveStyle({ gridTemplateColumns: "510px 5px minmax(0, 1fr)" });
+    expect(container.querySelector('[data-testid="split-layout"]')).toHaveStyle({ gridTemplateColumns: "510px 5px minmax(0, 1fr)" });
 
     unmount();
     const restored = render(<App />);
     await user.click(screen.getByRole("button", { name: "Open workspace" }));
     await screen.findByRole("toolbar", { name: "Task list" });
-    expect(restored.container.querySelector(".split-layout")).toHaveStyle({ gridTemplateColumns: "510px 5px minmax(0, 1fr)" });
+    expect(restored.container.querySelector('[data-testid="split-layout"]')).toHaveStyle({ gridTemplateColumns: "510px 5px minmax(0, 1fr)" });
   });
 
   it("switches between current and archived tasks from the list toolbar", async () => {
@@ -387,13 +386,13 @@ describe("Taskmate application", () => {
     const toolbar = await screen.findByRole("toolbar", { name: "Task list" });
     const archiveButton = within(toolbar).getByRole("button", { name: "Archive" });
 
-    expect(archiveButton).not.toHaveClass("active");
+    expect(archiveButton).toHaveAttribute("aria-pressed", "false");
     await user.click(archiveButton);
 
     const returnButton = within(toolbar).getByRole("button", { name: "Return to current tasks" });
-    expect(returnButton).toHaveClass("active");
+    expect(returnButton).toHaveAttribute("aria-pressed", "true");
     await user.click(returnButton);
-    expect(within(toolbar).getByRole("button", { name: "Archive" })).not.toHaveClass("active");
+    expect(within(toolbar).getByRole("button", { name: "Archive" })).toHaveAttribute("aria-pressed", "false");
   });
 
   it("shows one fixed property sidebar when the task detail is wide", async () => {

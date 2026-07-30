@@ -1,14 +1,15 @@
 import type { HTMLAttributes, ReactNode } from "react";
+import { cn } from "../../lib/utils";
 
 export function Card({ className = "", ...props }: HTMLAttributes<HTMLElement>) {
-  return <section className={`card ${className}`} {...props} />;
+  return <section className={cn("rounded-xl border border-line bg-surface p-5", className)} {...props} />;
 }
 
 export function CardHeader({ title, description }: { title: ReactNode; description?: ReactNode }) {
   return (
-    <header className="card-header">
-      <h2>{title}</h2>
-      {description ? <p>{description}</p> : null}
+    <header>
+      <h2 className="font-heading text-base">{title}</h2>
+      {description ? <p className="text-muted">{description}</p> : null}
     </header>
   );
 }

@@ -16,20 +16,20 @@ const hiddenMarks = new Set([
 ]);
 
 const styledNodes: Record<string, string> = {
-  ATXHeading1: "cm-lp-h1",
-  ATXHeading2: "cm-lp-h2",
-  ATXHeading3: "cm-lp-h3",
-  ATXHeading4: "cm-lp-h4",
-  ATXHeading5: "cm-lp-h5",
-  ATXHeading6: "cm-lp-h6",
-  StrongEmphasis: "cm-lp-strong",
-  Emphasis: "cm-lp-em",
-  Strikethrough: "cm-lp-strike",
-  InlineCode: "cm-lp-inline-code",
-  FencedCode: "cm-lp-code-block",
-  Blockquote: "cm-lp-quote",
-  Link: "cm-lp-link",
-  Image: "cm-lp-image",
+  ATXHeading1: "text-[1.85em] font-[760] leading-[1.45] no-underline",
+  ATXHeading2: "text-[1.52em] font-[730] leading-[1.5] no-underline",
+  ATXHeading3: "text-[1.3em] font-bold no-underline",
+  ATXHeading4: "font-bold no-underline",
+  ATXHeading5: "font-bold no-underline",
+  ATXHeading6: "font-bold no-underline",
+  StrongEmphasis: "font-[750]",
+  Emphasis: "italic",
+  Strikethrough: "text-muted line-through",
+  InlineCode: "rounded border border-line bg-surface-soft px-1 py-px font-mono text-[.9em]",
+  FencedCode: "bg-surface-soft font-mono",
+  Blockquote: "text-muted",
+  Link: "text-accent underline underline-offset-2",
+  Image: "",
 };
 
 export function rangeIsActive(
@@ -58,21 +58,28 @@ class MarkerWidget extends WidgetType {
   toDOM() {
     if (this.kind === "image") {
       const image = document.createElement("img");
-      image.className = "cm-lp-image-widget";
+      image.className = "my-2 block max-h-[360px] max-w-[min(100%,560px)] rounded-lg border border-line object-contain";
+      image.dataset.previewKind = "image";
       image.alt = this.text || "Markdown image";
       void api.resolveAttachment(this.text).then((source) => { image.src = source; }).catch(() => {
-        image.classList.add("failed");
+        image.className = "my-2 block min-h-[72px] max-h-[360px] min-w-[180px] max-w-[min(100%,560px)] rounded-lg border border-line bg-surface-soft p-3 object-contain text-muted";
         image.title = `Unable to load attachment: ${this.text}`;
       });
       return image;
     }
     if (this.kind === "rule") {
       const rule = document.createElement("span");
-      rule.className = "cm-lp-rule";
+      rule.className = "my-[.85em] block h-px bg-line";
+      rule.dataset.previewKind = "rule";
       return rule;
     }
     const marker = document.createElement("span");
-    marker.className = `cm-lp-marker cm-lp-marker-${this.kind}`;
+    marker.className = this.kind === "quote"
+      ? "mr-2.5 inline-block min-w-3 text-center font-bold text-[color-mix(in_srgb,var(--accent)_65%,transparent)]"
+      : this.kind === "task"
+        ? "mr-[7px] inline-block min-w-3 text-center text-[1.05em] font-bold text-accent"
+        : "mr-[7px] inline-block min-w-3 text-center font-bold text-accent";
+    marker.dataset.markerKind = this.kind;
     marker.textContent = this.kind === "bullet"
       ? "•"
       : this.kind === "quote"
@@ -102,7 +109,10 @@ class TableRowWidget extends WidgetType {
   }
   toDOM() {
     const row = document.createElement("span");
-    row.className = `cm-lp-table-row${this.header ? " cm-lp-table-header" : ""}`;
+    row.className = this.header
+      ? "inline-grid w-full border-t border-l border-line bg-surface-soft align-top text-[.92em] font-bold [&>span]:min-w-0 [&>span]:border-r [&>span]:border-b [&>span]:border-line [&>span]:px-2.5 [&>span]:py-[7px]"
+      : "inline-grid w-full border-l border-line align-top text-[.92em] [&>span]:min-w-0 [&>span]:border-r [&>span]:border-b [&>span]:border-line [&>span]:px-2.5 [&>span]:py-[7px]";
+    row.dataset.previewKind = "table-row";
     row.setAttribute("role", "row");
     row.style.gridTemplateColumns = `repeat(${this.values.length}, minmax(0, 1fr))`;
     this.values.forEach((value, index) => {
@@ -168,7 +178,7 @@ function buildDecorations(view: EditorView): DecorationSet {
             ranges.push({
               from: table.separator.from,
               to: table.separator.from,
-              decoration: Decoration.line({ class: "cm-lp-table-separator" }),
+              decoration: Decoration.line({ class: "hidden" }),
             });
             ranges.push({
               from: table.separator.from,

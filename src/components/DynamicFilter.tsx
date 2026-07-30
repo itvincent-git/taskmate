@@ -43,7 +43,7 @@ export function DynamicFilter({ definition, current, onChange }: {
   if (definition.type === "select") {
     return <Select
       ariaLabel={`${name} ${t("properties.filter")}`}
-      className="filter-select"
+      className="w-full max-w-none"
       value={first || "__all"}
       onValueChange={(value) => {
         const next = value === "__all" ? "" : value;
@@ -69,20 +69,20 @@ export function DynamicFilter({ definition, current, onChange }: {
         setMultiValues(values);
         onChange(values.length ? [{ key: definition.key, operator, value: values }] : []);
       };
-      return <div className="dynamic-filter">
+      return <div className="flex gap-[3px] [&>*]:w-full [&>*]:max-w-none">
         <Select ariaLabel={`${name} ${t("filter.match")}`} value={operator} onValueChange={setMatch} options={[
           { value: "any", label: t("common.any") },
           { value: "all", label: t("common.all") },
           { value: "unset", label: t("common.unset") },
         ]} />
-        <Popover trigger={<Button variant="outline" className="filter-multi-trigger" aria-label={`${name} ${t("properties.filter")}`}>{name}: {multiValues.length || t("common.all")}<ChevronDown size={14} /></Button>}>
-          <div className="filter-option-list">
-            {definition.options.map((option) => <label key={option.id}><Checkbox checked={multiValues.includes(option.id)} onCheckedChange={(checked) => toggle(option.id, checked === true)} /><span>{localizedOptionLabel(option, locale)}</span>{multiValues.includes(option.id) ? <Check size={13} /> : null}</label>)}
+        <Popover trigger={<Button variant="outline" className="h-[38px] max-w-[170px]" aria-label={`${name} ${t("properties.filter")}`}>{name}: {multiValues.length || t("common.all")}<ChevronDown size={14} /></Button>}>
+          <div className="grid gap-0.5">
+            {definition.options.map((option) => <label className="grid min-h-9 grid-cols-[22px_1fr_16px] items-center gap-2 rounded-md px-1.5 py-1 text-[13px] hover:bg-surface-soft" key={option.id}><Checkbox checked={multiValues.includes(option.id)} onCheckedChange={(checked) => toggle(option.id, checked === true)} /><span>{localizedOptionLabel(option, locale)}</span>{multiValues.includes(option.id) ? <Check size={13} /> : null}</label>)}
           </div>
         </Popover>
       </div>;
     }
-    return <div className="dynamic-filter">
+    return <div className="flex gap-[3px] [&>*]:w-full [&>*]:max-w-none">
       <Select ariaLabel={`${name} ${t("filter.match")}`} value={operator} onValueChange={setMatch} options={[
         { value: "any", label: t("common.any") }, { value: "all", label: t("common.all") }, { value: "unset", label: t("common.unset") },
       ]} />
@@ -115,7 +115,7 @@ export function DynamicFilter({ definition, current, onChange }: {
   const operators = definition.type === "text" || definition.type === "textarea" || definition.type === "url"
     ? [["contains", t("filter.contains")], ["notContains", t("filter.excludes")], ["unset", t("filter.empty")], ["set", t("filter.notEmpty")]]
     : [["eq", t("filter.equals")], ["gt", t("filter.greater")], ["lt", t("filter.less")], ["range", t("filter.range")], ["unset", t("common.unset")]];
-  return <div className="dynamic-filter detailed">
+  return <div className="flex gap-[3px] [&>*]:w-full [&>*]:max-w-none">
     <Select ariaLabel={`${name} ${t("filter.match")}`} value={operator} onValueChange={(value) => apply(value)} options={operators.map(([value, label]) => ({ value, label: `${name}: ${label}` }))} />
     {!["set", "unset"].includes(operator) ? <Input type={inputType} aria-label={`${name} ${t("properties.filter")}`} value={first} onChange={(event) => { setFirst(event.target.value); apply(operator, event.target.value); }} /> : null}
     {operator === "range" ? <Input type={inputType} aria-label={`${name} ${t("filter.range")}`} value={second} onChange={(event) => { setSecond(event.target.value); apply(operator, first, event.target.value); }} /> : null}
