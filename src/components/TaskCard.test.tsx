@@ -40,34 +40,23 @@ describe("TaskCard quick editing", () => {
     const onSelect = vi.fn();
     const onQuickEdit = vi.fn();
     render(<TaskCard task={task} selected={false} definitions={[status]} onSelect={onSelect} onQuickEdit={onQuickEdit} />);
-    expect(screen.queryByRole("combobox", { name: "Status" })).not.toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "Status" }));
-    expect(screen.getByRole("combobox", { name: "Status" })).toBeInTheDocument();
+    await user.hover(screen.getAllByText("To do")[0]);
     await user.click(screen.getByRole("combobox", { name: "Status" }));
     await user.click(await screen.findByRole("option", { name: "Done" }));
     expect(onQuickEdit).toHaveBeenCalledWith("status", "done");
     expect(onSelect).not.toHaveBeenCalled();
   });
 
-  it("closes the property editor with Escape or an outside click", async () => {
-    const user = userEvent.setup();
-    render(<TaskCard task={task} selected={false} definitions={[status]} onSelect={vi.fn()} onQuickEdit={vi.fn()} />);
-
-    await user.click(screen.getByRole("button", { name: "Status" }));
-    expect(screen.getByRole("combobox", { name: "Status" })).toBeInTheDocument();
-    await user.keyboard("{Escape}");
-    expect(screen.queryByRole("combobox", { name: "Status" })).not.toBeInTheDocument();
-
-    await user.click(screen.getByRole("button", { name: "Status" }));
-    expect(screen.getByRole("combobox", { name: "Status" })).toBeInTheDocument();
-    await user.click(document.body);
-    expect(screen.queryByRole("combobox", { name: "Status" })).not.toBeInTheDocument();
+  it("keeps the property editor positioned inside the card", () => {
+    const { container } = render(<TaskCard task={task} selected={false} definitions={[status]} onSelect={vi.fn()} onQuickEdit={vi.fn()} />);
+    expect(screen.getByRole("combobox", { name: "Status" })).toHaveClass("max-w-40");
+    expect(container.querySelector(".group.relative")).toContainElement(screen.getByRole("combobox", { name: "Status" }));
   });
 
   it("shows only the title in compact mode", () => {
     render(<TaskCard task={task} selected={false} definitions={[status]} compact onSelect={vi.fn()} onQuickEdit={vi.fn()} />);
     expect(screen.getByText("Card task")).toBeInTheDocument();
     expect(screen.queryByText("Card task.md")).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Status" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("combobox", { name: "Status" })).not.toBeInTheDocument();
   });
 });
