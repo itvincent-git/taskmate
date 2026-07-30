@@ -57,6 +57,7 @@ import { cn } from "./lib/utils";
 const initialPath = localStorage.getItem("taskmate-workspace") || `${navigator.platform.includes("Mac") ? "/Users/Shared" : "."}/Taskmate`;
 const RECENT_WORKSPACES_KEY = "taskmate-workspaces.v1";
 const COMPACT_CARDS_KEY = "taskmate-compact-cards.v1";
+const FILTER_SORT_KEY = "taskmate-filter-sort.v1";
 const TASK_LIST_VISIBLE_KEY = "taskmate-task-list-visible.v1";
 const TASK_LIST_WIDTH_KEY = "taskmate-task-list-width.v1";
 const MarkdownEditor = lazy(() => import("./components/MarkdownEditor").then((module) => ({ default: module.MarkdownEditor })));
@@ -148,6 +149,27 @@ function loadTaskListWidth() {
   const stored = localStorage.getItem(TASK_LIST_WIDTH_KEY);
   const width = stored === null ? 390 : Number(stored);
   return Number.isFinite(width) ? Math.max(290, Math.min(620, width)) : 390;
+}
+
+function loadFilterSort(path: string): Pick<TaskQuery, "filters" | "sort"> {
+  try {
+    const stored = JSON.parse(localStorage.getItem(FILTER_SORT_KEY) || "{}") as Record<string, Pick<TaskQuery, "filters" | "sort">>;
+    const preference = stored[path];
+    if (!preference || !Array.isArray(preference.filters)) return { filters: [] };
+    return { filters: preference.filters, sort: preference.sort };
+  } catch {
+    return { filters: [] };
+  }
+}
+
+function saveFilterSort(path: string, query: TaskQuery) {
+  try {
+    const stored = JSON.parse(localStorage.getItem(FILTER_SORT_KEY) || "{}") as Record<string, Pick<TaskQuery, "filters" | "sort">>;
+    stored[path] = { filters: query.filters, sort: query.sort };
+    localStorage.setItem(FILTER_SORT_KEY, JSON.stringify(stored));
+  } catch {
+    localStorage.setItem(FILTER_SORT_KEY, JSON.stringify({ [path]: { filters: query.filters, sort: query.sort } }));
+  }
 }
 
 function SaveBadge({ state }: { state: SaveState }) {
@@ -326,7 +348,7 @@ function WorkspaceSession() {
       setDefinitions(snapshot.properties);
       setLockedPropertyIds(new Set(snapshot.properties.map((definition) => definition.id)));
       setTasks(snapshot.tasks);
-      setQuery({ search: "", archived: false, filters: [] });
+      setQuery({ search: "", archived: false, ...loadFilterSort(path) });
       setSearchDraft("");
       setWorkspaceOpen(true);
       navigate("/tasks", { replace: true });
@@ -372,6 +394,11 @@ function WorkspaceSession() {
     localStorage.setItem(COMPACT_CARDS_KEY, String(compactCards));
     localStorage.setItem(TASK_LIST_VISIBLE_KEY, String(taskListVisible));
   }, [compactCards, taskListVisible]);
+
+  useEffect(() => {
+    if (!workspaceOpen) return;
+    saveFilterSort(workspacePath, query);
+  }, [query.filters, query.sort, workspaceOpen, workspacePath]);
 
   useEffect(() => {
     const element = detailPanel;

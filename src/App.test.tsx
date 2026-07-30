@@ -228,10 +228,42 @@ describe("Taskmate application", () => {
     await waitFor(() => expect(queryTasks).toHaveBeenLastCalledWith(expect.objectContaining({
       sort: { key: "status", direction: "asc", nulls: "first" },
     })));
+    expect(localStorage.getItem("taskmate-filter-sort.v1")).toContain('"operator":"eq"');
+    expect(localStorage.getItem("taskmate-filter-sort.v1")).toContain('"nulls":"first"');
 
     await user.keyboard("{Escape}");
     expect(screen.queryByRole("dialog", { name: "Filter & sort" })).not.toBeInTheDocument();
     await waitFor(() => expect(filterButton).toHaveFocus());
+  });
+
+  it("restores saved filters, sorting, and compact cards", async () => {
+    localStorage.setItem("taskmate-workspaces.v1", JSON.stringify(["/tmp/remembered-view"]));
+    localStorage.setItem("taskmate-filter-sort.v1", JSON.stringify({
+      "/tmp/remembered-view": {
+        filters: [{ key: "status", operator: "eq", value: "done" }],
+        sort: { key: "status", direction: "desc", nulls: "first" },
+      },
+    }));
+    localStorage.setItem("taskmate-compact-cards.v1", "true");
+    const queryTasks = vi.spyOn(api, "queryTasks");
+    const user = userEvent.setup();
+
+    render(<App />);
+
+    const toolbar = await screen.findByRole("toolbar", { name: "Task list" });
+    expect(within(toolbar).getByRole("button", { name: "Comfortable cards" })).toHaveAttribute("aria-pressed", "true");
+    await waitFor(() => expect(queryTasks).toHaveBeenLastCalledWith({
+      search: "",
+      archived: false,
+      filters: [{ key: "status", operator: "eq", value: "done" }],
+      sort: { key: "status", direction: "desc", nulls: "first" },
+    }));
+
+    await user.click(within(toolbar).getByRole("button", { name: "Open filters and sorting" }));
+    const dialog = screen.getByRole("dialog", { name: "Filter & sort" });
+    expect(within(dialog).getByLabelText("Status Filter")).toHaveTextContent("Done");
+    expect(within(dialog).getByLabelText("Sort")).toHaveTextContent("Status · Desc");
+    expect(within(dialog).getByLabelText("Empty last")).toHaveTextContent("Empty first");
   });
 
   it("keeps field visibility settings on the properties page", async () => {
