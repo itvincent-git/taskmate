@@ -182,7 +182,7 @@ function SaveBadge({ state }: { state: SaveState }) {
     external: [Cloud, t("save.external")],
   } as const;
   const [Icon, label] = content[state];
-  return <span className={cn("inline-flex items-center gap-[5px] whitespace-nowrap text-[11px] text-muted", (state === "failed" || state === "external") && "text-danger", state === "dirty" && "text-[#d97706]")}><Icon size={14} className={state === "saving" ? "animate-spin" : ""} />{label}</span>;
+  return <span className={cn("inline-flex items-center gap-[5px] whitespace-nowrap text-xs text-muted", (state === "failed" || state === "external") && "text-danger", state === "dirty" && "text-[#d97706]")}><Icon size={14} className={state === "saving" ? "animate-spin" : ""} />{label}</span>;
 }
 
 function BackupView() {
@@ -219,7 +219,7 @@ function BackupView() {
   };
   return (
     <div className="h-full overflow-auto px-[42px] pt-9 pb-[70px]">
-      <div className="mx-auto mb-[26px] flex max-w-[1160px] items-end justify-between gap-5"><div><p className="m-0 mb-1 text-[11px] font-bold tracking-[.12em] text-muted uppercase">{t("backup.eyebrow")}</p><h1 className="m-0 mb-[5px] font-heading text-[28px] tracking-[-.035em]">{t("backup.title")}</h1><p className="m-0 text-muted">{t("backup.description")}</p></div></div>
+      <div className="mx-auto mb-[26px] flex max-w-[1160px] items-end justify-between gap-5"><div><p className="m-0 mb-1 text-xs font-bold tracking-[.12em] text-muted uppercase">{t("backup.eyebrow")}</p><h1 className="m-0 mb-[5px] font-heading text-[28px] tracking-[-.035em]">{t("backup.title")}</h1><p className="m-0 text-muted">{t("backup.description")}</p></div></div>
       {error && <div className="my-3 rounded-lg border border-[color-mix(in_srgb,var(--danger)_24%,transparent)] bg-[color-mix(in_srgb,var(--danger)_10%,var(--surface))] px-[13px] py-[11px] text-danger">{error}</div>}
       {!status?.initialized ? (
         <div className="mx-auto my-[90px] max-w-[620px] rounded-2xl border border-dashed border-line p-[60px] text-center text-muted"><GitBranch className="mx-auto" size={38} /><h2 className="mb-[5px] font-heading text-foreground">{t("backup.initializeTitle")}</h2><p>{t("backup.initializeDescription")}</p><Button onClick={() => action("git_initialize")} disabled={Boolean(busy)}>{t("backup.initialize")}</Button></div>
@@ -227,21 +227,21 @@ function BackupView() {
         <div className="mx-auto grid max-w-[1160px] grid-cols-2 gap-4">
           <section className="rounded-xl border border-line bg-surface p-[21px] transition-shadow hover:shadow-panel [&>h2]:mt-0 [&>h2]:mb-[17px] [&>h2]:font-heading [&>h2]:text-base">
             <h2>{t("backup.repository")}</h2>
-            <dl className="m-0 grid grid-cols-2 gap-[15px] [&_dd]:mt-[5px] [&_dd]:mb-0 [&_dd]:font-semibold [&_div]:border-b [&_div]:border-line [&_div]:pb-2.5 [&_dt]:text-[10px] [&_dt]:tracking-[.08em] [&_dt]:text-muted [&_dt]:uppercase"><div><dt>{t("backup.branch")}</dt><dd>{status.branch || "—"}</dd></div><div><dt>{t("backup.changes")}</dt><dd>{status.changes.length}</dd></div><div><dt>{t("backup.aheadBehind")}</dt><dd>{status.ahead} / {status.behind}</dd></div><div><dt>{t("backup.lastSync")}</dt><dd>{status.lastSync ? new Date(status.lastSync).toLocaleString() : t("common.never")}</dd></div></dl>
-            {status.conflicts.length > 0 && <div className="my-3 rounded-lg border border-[color-mix(in_srgb,var(--danger)_24%,transparent)] bg-[color-mix(in_srgb,var(--danger)_10%,var(--surface))] px-[13px] py-[11px] text-danger"><strong>{t("backup.conflicts")}</strong>{status.conflicts.map((conflict) => <code className="my-1.5 block text-[11px]" key={conflict}>{conflict}</code>)}</div>}
+            <dl className="m-0 grid grid-cols-2 gap-[15px] [&_dd]:mt-[5px] [&_dd]:mb-0 [&_dd]:font-semibold [&_div]:border-b [&_div]:border-line [&_div]:pb-2.5 [&_dt]:text-xs [&_dt]:tracking-[.08em] [&_dt]:text-muted [&_dt]:uppercase"><div><dt>{t("backup.branch")}</dt><dd>{status.branch || "—"}</dd></div><div><dt>{t("backup.changes")}</dt><dd>{status.changes.length}</dd></div><div><dt>{t("backup.aheadBehind")}</dt><dd>{status.ahead} / {status.behind}</dd></div><div><dt>{t("backup.lastSync")}</dt><dd>{status.lastSync ? new Date(status.lastSync).toLocaleString() : t("common.never")}</dd></div></dl>
+            {status.conflicts.length > 0 && <div className="my-3 rounded-lg border border-[color-mix(in_srgb,var(--danger)_24%,transparent)] bg-[color-mix(in_srgb,var(--danger)_10%,var(--surface))] px-[13px] py-[11px] text-danger"><strong>{t("backup.conflicts")}</strong>{status.conflicts.map((conflict) => <code className="my-1.5 block text-xs" key={conflict}>{conflict}</code>)}</div>}
           </section>
           <section className="rounded-xl border border-line bg-surface p-[21px] transition-shadow hover:shadow-panel [&>h2]:mt-0 [&>h2]:mb-[17px] [&>h2]:font-heading [&>h2]:text-base [&>label]:mb-3 [&>label]:grid [&>label]:gap-[7px] [&>label]:text-xs [&>label]:font-semibold [&>label]:text-muted">
             <h2>{t("backup.remote")}</h2>
             <label>{t("backup.remoteUrl")}<Input value={remote} onChange={(event) => setRemote(event.target.value)} placeholder="https://github.com/owner/tasks.git" /></label>
             <Button variant="outline" onClick={() => action("git_set_remote", { url: remote })}>{t("backup.saveRemote")}</Button>
-            <p className="text-[11px] leading-normal text-muted">{t("backup.credentialHelp")}</p>
+            <p className="text-xs leading-normal text-muted">{t("backup.credentialHelp")}</p>
           </section>
           <section className="rounded-xl border border-line bg-surface p-[21px] transition-shadow hover:shadow-panel [&>h2]:mt-0 [&>h2]:mb-[17px] [&>h2]:font-heading [&>h2]:text-base [&>label]:mb-3 [&>label]:grid [&>label]:gap-[7px] [&>label]:text-xs [&>label]:font-semibold [&>label]:text-muted">
             <h2>{t("backup.sync")}</h2>
             <label>{t("backup.commitMessage")}<Input value={message} onChange={(event) => setMessage(event.target.value)} /></label>
             <div className="flex gap-2"><Button onClick={() => action("git_commit", { message })}>{t("backup.commit")}</Button><Button variant="outline" onClick={() => action("git_pull")}>{t("backup.pull")}</Button><Button variant="outline" onClick={() => action("git_push")}>{t("backup.push")}</Button></div>
           </section>
-          <section className="rounded-xl border border-line bg-surface p-[21px] transition-shadow hover:shadow-panel [&>h2]:mt-0 [&>h2]:mb-[17px] [&>h2]:font-heading [&>h2]:text-base"><h2>{t("backup.history")}</h2>{history.length ? history.map((entry) => <code className="my-1.5 block text-[11px]" key={entry}>{entry}</code>) : <p className="text-muted">{t("backup.noCommits")}</p>}</section>
+          <section className="rounded-xl border border-line bg-surface p-[21px] transition-shadow hover:shadow-panel [&>h2]:mt-0 [&>h2]:mb-[17px] [&>h2]:font-heading [&>h2]:text-base"><h2>{t("backup.history")}</h2>{history.length ? history.map((entry) => <code className="my-1.5 block text-xs" key={entry}>{entry}</code>) : <p className="text-muted">{t("backup.noCommits")}</p>}</section>
         </div>
       )}
     </div>
@@ -264,7 +264,7 @@ function UpdateSettingsView({ updater }: { updater: ReturnType<typeof useUpdater
   const message = updateMessage(updater.phase, updater.info?.version, t);
   return (
     <div className="h-full overflow-auto px-[42px] pt-9 pb-[70px]">
-      <div className="mx-auto mb-[26px] flex max-w-[1160px] items-end justify-between gap-5"><div><p className="m-0 mb-1 text-[11px] font-bold tracking-[.12em] text-muted uppercase">{t("updates.eyebrow")}</p><h1 className="m-0 mb-[5px] font-heading text-[28px] tracking-[-.035em]">{t("updates.title")}</h1><p className="m-0 text-muted">{t("updates.description")}</p></div></div>
+      <div className="mx-auto mb-[26px] flex max-w-[1160px] items-end justify-between gap-5"><div><p className="m-0 mb-1 text-xs font-bold tracking-[.12em] text-muted uppercase">{t("updates.eyebrow")}</p><h1 className="m-0 mb-[5px] font-heading text-[28px] tracking-[-.035em]">{t("updates.title")}</h1><p className="m-0 text-muted">{t("updates.description")}</p></div></div>
       <section className="mx-auto max-w-[1160px] rounded-xl border border-line bg-surface p-[21px] transition-shadow hover:shadow-panel">
         <div className="mb-4 flex items-center gap-2.5 text-muted"><Download size={20} /><p className="m-0">{message}</p></div>
         {updater.phase === "downloading" ? <progress className="mb-4 w-[min(360px,100%)]" max={100} value={updater.progress.percent ?? undefined} /> : null}
@@ -648,7 +648,7 @@ function WorkspaceSession() {
       <main className="flex h-full flex-col items-center justify-center bg-background text-center">
         <div className="grid size-[58px] place-items-center rounded-xl bg-accent text-white"><Check /></div>
         <div className="fixed top-6 right-6"><Select ariaLabel={t("nav.language")} value={locale} onValueChange={(value) => setLocale(value as typeof locale)} options={[{ value: "en", label: "English" }, { value: "zh-CN", label: "简体中文" }]} /></div>
-        <p className="m-0 mt-3.5 mb-1 text-[11px] font-bold tracking-[.12em] text-muted uppercase">{t("app.tagline")}</p>
+        <p className="m-0 mt-3.5 mb-1 text-xs font-bold tracking-[.12em] text-muted uppercase">{t("app.tagline")}</p>
         <h1 className="m-0 mb-1.5 font-heading text-6xl font-bold tracking-[-.04em]">{t("app.name")}</h1>
         <p className="m-0 mb-[30px] max-w-[480px] text-muted">{t("app.description")}</p>
         <label className="w-[min(540px,70vw)] text-left text-xs font-semibold text-muted" htmlFor="workspace-path">{t("workspace.folder")}</label>
@@ -724,13 +724,13 @@ function WorkspaceSession() {
               </Tooltip>
               <DropdownMenu.Portal>
                 <DropdownMenu.Content className="z-[200] w-[min(320px,calc(100vw-80px))] rounded-lg border border-line bg-surface p-[5px] shadow-[0_12px_30px_rgba(0,0,0,.14)]" side="right" align="end" sideOffset={8} collisionPadding={8}>
-                  <DropdownMenu.Label className="px-[9px] pt-[7px] pb-[3px] text-[10px] font-bold tracking-[.06em] text-muted uppercase">{t("workspace.current")}</DropdownMenu.Label>
+                  <DropdownMenu.Label className="px-[9px] pt-[7px] pb-[3px] text-xs font-bold tracking-[.06em] text-muted uppercase">{t("workspace.current")}</DropdownMenu.Label>
                   <div className="min-w-0 px-[9px] pt-[3px] pb-2">
-                    <span className="block truncate text-[13px] font-semibold">{workspaceName}</span>
-                    <span className="mt-0.5 block truncate text-[11px] text-muted" title={workspacePath}>{workspacePath}</span>
+                    <span className="block truncate text-xs font-semibold">{workspaceName}</span>
+                    <span className="mt-0.5 block truncate text-xs text-muted" title={workspacePath}>{workspacePath}</span>
                   </div>
                   <DropdownMenu.Separator className="m-1 h-px bg-line" />
-                  <DropdownMenu.Item className="flex min-h-[34px] cursor-default items-center gap-2 rounded-[5px] px-[9px] py-[7px] text-[13px] outline-none data-[highlighted]:bg-accent-soft data-[highlighted]:text-accent" onSelect={() => void switchWorkspace()}>
+                  <DropdownMenu.Item className="flex min-h-[34px] cursor-default items-center gap-2 rounded-[5px] px-[9px] py-[7px] text-xs outline-none data-[highlighted]:bg-accent-soft data-[highlighted]:text-accent" onSelect={() => void switchWorkspace()}>
                     <FolderSync size={16} />
                     {t("workspace.switch")}
                   </DropdownMenu.Item>
@@ -793,7 +793,7 @@ function WorkspaceSession() {
             <div className="grid h-[calc(100%-64px)] min-h-0" data-testid="split-layout" style={{ gridTemplateColumns: taskListVisible ? `${leftWidth}px 5px minmax(0, 1fr)` : "0 0 minmax(0, 1fr)" }}>
               <section className={cn("flex min-h-0 min-w-0 flex-col bg-background", !taskListVisible && "invisible overflow-hidden")} aria-hidden={!taskListVisible}>
                 <div className="flex min-h-[60px] shrink-0 items-center justify-between gap-2.5 px-3 py-[11px]" role="toolbar" aria-label={t("tasks.listToolbar")}>
-                  <span className="inline-flex min-w-0 items-center gap-[7px] text-[13px] font-semibold text-muted [&_svg]:shrink-0" aria-label={t("tasks.taskCount", { count: tasks.length })}><LayoutList size={17} />{tasks.length}</span>
+                  <span className="inline-flex min-w-0 items-center gap-[7px] text-xs font-semibold text-muted [&_svg]:shrink-0" aria-label={t("tasks.taskCount", { count: tasks.length })}><LayoutList size={17} />{tasks.length}</span>
                   <div className="flex items-center gap-[7px]">
                     <Tooltip label={t("tasks.openFilterSort")}>
                       <Button ref={filterButton} variant="outline" size="icon" aria-pressed={filterSortActive} aria-label={t("tasks.openFilterSort")} onClick={() => setFilterDialogOpen(true)}><ListFilter size={17} /></Button>
@@ -810,7 +810,7 @@ function WorkspaceSession() {
                   </div>
                 </div>
                 <div className="min-h-0 flex-1 overflow-auto px-3 pb-5" ref={listHost}>
-                  {tasks.length === 0 ? <div className="flex h-full flex-col items-center justify-center text-center text-muted [&>h2]:mt-3 [&>h2]:mb-[3px] [&>h2]:font-heading [&>h2]:text-base [&>h2]:text-foreground [&>p]:m-0 [&>p]:text-[13px]"><LayoutList /><h2>{searchDraft || query.filters.length ? t("tasks.noMatches") : t("tasks.nothing")}</h2><p>{query.archived ? t("tasks.archivedHint") : t("tasks.createHint")}</p></div> : (
+                  {tasks.length === 0 ? <div className="flex h-full flex-col items-center justify-center text-center text-muted [&>h2]:mt-3 [&>h2]:mb-[3px] [&>h2]:font-heading [&>h2]:text-base [&>h2]:text-foreground [&>p]:m-0 [&>p]:text-xs"><LayoutList /><h2>{searchDraft || query.filters.length ? t("tasks.noMatches") : t("tasks.nothing")}</h2><p>{query.archived ? t("tasks.archivedHint") : t("tasks.createHint")}</p></div> : (
                     <div style={{ height: virtualizer.getTotalSize(), position: "relative" }}>
                       {virtualizer.getVirtualItems().map((item) => {
                         const summary = tasks[item.index];
@@ -822,7 +822,7 @@ function WorkspaceSession() {
               </section>
               <div className={cn("relative z-[2] cursor-col-resize bg-line hover:bg-accent", !taskListVisible && "invisible")} data-testid="splitter" onPointerDown={beginResize} />
               <section className="min-h-0 min-w-0 bg-surface" ref={setDetailPanel}>
-                {!task ? <div className="flex h-full flex-col items-center justify-center text-center text-muted [&>h2]:mt-3 [&>h2]:mb-[3px] [&>h2]:font-heading [&>h2]:text-base [&>h2]:text-foreground [&>p]:m-0 [&>p]:text-[13px]"><div className="grid size-[52px] place-items-center rounded-full bg-accent-soft text-accent"><Check /></div><h2>{t("tasks.select")}</h2><p>{t("tasks.selectHint")}</p></div> : (
+                {!task ? <div className="flex h-full flex-col items-center justify-center text-center text-muted [&>h2]:mt-3 [&>h2]:mb-[3px] [&>h2]:font-heading [&>h2]:text-base [&>h2]:text-foreground [&>p]:m-0 [&>p]:text-xs"><div className="grid size-[52px] place-items-center rounded-full bg-accent-soft text-accent"><Check /></div><h2>{t("tasks.select")}</h2><p>{t("tasks.selectHint")}</p></div> : (
                   <div className="flex h-full flex-col overflow-hidden">
                     <header className="z-[5] flex h-11 shrink-0 items-center gap-[5px] border-b border-line bg-[color-mix(in_srgb,var(--surface)_92%,transparent)] py-[5px] pr-2.5 pl-4 backdrop-blur-xl" data-testid="detail-header">
                       <Input className="min-h-0 min-w-20 flex-1 rounded-none border-0 bg-transparent p-0 font-heading text-lg font-[730] tracking-[-.025em] shadow-none ring-0 focus:ring-0" aria-label={t("tasks.title")} value={task.title} onChange={(event) => editTask({ title: event.target.value })} />
@@ -834,11 +834,11 @@ function WorkspaceSession() {
                         </Tooltip>
                         <DropdownMenu.Portal>
                           <DropdownMenu.Content className="z-[200] w-[180px] rounded-lg border border-line bg-surface p-1 shadow-[0_12px_30px_rgba(0,0,0,.14)]" align="end" sideOffset={5} collisionPadding={8}>
-                            <DropdownMenu.Item className="flex min-h-[34px] cursor-default items-center gap-2 rounded-[5px] px-[9px] py-[7px] text-[13px] outline-none data-[highlighted]:bg-accent-soft data-[highlighted]:text-accent" onSelect={() => void copyText(task.title)}>
+                            <DropdownMenu.Item className="flex min-h-[34px] cursor-default items-center gap-2 rounded-[5px] px-[9px] py-[7px] text-xs outline-none data-[highlighted]:bg-accent-soft data-[highlighted]:text-accent" onSelect={() => void copyText(task.title)}>
                               <Copy size={15} />
                               {t("editor.copyTitle")}
                             </DropdownMenu.Item>
-                            <DropdownMenu.Item className="flex min-h-[34px] cursor-default items-center gap-2 rounded-[5px] px-[9px] py-[7px] text-[13px] outline-none data-[highlighted]:bg-accent-soft data-[highlighted]:text-accent" onSelect={() => void copyTaskFilePath(task)}>
+                            <DropdownMenu.Item className="flex min-h-[34px] cursor-default items-center gap-2 rounded-[5px] px-[9px] py-[7px] text-xs outline-none data-[highlighted]:bg-accent-soft data-[highlighted]:text-accent" onSelect={() => void copyTaskFilePath(task)}>
                               <FileText size={15} />
                               {t("editor.copyFilePath")}
                             </DropdownMenu.Item>
@@ -898,7 +898,7 @@ function WorkspaceSession() {
           closeLabel={t("common.close")}
           footer={<><Button variant="outline" onClick={() => { setExternalTask(null); setSaveState("dirty"); }}>{t("external.keep")}</Button><Button onClick={() => { if (externalTask) setTask(externalTask); setExternalTask(null); setSaveState("saved"); }}>{t("external.reload")}</Button></>}
         >
-          {externalTask && task ? <div className="grid grid-cols-2 gap-3 [&_pre]:max-h-80 [&_pre]:overflow-auto [&_pre]:whitespace-pre-wrap [&_pre]:rounded-lg [&_pre]:border [&_pre]:border-line [&_pre]:bg-surface-soft [&_pre]:p-3.5 [&_pre]:text-[11px]"><div><strong>{t("external.editor")}</strong><pre>{task.body}</pre></div><div><strong>{t("external.disk")}</strong><pre>{externalTask.body}</pre></div></div> : null}
+          {externalTask && task ? <div className="grid grid-cols-2 gap-3 [&_pre]:max-h-80 [&_pre]:overflow-auto [&_pre]:whitespace-pre-wrap [&_pre]:rounded-lg [&_pre]:border [&_pre]:border-line [&_pre]:bg-surface-soft [&_pre]:p-3.5 [&_pre]:text-xs"><div><strong>{t("external.editor")}</strong><pre>{task.body}</pre></div><div><strong>{t("external.disk")}</strong><pre>{externalTask.body}</pre></div></div> : null}
         </Dialog>
         <Dialog
           open={deleteConfirmOpen}

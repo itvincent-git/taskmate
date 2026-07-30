@@ -58,7 +58,7 @@ export function PropertySettings({ definitions, lockedIds, onChange, onSave, onR
   return (
     <div className="h-full overflow-auto px-[42px] pt-9 pb-[70px]">
       <div className="mx-auto mb-[26px] flex max-w-[1160px] items-end justify-between gap-5">
-        <div><p className="m-0 mb-1 text-[11px] font-bold tracking-[.12em] text-muted uppercase">{t("workspace.schema")}</p><h1 className="m-0 mb-[5px] font-heading text-[28px] tracking-[-.035em]">{t("properties.title")}</h1><p className="m-0 text-muted">{t("properties.description")}</p></div>
+        <div><p className="m-0 mb-1 text-xs font-bold tracking-[.12em] text-muted uppercase">{t("workspace.schema")}</p><h1 className="m-0 mb-[5px] font-heading text-[28px] tracking-[-.035em]">{t("properties.title")}</h1><p className="m-0 text-muted">{t("properties.description")}</p></div>
         <div className="flex gap-2">
           <Button variant="outline" onClick={onRebuild}>{t("properties.rebuild")}</Button>
           <Button variant="outline" onClick={add}><Plus size={16} />{t("properties.add")}</Button>

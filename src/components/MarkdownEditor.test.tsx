@@ -4,6 +4,12 @@ import { describe, expect, it, vi } from "vitest";
 import { MarkdownEditor } from "./MarkdownEditor";
 
 describe("MarkdownEditor", () => {
+  it("uses a 14px document font size", () => {
+    const { container } = render(<MarkdownEditor value="Document body" onChange={vi.fn()} />);
+
+    expect(getComputedStyle(container.querySelector(".cm-editor")!)).toHaveProperty("fontSize", "14px");
+  });
+
   it("syncs a changed value without reporting a user edit", () => {
     const onChange = vi.fn();
     const { container, rerender } = render(<MarkdownEditor value="First body" onChange={onChange} />);

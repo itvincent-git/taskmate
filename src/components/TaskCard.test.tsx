@@ -29,7 +29,8 @@ const task: TaskSummary = {
 describe("TaskCard quick editing", () => {
   it("shows a single-line title with the full title available on hover and no file metadata", () => {
     const { container } = render(<TaskCard task={task} selected={false} definitions={[status]} onSelect={vi.fn()} onQuickEdit={vi.fn()} />);
-    expect(screen.getByTitle("Card task")).toHaveTextContent("Card task");
+    expect(screen.getByTitle("Card task")).toHaveClass("text-xs");
+    expect(screen.getAllByText("To do").some((element) => element.classList.contains("text-xs"))).toBe(true);
     expect(screen.queryByText("Card task.md")).not.toBeInTheDocument();
     expect(container.querySelector("time")).not.toBeInTheDocument();
   });

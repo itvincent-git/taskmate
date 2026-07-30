@@ -78,7 +78,7 @@ export function MarkdownEditor({ value, onChange }: Props) {
             }
           }),
           EditorView.theme({
-            "&": { height: "100%" },
+            "&": { height: "100%", fontSize: "14px" },
             ".cm-scroller": { overflow: "auto", fontFamily: "inherit" },
             ".cm-content": { minHeight: "300px", padding: "22px 28px 80px", caretColor: "var(--accent)" },
             ".cm-line": { lineHeight: "1.72" },

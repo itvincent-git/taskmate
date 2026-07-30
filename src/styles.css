@@ -37,6 +37,10 @@
   --shadow: 0 8px 30px rgba(0, 0, 0, 0.08);
 }
 
+body {
+  font-size: 12px;
+}
+
 [data-theme="dark"] {
   color-scheme: dark;
   --bg: #111113;

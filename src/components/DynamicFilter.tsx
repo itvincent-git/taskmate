@@ -77,7 +77,7 @@ export function DynamicFilter({ definition, current, onChange }: {
         ]} />
         <Popover trigger={<Button variant="outline" className="h-[38px] max-w-[170px]" aria-label={`${name} ${t("properties.filter")}`}>{name}: {multiValues.length || t("common.all")}<ChevronDown size={14} /></Button>}>
           <div className="grid gap-0.5">
-            {definition.options.map((option) => <label className="grid min-h-9 grid-cols-[22px_1fr_16px] items-center gap-2 rounded-md px-1.5 py-1 text-[13px] hover:bg-surface-soft" key={option.id}><Checkbox checked={multiValues.includes(option.id)} onCheckedChange={(checked) => toggle(option.id, checked === true)} /><span>{localizedOptionLabel(option, locale)}</span>{multiValues.includes(option.id) ? <Check size={13} /> : null}</label>)}
+            {definition.options.map((option) => <label className="grid min-h-9 grid-cols-[22px_1fr_16px] items-center gap-2 rounded-md px-1.5 py-1 text-xs hover:bg-surface-soft" key={option.id}><Checkbox checked={multiValues.includes(option.id)} onCheckedChange={(checked) => toggle(option.id, checked === true)} /><span>{localizedOptionLabel(option, locale)}</span>{multiValues.includes(option.id) ? <Check size={13} /> : null}</label>)}
           </div>
         </Popover>
       </div>;
