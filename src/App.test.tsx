@@ -278,13 +278,18 @@ describe("Taskmate application", () => {
     expect(screen.getByRole("button", { name: "Save changes" })).toBeInTheDocument();
   });
 
-  it("switches the complete Taskmate shell to Simplified Chinese", async () => {
+  it("switches the complete Taskmate shell to Simplified Chinese from settings", async () => {
     const user = userEvent.setup();
     render(<App />);
+    expect(screen.queryByLabelText("Language")).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Open workspace" }));
+    await screen.findByRole("toolbar", { name: "Task list" });
+    expect(screen.queryByLabelText("Language")).not.toBeInTheDocument();
+    await user.click(screen.getByRole("link", { name: "Settings" }));
     await user.click(screen.getByLabelText("Language"));
     await user.click(await screen.findByRole("option", { name: "简体中文" }));
-    expect(screen.getByRole("button", { name: "打开工作区" })).toBeInTheDocument();
-    expect(screen.getByText("本地优先的任务管理")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "设置" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "任务" })).toBeInTheDocument();
     expect(localStorage.getItem("taskmate.locale.v1")).toBe("zh-CN");
   });
 
