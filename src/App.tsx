@@ -780,7 +780,7 @@ function WorkspaceSession() {
               <section className={cn("flex min-h-0 min-w-0 flex-col bg-background", !taskListVisible && "invisible overflow-hidden")} aria-hidden={!taskListVisible}>
                 <div className="flex min-h-12 shrink-0 items-center justify-between gap-2 px-2.5 py-2" role="toolbar" aria-label={t("tasks.listToolbar")}>
                   <span className="inline-flex min-w-0 items-center gap-1.5 text-xs font-semibold text-muted [&_svg]:shrink-0" aria-label={t("tasks.taskCount", { count: tasks.length })}><LayoutList size={16} />{tasks.length}</span>
-                  <div className="flex items-center gap-1.5">
+                  <div className="flex items-center gap-1.5 [&_button]:size-8 [&_button]:shrink-0 [&_button_svg]:size-[17px]">
                     <Tooltip label={t("tasks.openFilterSort")}>
                       <Button ref={filterButton} variant="outline" size="icon" aria-pressed={filterSortActive} aria-label={t("tasks.openFilterSort")} onClick={() => setFilterDialogOpen(true)}><ListFilter size={17} /></Button>
                     </Tooltip>
