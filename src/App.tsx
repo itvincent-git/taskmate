@@ -836,7 +836,7 @@ function WorkspaceSession() {
           </div>
         </aside>
         <main className="relative h-full min-w-0 flex-1">
-        {error && <div className="fixed top-3 right-4 z-50 flex max-w-[430px] items-center gap-2.5 rounded-[9px] bg-[#9f3e3b] py-2 pr-2 pl-3 text-xs text-white shadow-panel" role="alert"><span>{error}</span><Button variant="ghost" size="icon" className="text-[21px] text-white" aria-label={t("common.close")} onClick={() => setError("")}>×</Button></div>}
+        {error && <div className="fixed top-3 right-4 z-50 flex max-w-[430px] items-center gap-2.5 rounded-[9px] bg-[#9f3e3b] py-2 pr-2 pl-3 text-xs text-white shadow-panel" role="alert"><span>{error}</span><Button variant="ghost" size="icon" className="text-white" aria-label={t("common.close")} onClick={() => setError("")}><X size={16} /></Button></div>}
         {page === "/properties" && <PropertySettings definitions={definitions} lockedIds={lockedPropertyIds} onChange={setDefinitions} saving={schemaSaving} onRebuild={async () => {
           setSchemaSaving(true);
           try { setTasks(await api.rebuildIndex()); } catch (cause) { setError(errorMessage(cause)); } finally { setSchemaSaving(false); }

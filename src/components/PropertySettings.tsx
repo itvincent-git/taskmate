@@ -1,4 +1,4 @@
-import { ChevronDown, ChevronUp, GripVertical, Plus, Trash2 } from "lucide-react";
+import { ChevronDown, ChevronUp, GripVertical, Plus, Trash2, X } from "lucide-react";
 import type { PropertyDefinition, PropertyType } from "../types";
 import { localizedPropertyName, useTaskmateI18n } from "../lib/taskmate-i18n";
 import { PropertyInput } from "./PropertyInput";
@@ -92,8 +92,8 @@ export function PropertySettings({ definitions, lockedIds, onChange, onSave, onR
                       <Input className="w-[120px]" value={option.label} onChange={(event) => update(definition.id, { options: definition.options.map((item) => item.id === option.id ? { ...item, label: event.target.value } : item) })} />
                       <Button variant="ghost" size="icon" className="h-[26px] min-h-0 w-6 rounded-[5px] p-0 [&_svg]:w-3" aria-label={`Move ${option.label} up`} onClick={() => moveOption(definition, index, -1)}><ChevronUp /></Button>
                       <Button variant="ghost" size="icon" className="h-[26px] min-h-0 w-6 rounded-[5px] p-0 [&_svg]:w-3" aria-label={`Move ${option.label} down`} onClick={() => moveOption(definition, index, 1)}><ChevronDown /></Button>
-                      <Button variant="ghost" size="icon" className="h-[26px] min-h-0 w-6 rounded-[5px] p-0 text-danger" aria-label={`Delete ${option.label}`} onClick={() => update(definition.id, { options: definition.options.filter((item) => item.id !== option.id).map((item, order) => ({ ...item, order })) })}>×</Button>
-                      {index === definition.options.length - 1 ? <Button variant="ghost" size="icon" className="h-[26px] min-h-0 w-6 rounded-[5px] p-0" aria-label={t("properties.addOption")} onClick={() => update(definition.id, { options: [...definition.options, { id: crypto.randomUUID(), label: t("properties.newOption"), color: "#9C9C9C", order: definition.options.length }] })}>+</Button> : null}
+                      <Button variant="ghost" size="icon" className="h-[26px] min-h-0 w-6 rounded-[5px] p-0 text-danger [&_svg]:w-3" aria-label={`Delete ${option.label}`} onClick={() => update(definition.id, { options: definition.options.filter((item) => item.id !== option.id).map((item, order) => ({ ...item, order })) })}><X /></Button>
+                      {index === definition.options.length - 1 ? <Button variant="ghost" size="icon" className="h-[26px] min-h-0 w-6 rounded-[5px] p-0 [&_svg]:w-3" aria-label={t("properties.addOption")} onClick={() => update(definition.id, { options: [...definition.options, { id: crypto.randomUUID(), label: t("properties.newOption"), color: "#9C9C9C", order: definition.options.length }] })}><Plus /></Button> : null}
                     </div>)}
                     {definition.options.length === 0 ? <Button variant="outline" size="sm" onClick={() => update(definition.id, { options: [{ id: crypto.randomUUID(), label: t("properties.newOption"), color: "#9C9C9C", order: 0 }] })}>{t("properties.addOption")}</Button> : null}
                   </div>
