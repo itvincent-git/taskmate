@@ -49,13 +49,17 @@ function nodeIsActive(state: EditorState, node: SyntaxNode, composing: boolean) 
 type TableAlignment = "left" | "center" | "right" | undefined;
 
 class MarkerWidget extends WidgetType {
-  constructor(readonly kind: "bullet" | "ordered" | "task" | "quote" | "rule" | "image", readonly text = "") {
+  constructor(
+    readonly kind: "bullet" | "ordered" | "task" | "quote" | "rule" | "image",
+    readonly text = "",
+    readonly from = 0,
+  ) {
     super();
   }
   eq(other: MarkerWidget) {
-    return this.kind === other.kind && this.text === other.text;
+    return this.kind === other.kind && this.text === other.text && this.from === other.from;
   }
-  toDOM() {
+  toDOM(view: EditorView) {
     if (this.kind === "image") {
       const image = document.createElement("img");
       image.className = "my-2 block max-h-[360px] max-w-[min(100%,560px)] rounded-lg border border-line object-contain";
@@ -73,24 +77,54 @@ class MarkerWidget extends WidgetType {
       rule.dataset.previewKind = "rule";
       return rule;
     }
+    if (this.kind === "task") {
+      const checked = /^\[[xX]\]$/.test(this.text.trim());
+      const checkbox = document.createElement("button");
+      checkbox.type = "button";
+      checkbox.className = "mr-[7px] inline-grid size-[18px] cursor-pointer place-items-center rounded-[5px] border-2 border-neutral bg-transparent p-0 align-[-3px] text-white transition-colors hover:border-accent focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-[color-mix(in_srgb,var(--accent)_18%,transparent)] data-[checked=true]:border-accent data-[checked=true]:bg-accent";
+      checkbox.dataset.markerKind = "task";
+      checkbox.dataset.checked = String(checked);
+      checkbox.setAttribute("role", "checkbox");
+      checkbox.setAttribute("aria-checked", String(checked));
+      checkbox.setAttribute("aria-label", checked ? "Mark task incomplete" : "Mark task complete");
+      if (checked) {
+        const icon = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+        icon.setAttribute("viewBox", "0 0 24 24");
+        icon.setAttribute("width", "14");
+        icon.setAttribute("height", "14");
+        icon.setAttribute("fill", "none");
+        icon.setAttribute("stroke", "currentColor");
+        icon.setAttribute("stroke-width", "3");
+        icon.setAttribute("stroke-linecap", "round");
+        icon.setAttribute("stroke-linejoin", "round");
+        icon.setAttribute("aria-hidden", "true");
+        const check = document.createElementNS("http://www.w3.org/2000/svg", "path");
+        check.setAttribute("d", "m5 12 4 4L19 6");
+        icon.append(check);
+        checkbox.append(icon);
+      }
+      checkbox.addEventListener("mousedown", (event) => event.preventDefault());
+      checkbox.addEventListener("click", () => {
+        view.dispatch({
+          changes: { from: this.from, to: this.from + this.text.length, insert: checked ? "[ ]" : "[x]" },
+        });
+      });
+      return checkbox;
+    }
     const marker = document.createElement("span");
     marker.className = this.kind === "quote"
       ? "mr-2.5 inline-block min-w-3 text-center font-bold text-[color-mix(in_srgb,var(--accent)_65%,transparent)]"
-      : this.kind === "task"
-        ? "mr-[7px] inline-block min-w-3 text-center text-[1.05em] font-bold text-accent"
-        : "mr-[7px] inline-block min-w-3 text-center font-bold text-accent";
+      : "mr-[7px] inline-block min-w-3 text-center font-bold text-accent";
     marker.dataset.markerKind = this.kind;
     marker.textContent = this.kind === "bullet"
       ? "•"
       : this.kind === "quote"
         ? "│"
-        : this.kind === "task"
-          ? /^\[[xX]\]$/.test(this.text.trim()) ? "☑" : "☐"
-          : this.text.trim();
+        : this.text.trim();
     return marker;
   }
   ignoreEvent() {
-    return false;
+    return this.kind === "task";
   }
 }
 
@@ -207,6 +241,11 @@ function buildDecorations(view: EditorView): DecorationSet {
           });
         }
         if (!active && node.name === "ListMark") {
+          const taskMarker = node.node.parent?.getChild("Task")?.getChild("TaskMarker");
+          if (taskMarker) {
+            ranges.push({ from: node.from, to: taskMarker.from, decoration: Decoration.replace({}) });
+            return;
+          }
           const marker = view.state.sliceDoc(node.from, node.to);
           const kind = /^\d/.test(marker) ? "ordered" : "bullet";
           ranges.push({ from: node.from, to: node.to, decoration: Decoration.replace({ widget: new MarkerWidget(kind, marker) }) });
@@ -215,7 +254,7 @@ function buildDecorations(view: EditorView): DecorationSet {
             from: node.from,
             to: node.to,
             decoration: Decoration.replace({
-              widget: new MarkerWidget("task", view.state.sliceDoc(node.from, node.to)),
+              widget: new MarkerWidget("task", view.state.sliceDoc(node.from, node.to), node.from),
             }),
           });
         } else if (!active && node.name === "QuoteMark") {

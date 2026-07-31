@@ -97,7 +97,7 @@ describe("Live Preview activation", () => {
     host.remove();
   });
 
-  it("renders checked and unchecked task markers distinctly", () => {
+  it("renders clickable task checkboxes and updates their Markdown markers", () => {
     const host = document.createElement("div");
     document.body.append(host);
     const view = new EditorView({
@@ -108,7 +108,19 @@ describe("Live Preview activation", () => {
       }),
     });
 
-    expect(Array.from(host.querySelectorAll('[data-marker-kind="task"]'), (marker) => marker.textContent)).toEqual(["☐", "☑"]);
+    const checkboxes = host.querySelectorAll<HTMLButtonElement>('[data-marker-kind="task"]');
+    expect(checkboxes).toHaveLength(2);
+    expect(checkboxes[0]).toHaveAttribute("role", "checkbox");
+    expect(checkboxes[0]).toHaveAttribute("aria-checked", "false");
+    expect(checkboxes[0]?.querySelector("svg")).toBeNull();
+    expect(checkboxes[1]).toHaveAttribute("aria-checked", "true");
+    expect(checkboxes[1]?.querySelector("svg")).not.toBeNull();
+    expect(host.querySelector('[data-marker-kind="bullet"]')).toBeNull();
+
+    checkboxes[0]?.click();
+
+    expect(view.state.doc.toString()).toBe("plain\n- [x] todo\n- [x] done");
+    expect(host.querySelectorAll('[data-marker-kind="task"][aria-checked="true"]')).toHaveLength(2);
 
     view.destroy();
     host.remove();

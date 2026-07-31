@@ -31,4 +31,13 @@ describe("MarkdownEditor", () => {
     expect(onChange).toHaveBeenCalledOnce();
     expect(onChange).toHaveBeenCalledWith("First body changed");
   });
+
+  it("reports task checkbox clicks as document changes", () => {
+    const onChange = vi.fn();
+    const { container } = render(<MarkdownEditor value={"plain\n- [ ] todo"} onChange={onChange} />);
+
+    container.querySelector<HTMLButtonElement>('[data-marker-kind="task"]')?.click();
+
+    expect(onChange).toHaveBeenCalledWith("plain\n- [x] todo");
+  });
 });
