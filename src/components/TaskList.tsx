@@ -1,4 +1,4 @@
-import { useEffect, useRef, type ReactNode } from "react";
+import { memo, useEffect, useRef, type ReactNode } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import type { PropertyDefinition, TaskSummary } from "../types";
 import { TaskCard } from "./TaskCard";
@@ -13,7 +13,7 @@ interface Props {
   onQuickEdit(task: TaskSummary, key: string, value: unknown): void;
 }
 
-export function TaskList({ tasks, definitions, selectedId, compact, emptyState, onSelect, onQuickEdit }: Props) {
+export const TaskList = memo(function TaskList({ tasks, definitions, selectedId, compact, emptyState, onSelect, onQuickEdit }: Props) {
   const listHost = useRef<HTMLDivElement>(null);
   const virtualizer = useVirtualizer({
     count: tasks.length,
@@ -51,4 +51,4 @@ export function TaskList({ tasks, definitions, selectedId, compact, emptyState, 
       )}
     </div>
   );
-}
+});

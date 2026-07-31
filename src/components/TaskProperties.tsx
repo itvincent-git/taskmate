@@ -1,8 +1,9 @@
+import { memo } from "react";
 import type { PropertyDefinition, Task } from "../types";
 import { localizedPropertyName, useTaskmateI18n } from "../lib/taskmate-i18n";
 import { PropertyInput } from "./PropertyInput";
 
-export function TaskProperties({
+export const TaskProperties = memo(function TaskProperties({
   definitions,
   task,
   onChange,
@@ -39,4 +40,9 @@ export function TaskProperties({
       </div>
     </div>
   );
-}
+}, (previous, next) => (
+  previous.definitions === next.definitions
+  && previous.task.properties === next.task.properties
+  && previous.onChange === next.onChange
+  && previous.showHeading === next.showHeading
+));

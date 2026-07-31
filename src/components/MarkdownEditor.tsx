@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { memo, useEffect, useRef } from "react";
 import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
 import { markdown } from "@codemirror/lang-markdown";
 import { GFM } from "@lezer/markdown";
@@ -51,7 +51,7 @@ const tools: Array<[MarkdownAction, string, typeof Bold]> = [
 
 const syncValue = Annotation.define<boolean>();
 
-export function MarkdownEditor({ value, onChange }: Props) {
+export const MarkdownEditor = memo(function MarkdownEditor({ value, onChange }: Props) {
   const { locale, t } = useTaskmateI18n();
   const host = useRef<HTMLDivElement>(null);
   const editor = useRef<EditorView | null>(null);
@@ -119,7 +119,7 @@ export function MarkdownEditor({ value, onChange }: Props) {
       <div className="min-h-0 flex-1 overflow-hidden [&_.cm-content]:min-h-full [&_.cm-editor]:h-full [&_.cm-editor]:min-h-0 [&_.cm-editor]:bg-surface [&_.cm-editor]:text-foreground [&_.cm-scroller]:h-full [&_.cm-scroller]:overscroll-contain [&_.cm-scroller]:overflow-y-auto!" ref={host} />
     </section>
   );
-}
+});
 
 function toolbarLabel(action: MarkdownAction) {
   return {

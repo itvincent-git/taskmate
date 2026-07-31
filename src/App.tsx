@@ -1,4 +1,4 @@
-import { createContext, lazy, Suspense, useCallback, useContext, useEffect, useRef, useState, type Dispatch, type ReactNode, type SetStateAction } from "react";
+import { createContext, lazy, Suspense, useCallback, useContext, useEffect, useMemo, useRef, useState, type Dispatch, type ReactNode, type SetStateAction } from "react";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { HashRouter, Navigate, NavLink, Route, Routes, useLocation, useNavigate } from "react-router";
 import { createStore, useStore } from "zustand";
@@ -125,6 +125,12 @@ function useWorkspaceState<T>(selector: (state: WorkspaceState) => T) {
   const store = useContext(WorkspaceStoreContext);
   if (!store) throw new Error("Workspace store is unavailable");
   return useStore(store, selector);
+}
+
+function useLatestCallback<Args extends unknown[], Result>(callback: (...args: Args) => Result) {
+  const callbackRef = useRef(callback);
+  callbackRef.current = callback;
+  return useCallback((...args: Args) => callbackRef.current(...args), []);
 }
 
 function loadRecentWorkspaces() {
@@ -501,7 +507,7 @@ function WorkspaceSession() {
       window.clearTimeout(debounce);
       window.clearInterval(timer);
     };
-  }, [fileSignal, refresh, saveState, task]);
+  }, [fileSignal, refresh, saveState, task?.contentHash, task?.id]);
 
   const editTask = (patch: Partial<Task>) => {
     setTask((current) => current ? { ...current, ...patch } : current);
@@ -606,9 +612,9 @@ function WorkspaceSession() {
   };
 
   const workspaceName = workspacePath.split(/[\\/]/).filter(Boolean).at(-1) || workspacePath;
-  const filterDefinitions = definitions.filter((definition) => definition.enableFilter);
-  const sortDefinitions = definitions.filter((definition) => definition.enableSort);
-  const detailDefinitions = definitions.filter((definition) => definition.showInDetail).sort((a, b) => a.order - b.order);
+  const filterDefinitions = useMemo(() => definitions.filter((definition) => definition.enableFilter), [definitions]);
+  const sortDefinitions = useMemo(() => definitions.filter((definition) => definition.enableSort), [definitions]);
+  const detailDefinitions = useMemo(() => definitions.filter((definition) => definition.showInDetail).sort((a, b) => a.order - b.order), [definitions]);
   const filterSortActive = query.filters.length > 0 || query.sort !== undefined;
   const updateFilters = (definition: PropertyDefinition, filters: TaskFilter[]) => {
     const without = query.filters.filter((filter) => filter.key !== definition.key);
@@ -637,6 +643,17 @@ function WorkspaceSession() {
     window.addEventListener("pointerup", end);
     window.addEventListener("pointercancel", end);
   };
+  const selectTask = useLatestCallback((summary: TaskSummary) => void chooseTask(summary.id));
+  const quickEditTask = useLatestCallback((summary: TaskSummary, key: string, value: unknown) => void quickEdit(summary, key, value));
+  const changeTaskProperty = useLatestCallback(editProperty);
+  const changeTaskBody = useLatestCallback((body: string) => editTask({ body }));
+  const taskListEmptyState = useMemo(() => (
+    <div className="flex h-full flex-col items-center justify-center text-center text-muted [&>h2]:mt-3 [&>h2]:mb-[3px] [&>h2]:font-heading [&>h2]:text-base [&>h2]:text-foreground [&>p]:m-0 [&>p]:text-xs">
+      <LayoutList />
+      <h2>{searchDraft || query.filters.length ? t("tasks.noMatches") : t("tasks.nothing")}</h2>
+      <p>{query.archived ? t("tasks.archivedHint") : t("tasks.createHint")}</p>
+    </div>
+  ), [query.archived, query.filters.length, searchDraft, t]);
 
   if (!workspaceOpen) {
     return (
@@ -807,9 +824,9 @@ function WorkspaceSession() {
                   definitions={definitions}
                   selectedId={selectedId}
                   compact={compactCards}
-                  emptyState={<div className="flex h-full flex-col items-center justify-center text-center text-muted [&>h2]:mt-3 [&>h2]:mb-[3px] [&>h2]:font-heading [&>h2]:text-base [&>h2]:text-foreground [&>p]:m-0 [&>p]:text-xs"><LayoutList /><h2>{searchDraft || query.filters.length ? t("tasks.noMatches") : t("tasks.nothing")}</h2><p>{query.archived ? t("tasks.archivedHint") : t("tasks.createHint")}</p></div>}
-                  onSelect={(summary) => void chooseTask(summary.id)}
-                  onQuickEdit={(summary, key, value) => void quickEdit(summary, key, value)}
+                  emptyState={taskListEmptyState}
+                  onSelect={selectTask}
+                  onQuickEdit={quickEditTask}
                 />
               </section>
               <div className={cn("relative z-[2] cursor-col-resize bg-line hover:bg-accent", !taskListVisible && "invisible")} data-testid="splitter" onPointerDown={beginResize} />
@@ -849,12 +866,12 @@ function WorkspaceSession() {
                     <div className="flex min-h-0 flex-1 overflow-hidden">
                       <div className="min-h-0 min-w-0 flex-1 overflow-hidden">
                         <Suspense fallback={<div className="flex min-h-[370px] items-center justify-center gap-2 text-muted"><LoaderCircle className="animate-spin" />{t("editor.loading")}</div>}>
-                          <MarkdownEditor value={task.body} onChange={(body) => editTask({ body })} />
+                          <MarkdownEditor value={task.body} onChange={changeTaskBody} />
                         </Suspense>
                       </div>
                       {!detailNarrow ? (
                         <aside className="min-h-0 w-[clamp(280px,30%,340px)] shrink-0 basis-[clamp(280px,30%,340px)] overflow-hidden border-l border-line">
-                          <TaskProperties definitions={detailDefinitions} task={task} onChange={editProperty} />
+                          <TaskProperties definitions={detailDefinitions} task={task} onChange={changeTaskProperty} />
                         </aside>
                       ) : null}
                     </div>
@@ -880,7 +897,7 @@ function WorkspaceSession() {
           closeLabel={t("common.close")}
           returnFocusRef={propertiesButton}
         >
-          {task ? <TaskProperties definitions={detailDefinitions} task={task} onChange={editProperty} showHeading={false} /> : null}
+          {task ? <TaskProperties definitions={detailDefinitions} task={task} onChange={changeTaskProperty} showHeading={false} /> : null}
         </Dialog>
         <Dialog
           open={Boolean(externalTask && task)}
