@@ -1,5 +1,6 @@
 import { render } from "@testing-library/react";
 import { EditorView } from "@codemirror/view";
+import { StrictMode } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { MarkdownEditor } from "./MarkdownEditor";
 
@@ -39,5 +40,11 @@ describe("MarkdownEditor", () => {
     container.querySelector<HTMLButtonElement>('[data-marker-kind="task"]')?.click();
 
     expect(onChange).toHaveBeenCalledWith("plain\n- [x] todo");
+  });
+
+  it("renders checked task items without crashing", () => {
+    const { container } = render(<StrictMode><MarkdownEditor value={"plain\n- [x] done"} onChange={vi.fn()} /></StrictMode>);
+
+    expect(container.querySelector('[data-marker-kind="task"] svg')).toHaveClass("lucide", "lucide-check");
   });
 });
