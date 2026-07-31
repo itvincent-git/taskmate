@@ -909,7 +909,7 @@ function WorkspaceSession() {
 export function App() {
   return (
     <TaskmateI18nProvider>
-      <HashRouter>
+      <HashRouter useTransitions={false}>
         <WorkspaceStoreProvider>
           <Routes><Route path="*" element={<WorkspaceSession />} /></Routes>
         </WorkspaceStoreProvider>
