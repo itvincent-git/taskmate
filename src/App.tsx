@@ -779,11 +779,11 @@ function WorkspaceSession() {
             </Tooltip>
           </div>
         ) : null}
-        <div className="flex min-w-0 flex-1 items-end gap-0.5 overflow-x-auto px-1.5 pt-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" role="tablist" aria-label={t("editor.openFiles")}>
+        <div className="flex min-w-0 flex-1 items-end gap-0.5 overflow-x-auto overflow-y-hidden px-1.5 pt-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" role="tablist" aria-label={t("editor.openFiles")}>
           {openTabs.map((tab) => (
             <div
               key={tab.id}
-              className={cn("group flex h-8 min-w-32 max-w-56 items-center rounded-t-md border border-b-0 px-2 text-xs", tab.id === selectedId && page === "/tasks" ? "border-line bg-background text-foreground" : "border-transparent text-muted hover:bg-surface-soft")}
+              className={cn("group flex h-8 min-w-32 max-w-56 shrink-0 items-center rounded-t-md border border-b-0 px-2 text-xs", tab.id === selectedId && page === "/tasks" ? "border-line bg-background text-foreground" : "border-transparent text-muted hover:bg-surface-soft")}
               role="tab"
               aria-selected={tab.id === selectedId && page === "/tasks"}
             >
