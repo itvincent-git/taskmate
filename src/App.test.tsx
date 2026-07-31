@@ -338,6 +338,7 @@ describe("Taskmate application", () => {
     expect(tabs[1]).toHaveAttribute("aria-selected", "true");
     expect(tabs[0].closest("header")).toHaveAttribute("data-tauri-drag-region", "deep");
     const tablist = screen.getByRole("tablist", { name: "Open Markdown files" });
+    expect(tablist).toHaveClass("[scrollbar-width:none]", "[&::-webkit-scrollbar]:hidden");
     const hideListButton = screen.getByRole("button", { name: "Hide task cards" });
     expect(tablist).not.toContainElement(hideListButton);
     expect(hideListButton.compareDocumentPosition(tablist) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
