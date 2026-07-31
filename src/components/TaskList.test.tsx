@@ -75,6 +75,8 @@ describe("TaskList", () => {
     expect(virtualizerMock.virtualizer.measureElement).toHaveBeenCalledWith(row);
     expect((sizeContainer as HTMLElement).style.height).toBe("130px");
     expect((row as HTMLElement).style.transform).toBe("translateY(0px)");
+    expect(row).toHaveClass("pb-1");
+    expect(sizeContainer?.parentElement).toHaveClass("px-2", "pb-2");
   });
 
   it("remeasures with the compact card estimate", () => {

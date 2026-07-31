@@ -35,8 +35,8 @@ export function TaskCard({ task, selected, definitions, compact = false, onSelec
   const visible = definitions.filter((definition) => definition.showInCard).sort((a, b) => a.order - b.order);
   const stop = (event: MouseEvent) => event.stopPropagation();
   return (
-    <article className={cn("cursor-pointer rounded-xl border border-line bg-surface p-3 shadow-none transition-[transform,box-shadow,border-color] duration-200 hover:-translate-y-0.5 hover:border-[color-mix(in_srgb,var(--accent)_48%,var(--line))] hover:shadow-panel", selected && "border-accent shadow-[0_0_0_1px_var(--accent)]", compact && "px-2.5 py-2")} onClick={onSelect}>
-      <div className={cn("mb-2 truncate text-xs font-[720]", compact && "mb-0")} title={task.title}>{task.title}</div>
+    <article className={cn("cursor-pointer rounded-xl border border-line bg-surface p-2 shadow-none transition-[transform,box-shadow,border-color] duration-200 hover:-translate-y-0.5 hover:border-[color-mix(in_srgb,var(--accent)_48%,var(--line))] hover:shadow-panel", selected && "border-accent shadow-[0_0_0_1px_var(--accent)]", compact && "px-2 py-1.5")} onClick={onSelect}>
+      <div className={cn("mb-1 truncate text-sm font-normal", compact && "mb-0")} title={task.title}>{task.title}</div>
       {!compact ? (
         <div className="flex min-h-[26px] flex-wrap items-center gap-1">
           {visible.map((definition) => (

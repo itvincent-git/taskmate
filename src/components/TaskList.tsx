@@ -28,13 +28,13 @@ export const TaskList = memo(function TaskList({ tasks, definitions, selectedId,
   }, [compact, virtualizer]);
 
   return (
-    <div className="min-h-0 flex-1 overflow-auto px-2.5 pb-3.5" ref={listHost}>
+    <div className="min-h-0 flex-1 overflow-auto px-2 pb-2" ref={listHost}>
       {tasks.length === 0 ? emptyState : (
         <div style={{ height: virtualizer.getTotalSize(), position: "relative" }}>
           {virtualizer.getVirtualItems().map((item) => {
             const task = tasks[item.index];
             return (
-              <div key={item.key} ref={virtualizer.measureElement} data-index={item.index} className="absolute top-0 left-0 w-full pb-2" style={{ transform: `translateY(${item.start}px)` }}>
+              <div key={item.key} ref={virtualizer.measureElement} data-index={item.index} className="absolute top-0 left-0 w-full pb-1" style={{ transform: `translateY(${item.start}px)` }}>
                 <TaskCard
                   task={task}
                   selected={task.id === selectedId}
