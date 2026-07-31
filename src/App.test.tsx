@@ -63,6 +63,23 @@ describe("Taskmate application", () => {
     expect(screen.getByRole("button", { name: "Choose folder" })).toBeInTheDocument();
   });
 
+  it("does not show the workspace screen while restoring a remembered workspace", async () => {
+    localStorage.setItem("taskmate-workspaces.v1", JSON.stringify(["/tmp/remembered"]));
+    let finishOpening: (() => void) | undefined;
+    const opening = new Promise<Awaited<ReturnType<typeof api.openWorkspace>>>((resolve) => {
+      finishOpening = () => resolve({ path: "/tmp/remembered", properties: [], tasks: [], indexRebuilt: false });
+    });
+    vi.spyOn(api, "openWorkspace").mockReturnValue(opening);
+
+    render(<App />);
+
+    expect(screen.queryByLabelText("Workspace folder")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Open workspace" })).not.toBeInTheDocument();
+
+    finishOpening?.();
+    expect(await screen.findByRole("toolbar", { name: "Task list" })).toBeInTheDocument();
+  });
+
   it("opens a picked folder immediately and remembers it", async () => {
     const user = userEvent.setup();
     vi.spyOn(api, "supportsNativeFolderPicker").mockReturnValue(true);
@@ -466,7 +483,6 @@ describe("Taskmate application", () => {
 
     unmount();
     const restored = render(<App />);
-    await user.click(screen.getByRole("button", { name: "Open workspace" }));
     await screen.findByRole("toolbar", { name: "Task list" });
     expect(restored.container.querySelector('[data-testid="split-layout"]')).toHaveStyle({ gridTemplateColumns: "510px 5px minmax(0, 1fr)" });
   });
@@ -489,7 +505,6 @@ describe("Taskmate application", () => {
 
     unmount();
     const restored = render(<App />);
-    await user.click(screen.getByRole("button", { name: "Open workspace" }));
     await user.click(await screen.findByRole("button", { name: "New task" }));
     expect(restored.container.querySelector('[data-testid="detail-split-layout"]')).toHaveStyle({ gridTemplateColumns: "minmax(0, 1fr) 5px 420px" });
   });

@@ -361,6 +361,7 @@ function WorkspaceSession() {
   const propertiesButton = useRef<HTMLButtonElement>(null);
   const filterButton = useRef<HTMLButtonElement>(null);
   const autoOpened = useRef(false);
+  const [restoringWorkspace, setRestoringWorkspace] = useState(recentWorkspaces.length > 0);
   const selectedId = task?.id;
   const location = useLocation();
   const navigate = useNavigate();
@@ -414,7 +415,7 @@ function WorkspaceSession() {
   useEffect(() => {
     if (autoOpened.current || recentWorkspaces.length === 0) return;
     autoOpened.current = true;
-    void openWorkspace(recentWorkspaces[0]);
+    void openWorkspace(recentWorkspaces[0]).finally(() => setRestoringWorkspace(false));
   }, [openWorkspace, recentWorkspaces]);
 
   useEffect(() => {
@@ -720,6 +721,13 @@ function WorkspaceSession() {
   ), [query.archived, query.filters.length, t]);
 
   if (!workspaceOpen) {
+    if (restoringWorkspace) {
+      return (
+        <main className="grid h-full place-items-center bg-background">
+          <LoaderCircle className="animate-spin text-accent" aria-hidden="true" />
+        </main>
+      );
+    }
     return (
       <main className="flex h-full flex-col items-center justify-center bg-background text-center">
         <div className="grid size-[58px] place-items-center rounded-xl bg-accent text-white"><Check /></div>
