@@ -12,7 +12,6 @@ const hiddenMarks = new Set([
   "CodeInfo",
   "QuoteMark",
   "LinkMark",
-  "URL",
 ]);
 
 const styledNodes: Record<string, string> = {
@@ -29,6 +28,7 @@ const styledNodes: Record<string, string> = {
   FencedCode: "bg-surface-soft font-mono",
   Blockquote: "text-muted",
   Link: "text-accent underline underline-offset-2",
+  URL: "text-accent underline underline-offset-2",
   Image: "",
 };
 
@@ -197,7 +197,8 @@ function buildDecorations(view: EditorView): DecorationSet {
           ranges.push({ from: node.from, to: node.to, decoration: Decoration.replace({ widget: new MarkerWidget("rule") }) });
           return false;
         }
-        const style = styledNodes[node.name];
+        const isLinkTarget = node.name === "URL" && node.node.parent?.name === "Link";
+        const style = isLinkTarget ? undefined : styledNodes[node.name];
         if (style) {
           ranges.push({
             from: node.from,
@@ -219,7 +220,11 @@ function buildDecorations(view: EditorView): DecorationSet {
           });
         } else if (!active && node.name === "QuoteMark") {
           ranges.push({ from: node.from, to: node.to, decoration: Decoration.replace({ widget: new MarkerWidget("quote") }) });
-        } else if (!active && hiddenMarks.has(node.name) && node.to > node.from) {
+        } else if (
+          !active &&
+          (hiddenMarks.has(node.name) || isLinkTarget) &&
+          node.to > node.from
+        ) {
           let to = node.to;
           if (
             node.name === "HeaderMark" &&

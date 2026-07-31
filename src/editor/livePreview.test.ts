@@ -35,6 +35,27 @@ describe("Live Preview activation", () => {
     host.remove();
   });
 
+  it("keeps bare URLs visible while hiding formatted link targets", () => {
+    const host = document.createElement("div");
+    document.body.append(host);
+    const bareUrl = "https://example.com/live?id=123";
+    const view = new EditorView({
+      parent: host,
+      state: EditorState.create({
+        doc: `plain\n${bareUrl}\n[Example](https://example.com/hidden)`,
+        extensions: [markdown({ extensions: [GFM] }), livePreview],
+      }),
+    });
+
+    expect(host.textContent).toContain(bareUrl);
+    expect(host.querySelector(".text-accent")).toHaveTextContent(bareUrl);
+    expect(host.textContent).toContain("Example");
+    expect(host.textContent).not.toContain("https://example.com/hidden");
+
+    view.destroy();
+    host.remove();
+  });
+
   it("hides heading markers and separator whitespace for h1 through h6", () => {
     const host = document.createElement("div");
     document.body.append(host);
