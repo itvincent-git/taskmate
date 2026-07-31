@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "./App";
 import { api } from "./lib/api";
+import type { TaskSearchResult } from "./types";
 
 let detailWidth = 1000;
 let resizeCallbacks: ResizeObserverCallback[] = [];
@@ -339,7 +340,11 @@ describe("Taskmate application", () => {
     expect(tabs[0].closest("header")).toHaveAttribute("data-tauri-drag-region", "deep");
     const tablist = screen.getByRole("tablist", { name: "Open Markdown files" });
     expect(tablist).toHaveClass("[scrollbar-width:none]", "[&::-webkit-scrollbar]:hidden");
-    const hideListButton = screen.getByRole("button", { name: "Hide task cards" });
+    const filesButton = screen.getByRole("button", { name: "Files" });
+    const searchButton = screen.getByRole("button", { name: "Search" });
+    const hideListButton = screen.getByRole("button", { name: "Collapse" });
+    expect(filesButton).toHaveAttribute("aria-pressed", "true");
+    expect(searchButton.compareDocumentPosition(hideListButton) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(tablist).not.toContainElement(hideListButton);
     expect(hideListButton.compareDocumentPosition(tablist) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(screen.getByRole("toolbar", { name: "Task list" })).not.toContainElement(hideListButton);
@@ -353,10 +358,58 @@ describe("Taskmate application", () => {
     expect(localStorage.getItem("taskmate-compact-cards.v1")).toBe("true");
     await user.click(hideListButton);
     expect(localStorage.getItem("taskmate-task-list-visible.v1")).toBe("false");
-    expect(screen.getByRole("button", { name: "Show task cards" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Expand" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Files" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Search" })).not.toBeInTheDocument();
 
     await user.click(screen.getByRole("link", { name: "Properties" }));
-    expect(screen.queryByRole("button", { name: "Show task cards" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Expand" })).not.toBeInTheDocument();
+  });
+
+  it("persists and restores the side panel, search text, and collapsed state", async () => {
+    const user = userEvent.setup();
+    const first = render(<App />);
+    await user.click(screen.getByRole("button", { name: "Open workspace" }));
+    await user.click(screen.getByRole("button", { name: "Search" }));
+    await user.type(screen.getByLabelText("Search tasks…"), "remember me");
+    await user.click(screen.getByRole("button", { name: "Collapse" }));
+
+    expect(localStorage.getItem("taskmate-task-panel.v1")).toBe("search");
+    expect(localStorage.getItem("taskmate-task-search.v1")).toBe("remember me");
+    expect(localStorage.getItem("taskmate-task-list-visible.v1")).toBe("false");
+
+    first.unmount();
+    render(<App />);
+    expect(await screen.findByRole("button", { name: "Expand" })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Expand" }));
+    expect(screen.getByRole("button", { name: "Search" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByLabelText("Search tasks…")).toHaveValue("remember me");
+  });
+
+  it("debounces workspace search, skips blanks, and ignores stale responses", async () => {
+    const user = userEvent.setup();
+    let resolveFirst: ((value: TaskSearchResult[]) => void) | undefined;
+    const searchTasks = vi.spyOn(api, "searchTasks")
+      .mockImplementationOnce(() => new Promise((resolve) => { resolveFirst = resolve; }))
+      .mockResolvedValueOnce([{ id: "new", title: "New result", archived: false, snippet: "new text" }]);
+    render(<App />);
+    await user.click(screen.getByRole("button", { name: "Open workspace" }));
+    await user.click(screen.getByRole("button", { name: "Search" }));
+    const input = screen.getByLabelText("Search tasks…");
+    await user.type(input, "   ");
+    await act(() => new Promise((resolve) => window.setTimeout(resolve, 300)));
+    expect(searchTasks).not.toHaveBeenCalled();
+    await user.clear(input);
+    await user.type(input, "old");
+    expect(searchTasks).not.toHaveBeenCalled();
+    await waitFor(() => expect(searchTasks).toHaveBeenCalledWith("old"));
+
+    await user.clear(input);
+    await user.type(input, "new");
+    await waitFor(() => expect(searchTasks).toHaveBeenLastCalledWith("new"));
+    resolveFirst?.([{ id: "old", title: "Old result", archived: false, snippet: "old text" }]);
+    await act(async () => Promise.resolve());
+    expect(screen.queryByText("Old result")).not.toBeInTheDocument();
   });
 
   it("does not save unchanged tasks when switching between different bodies", async () => {

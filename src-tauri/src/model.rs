@@ -29,6 +29,15 @@ pub struct TaskSummary {
     pub properties: BTreeMap<String, Value>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct TaskSearchResult {
+    pub id: String,
+    pub title: String,
+    pub archived: bool,
+    pub snippet: String,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SaveTaskInput {

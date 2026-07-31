@@ -37,10 +37,12 @@ import type {
   Task,
   TaskFilter,
   TaskQuery,
+  TaskSearchResult,
   TaskSummary,
 } from "./types";
 import { PropertySettings } from "./components/PropertySettings";
 import { TaskList } from "./components/TaskList";
+import { TaskSearchPanel } from "./components/TaskSearchPanel";
 import { TaskProperties } from "./components/TaskProperties";
 import { DynamicFilter } from "./components/DynamicFilter";
 import { Button, buttonVariants } from "./components/ui/Button";
@@ -57,6 +59,8 @@ const RECENT_WORKSPACES_KEY = "taskmate-workspaces.v1";
 const COMPACT_CARDS_KEY = "taskmate-compact-cards.v1";
 const FILTER_SORT_KEY = "taskmate-filter-sort.v1";
 const TASK_LIST_VISIBLE_KEY = "taskmate-task-list-visible.v1";
+const TASK_PANEL_KEY = "taskmate-task-panel.v1";
+const TASK_SEARCH_KEY = "taskmate-task-search.v1";
 const TASK_LIST_WIDTH_KEY = "taskmate-task-list-width.v1";
 const TASK_PROPERTIES_WIDTH_KEY = "taskmate-task-properties-width.v1";
 const MarkdownEditor = lazy(() => import("./components/MarkdownEditor").then((module) => ({ default: module.MarkdownEditor })));
@@ -97,7 +101,7 @@ function createWorkspaceStore() {
     task: null,
     openTabs: [],
     query: { search: "", archived: false, filters: [] },
-    searchDraft: "",
+    searchDraft: localStorage.getItem(TASK_SEARCH_KEY) || "",
     saveState: "saved",
     error: "",
     schemaSaving: false,
@@ -160,6 +164,10 @@ function loadTaskPropertiesWidth() {
   const stored = localStorage.getItem(TASK_PROPERTIES_WIDTH_KEY);
   const width = stored === null ? 320 : Number(stored);
   return Number.isFinite(width) ? Math.max(240, Math.min(520, width)) : 320;
+}
+
+function loadTaskPanel(): "files" | "search" {
+  return localStorage.getItem(TASK_PANEL_KEY) === "search" ? "search" : "files";
 }
 
 function loadFilterSort(path: string): Pick<TaskQuery, "filters" | "sort"> {
@@ -336,6 +344,11 @@ function WorkspaceSession() {
   const [propertiesWidth, setPropertiesWidth] = useState(loadTaskPropertiesWidth);
   const [compactCards, setCompactCards] = useState(() => localStorage.getItem(COMPACT_CARDS_KEY) === "true");
   const [taskListVisible, setTaskListVisible] = useState(() => localStorage.getItem(TASK_LIST_VISIBLE_KEY) !== "false");
+  const [taskPanel, setTaskPanel] = useState<"files" | "search">(loadTaskPanel);
+  const [searchResults, setSearchResults] = useState<TaskSearchResult[]>([]);
+  const [searchLoading, setSearchLoading] = useState(false);
+  const [searchEpoch, setSearchEpoch] = useState(0);
+  const searchRequest = useRef(0);
   const externalTask = useWorkspaceState((state) => state.externalTask);
   const setExternalTask = useWorkspaceState((state) => state.setExternalTask);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
@@ -369,7 +382,6 @@ function WorkspaceSession() {
       setLockedPropertyIds(new Set(snapshot.properties.map((definition) => definition.id)));
       setTasks(snapshot.tasks);
       setQuery({ search: "", archived: false, ...loadFilterSort(path) });
-      setSearchDraft("");
       setWorkspaceOpen(true);
       navigate("/tasks", { replace: true });
       if (snapshot.tasks[0]) {
@@ -413,7 +425,9 @@ function WorkspaceSession() {
   useEffect(() => {
     localStorage.setItem(COMPACT_CARDS_KEY, String(compactCards));
     localStorage.setItem(TASK_LIST_VISIBLE_KEY, String(taskListVisible));
-  }, [compactCards, taskListVisible]);
+    localStorage.setItem(TASK_PANEL_KEY, taskPanel);
+    localStorage.setItem(TASK_SEARCH_KEY, searchDraft);
+  }, [compactCards, searchDraft, taskListVisible, taskPanel]);
 
   useEffect(() => {
     if (!workspaceOpen) return;
@@ -438,11 +452,6 @@ function WorkspaceSession() {
     setPropertiesDrawerOpen(false);
   }, [detailNarrow, selectedId]);
 
-  useEffect(() => {
-    const timer = window.setTimeout(() => setQuery((current) => ({ ...current, search: searchDraft })), 260);
-    return () => window.clearTimeout(timer);
-  }, [searchDraft]);
-
   const refresh = useCallback(async (nextQuery = query) => {
     if (!workspaceOpen) return;
     try {
@@ -453,6 +462,26 @@ function WorkspaceSession() {
   }, [query, workspaceOpen]);
 
   useEffect(() => { void refresh(); }, [query, refresh]);
+
+  useEffect(() => {
+    const request = ++searchRequest.current;
+    if (!workspaceOpen || taskPanel !== "search" || !searchDraft.trim()) {
+      setSearchResults([]);
+      setSearchLoading(false);
+      return;
+    }
+    setSearchLoading(true);
+    const timer = window.setTimeout(() => {
+      void api.searchTasks(searchDraft).then((results) => {
+        if (request === searchRequest.current) setSearchResults(results);
+      }).catch((cause) => {
+        if (request === searchRequest.current) setError(errorMessage(cause));
+      }).finally(() => {
+        if (request === searchRequest.current) setSearchLoading(false);
+      });
+    }, 260);
+    return () => window.clearTimeout(timer);
+  }, [fileSignal, searchDraft, searchEpoch, taskPanel, workspaceOpen, workspacePath]);
 
   useEffect(() => {
     if (!workspaceOpen) return;
@@ -475,6 +504,7 @@ function WorkspaceSession() {
       setOpenTabs((tabs) => tabs.map((tab) => tab.id === saved.id ? { id: saved.id, title: saved.title, fileName: saved.fileName } : tab));
       setSaveState("saved");
       await refresh();
+      setSearchEpoch((epoch) => epoch + 1);
     } catch (cause) {
       const message = errorMessage(cause);
       setSaveState(message.includes("EXTERNAL_CHANGE") ? "external" : "failed");
@@ -556,6 +586,7 @@ function WorkspaceSession() {
       setOpenTabs((tabs) => [...tabs, { id: created.id, title: created.title, fileName: created.fileName }]);
       setSaveState("saved");
       await refresh();
+      setSearchEpoch((epoch) => epoch + 1);
     } catch (cause) { setError(errorMessage(cause)); }
   };
   const quickEdit = async (summary: TaskSummary, key: string, value: unknown) => {
@@ -564,6 +595,7 @@ function WorkspaceSession() {
       const saved = await api.saveTask({ ...full, properties: { ...full.properties, [key]: value } });
       if (saved.id === task?.id) setTask(saved);
       await refresh();
+      setSearchEpoch((epoch) => epoch + 1);
     } catch (cause) { setError(`Quick edit failed: ${errorMessage(cause)}`); }
   };
   const archive = async () => {
@@ -589,6 +621,7 @@ function WorkspaceSession() {
       setTask(null);
       setDeleteConfirmOpen(false);
       await refresh();
+      setSearchEpoch((epoch) => epoch + 1);
     } catch (cause) { setError(errorMessage(cause)); }
   };
 
@@ -681,10 +714,10 @@ function WorkspaceSession() {
   const taskListEmptyState = useMemo(() => (
     <div className="flex h-full flex-col items-center justify-center text-center text-muted [&>h2]:mt-3 [&>h2]:mb-[3px] [&>h2]:font-heading [&>h2]:text-base [&>h2]:text-foreground [&>p]:m-0 [&>p]:text-xs">
       <LayoutList />
-      <h2>{searchDraft || query.filters.length ? t("tasks.noMatches") : t("tasks.nothing")}</h2>
+      <h2>{query.filters.length ? t("tasks.noMatches") : t("tasks.nothing")}</h2>
       <p>{query.archived ? t("tasks.archivedHint") : t("tasks.createHint")}</p>
     </div>
-  ), [query.archived, query.filters.length, searchDraft, t]);
+  ), [query.archived, query.filters.length, t]);
 
   if (!workspaceOpen) {
     return (
@@ -728,11 +761,23 @@ function WorkspaceSession() {
     <div className="flex h-full min-h-0 flex-col bg-[var(--bg)]">
       <header className="flex h-10 shrink-0 items-stretch border-b border-[var(--line)] bg-[var(--surface)] pl-[78px]" data-tauri-drag-region="deep">
         {page === "/tasks" ? (
-          <Tooltip label={taskListVisible ? t("tasks.hideList") : t("tasks.showList")}>
-            <Button variant="ghost" size="icon" className="my-1 shrink-0" aria-label={taskListVisible ? t("tasks.hideList") : t("tasks.showList")} onClick={() => setTaskListVisible((visible) => !visible)}>
-              {taskListVisible ? <PanelLeftClose size={17} /> : <PanelLeftOpen size={17} />}
-            </Button>
-          </Tooltip>
+          <div className="flex shrink-0 items-stretch">
+            {taskListVisible ? (
+              <>
+                <Tooltip label={t("tasks.files")}>
+                  <Button variant="ghost" size="icon" className="my-1 shrink-0" aria-label={t("tasks.files")} aria-pressed={taskPanel === "files"} aria-controls="task-side-panel" onClick={() => setTaskPanel("files")}><FileText size={17} /></Button>
+                </Tooltip>
+                <Tooltip label={t("tasks.searchPanel")}>
+                  <Button variant="ghost" size="icon" className="my-1 shrink-0" aria-label={t("tasks.searchPanel")} aria-pressed={taskPanel === "search"} aria-controls="task-side-panel" onClick={() => setTaskPanel("search")}><Search size={17} /></Button>
+                </Tooltip>
+              </>
+            ) : null}
+            <Tooltip label={taskListVisible ? t("tasks.collapse") : t("tasks.expand")}>
+              <Button variant="ghost" size="icon" className="my-1 shrink-0" aria-label={taskListVisible ? t("tasks.collapse") : t("tasks.expand")} aria-expanded={taskListVisible} aria-controls="task-side-panel" onClick={() => setTaskListVisible((visible) => !visible)}>
+                {taskListVisible ? <PanelLeftClose size={17} /> : <PanelLeftOpen size={17} />}
+              </Button>
+            </Tooltip>
+          </div>
         ) : null}
         <div className="flex min-w-0 flex-1 items-end gap-0.5 overflow-x-auto px-1.5 pt-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" role="tablist" aria-label={t("editor.openFiles")}>
           {openTabs.map((tab) => (
@@ -799,9 +844,6 @@ function WorkspaceSession() {
         {page === "/settings" && <SettingsView updater={updater} />}
         {page === "/tasks" && (
           <>
-            <header className="flex h-[52px] items-center gap-2 border-b border-line bg-surface px-4">
-              <div className="flex h-[34px] min-w-[180px] max-w-[360px] flex-1 items-center rounded-xl border border-line bg-surface-soft px-2 text-muted focus-within:border-accent"><Search size={16} /><Input className="min-w-0 flex-1 border-0 bg-transparent shadow-none ring-0 focus:ring-0" aria-label={t("tasks.search")} placeholder={t("tasks.search")} value={searchDraft} onChange={(event) => setSearchDraft(event.target.value)} /></div>
-            </header>
             <Dialog
               open={filterDialogOpen}
               onOpenChange={setFilterDialogOpen}
@@ -831,8 +873,9 @@ function WorkspaceSession() {
                 </div>
               </div>
             </Dialog>
-            <div className="grid h-[calc(100%-52px)] min-h-0" data-testid="split-layout" style={{ gridTemplateColumns: taskListVisible ? `${leftWidth}px 5px minmax(0, 1fr)` : "0 0 minmax(0, 1fr)" }}>
-              <section className={cn("flex min-h-0 min-w-0 flex-col bg-background", !taskListVisible && "invisible overflow-hidden")} aria-hidden={!taskListVisible}>
+            <div className="grid h-full min-h-0" data-testid="split-layout" style={{ gridTemplateColumns: taskListVisible ? `${leftWidth}px 5px minmax(0, 1fr)` : "0 0 minmax(0, 1fr)" }}>
+              <section id="task-side-panel" className={cn("flex min-h-0 min-w-0 flex-col bg-background", !taskListVisible && "invisible overflow-hidden")} aria-hidden={!taskListVisible}>
+                {taskPanel === "files" ? <>
                 <div className="flex min-h-12 shrink-0 items-center justify-between gap-2 px-2.5 py-2" role="toolbar" aria-label={t("tasks.listToolbar")}>
                   <span className="inline-flex min-w-0 items-center gap-1.5 text-xs font-semibold text-muted [&_svg]:shrink-0" aria-label={t("tasks.taskCount", { count: tasks.length })}><LayoutList size={16} />{tasks.length}</span>
                   <div className="flex items-center gap-1.5 [&_button]:size-8 [&_button]:shrink-0 [&_button_svg]:size-[17px]">
@@ -859,6 +902,7 @@ function WorkspaceSession() {
                   onSelect={selectTask}
                   onQuickEdit={quickEditTask}
                 />
+                </> : <TaskSearchPanel search={searchDraft} results={searchResults} loading={searchLoading} onSearchChange={setSearchDraft} onSelect={(result) => void chooseTask(result.id)} />}
               </section>
               <div className={cn("relative z-[2] cursor-col-resize bg-line hover:bg-accent", !taskListVisible && "invisible")} data-testid="splitter" onPointerDown={beginTaskListResize} />
               <section className="min-h-0 min-w-0 bg-surface" ref={setDetailPanel}>

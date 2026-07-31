@@ -1,4 +1,6 @@
-use crate::model::{PropertyDefinition, Task, TaskFilter, TaskQuery, TaskSort, TaskSummary};
+use crate::model::{
+    PropertyDefinition, Task, TaskFilter, TaskQuery, TaskSearchResult, TaskSort, TaskSummary,
+};
 use rusqlite::{params, Connection};
 use serde_yaml::Value;
 use std::cmp::Ordering;
@@ -148,6 +150,82 @@ impl TaskIndex {
         tasks.sort_by(|left, right| compare_tasks(left, right, query.sort.as_ref(), definitions));
         Ok(tasks)
     }
+
+    pub fn search(&self, search: &str) -> Result<Vec<TaskSearchResult>, String> {
+        let needle = folded_chars(search.trim());
+        if needle.is_empty() {
+            return Ok(Vec::new());
+        }
+        let mut statement = self
+            .connection
+            .prepare("SELECT id,title,archived,updated_at,body FROM tasks")
+            .map_err(to_string)?;
+        let rows = statement
+            .query_map([], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, bool>(2)?,
+                    row.get::<_, String>(3)?,
+                    row.get::<_, String>(4)?,
+                ))
+            })
+            .map_err(to_string)?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(to_string)?;
+
+        let mut matches = rows
+            .into_iter()
+            .filter_map(|(id, title, archived, updated_at, body)| {
+                let title_match = find_folded(&title, &needle).is_some();
+                let body_match = find_folded(&body, &needle);
+                (title_match || body_match.is_some()).then(|| {
+                    let body_chars = body.chars().collect::<Vec<_>>();
+                    let match_start = body_match.map_or(0, |(start, _)| start);
+                    let start = if body_match.is_some() {
+                        match_start.saturating_sub(80)
+                    } else {
+                        0
+                    };
+                    let snippet = body_chars.into_iter().skip(start).take(200).collect();
+                    (
+                        TaskSearchResult {
+                            id,
+                            title,
+                            archived,
+                            snippet,
+                        },
+                        title_match,
+                        updated_at,
+                    )
+                })
+            })
+            .collect::<Vec<_>>();
+        matches.sort_by(|left, right| right.1.cmp(&left.1).then_with(|| right.2.cmp(&left.2)));
+        Ok(matches.into_iter().map(|(result, _, _)| result).collect())
+    }
+}
+
+fn folded_chars(value: &str) -> Vec<char> {
+    value.chars().flat_map(char::to_lowercase).collect()
+}
+
+fn find_folded(value: &str, needle: &[char]) -> Option<(usize, usize)> {
+    let mut folded = Vec::new();
+    let mut source_indexes = Vec::new();
+    for (source_index, character) in value.chars().enumerate() {
+        for folded_character in character.to_lowercase() {
+            folded.push(folded_character);
+            source_indexes.push(source_index);
+        }
+    }
+    folded
+        .windows(needle.len())
+        .position(|window| window == needle)
+        .map(|start| {
+            let end = source_indexes[start + needle.len() - 1] + 1;
+            (source_indexes[start], end)
+        })
 }
 
 fn searchable(value: &Value) -> String {
@@ -376,6 +454,39 @@ mod tests {
         );
         index.remove("a").unwrap();
         assert_eq!(index.query(&TaskQuery::default(), &[]).unwrap().len(), 1);
+    }
+
+    #[test]
+    fn searches_titles_and_bodies_across_archive_with_bounded_unicode_snippets() {
+        let temporary = tempfile::tempdir().unwrap();
+        let index = TaskIndex::open(&temporary.path().join("index.sqlite")).unwrap();
+        let mut title_match = task("title", "Needle title", 1, "doing", &[]);
+        title_match.body = "Opening text".into();
+        let mut body_match = task("body", "Body result", 2, "done", &[]);
+        body_match.body = format!("{} needle {}", "界".repeat(120), "尾".repeat(200));
+        body_match.archived = true;
+        let mut ignored = task("ignored", "Ignored", 3, "needle", &[]);
+        ignored.file_name = "needle.md".into();
+        ignored.body = "No match".into();
+        for current in [&title_match, &body_match, &ignored] {
+            index
+                .upsert(current, &temporary.path().join(&current.file_name), 1)
+                .unwrap();
+        }
+
+        let results = index.search("needle").unwrap();
+        assert_eq!(
+            results
+                .iter()
+                .map(|result| result.id.as_str())
+                .collect::<Vec<_>>(),
+            ["title", "body"]
+        );
+        assert!(results[1].archived);
+        assert!(results[1].snippet.contains("needle"));
+        assert_eq!(results[1].snippet.chars().count(), 200);
+        assert!(!results[1].snippet.ends_with(&"尾".repeat(200)));
+        assert!(index.search("   ").unwrap().is_empty());
     }
 
     #[test]

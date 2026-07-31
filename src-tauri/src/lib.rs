@@ -5,7 +5,10 @@ mod model;
 mod workspace;
 
 use git::GitStatus;
-use model::{PropertyDefinition, SaveTaskInput, Task, TaskQuery, TaskSummary, WorkspaceSnapshot};
+use model::{
+    PropertyDefinition, SaveTaskInput, Task, TaskQuery, TaskSearchResult, TaskSummary,
+    WorkspaceSnapshot,
+};
 use notify::{RecommendedWatcher, RecursiveMode, Watcher};
 use std::path::PathBuf;
 use std::sync::Mutex;
@@ -100,6 +103,14 @@ fn save_task(input: SaveTaskInput, state: State<'_, AppState>) -> Result<Task, S
 #[tauri::command]
 fn query_tasks(query: TaskQuery, state: State<'_, AppState>) -> Result<Vec<TaskSummary>, String> {
     with_workspace(state, |workspace| workspace.query(query))
+}
+
+#[tauri::command]
+fn search_tasks(
+    search: String,
+    state: State<'_, AppState>,
+) -> Result<Vec<TaskSearchResult>, String> {
+    with_workspace(state, |workspace| workspace.search(&search))
 }
 
 #[tauri::command]
@@ -204,6 +215,7 @@ pub fn run() {
             get_task,
             save_task,
             query_tasks,
+            search_tasks,
             rebuild_index,
             delete_task,
             save_properties,

@@ -8,6 +8,7 @@ import type {
   PropertyDefinition,
   Task,
   TaskQuery,
+  TaskSearchResult,
   TaskSummary,
   WorkspaceSnapshot,
 } from "../types";
@@ -82,6 +83,23 @@ function uuid() {
 function summary(task: Task): TaskSummary {
   const { body: _body, contentHash: _hash, ...rest } = task;
   return rest;
+}
+
+function foldedMatchStart(value: string, search: string): number {
+  const needle = Array.from(search.trim().toLocaleLowerCase());
+  if (needle.length === 0) return -1;
+  const folded: string[] = [];
+  const sourceIndexes: number[] = [];
+  Array.from(value).forEach((character, sourceIndex) => {
+    for (const foldedCharacter of Array.from(character.toLocaleLowerCase())) {
+      folded.push(foldedCharacter);
+      sourceIndexes.push(sourceIndex);
+    }
+  });
+  for (let index = 0; index <= folded.length - needle.length; index += 1) {
+    if (needle.every((character, offset) => folded[index + offset] === character)) return sourceIndexes[index];
+  }
+  return -1;
 }
 
 export function taskFilePath(workspacePath: string, task: Pick<Task, "archived" | "fileName">): string {
@@ -182,6 +200,23 @@ export const api = {
       return sort.direction === "desc" ? -order : order;
     });
     return items.map(summary);
+  },
+  async searchTasks(search: string): Promise<TaskSearchResult[]> {
+    if (isTauri) return invoke("search_tasks", { search });
+    const needle = search.trim().toLocaleLowerCase();
+    if (!needle) return [];
+    return loadDemo().tasks
+      .flatMap((task) => {
+        const titleMatch = foldedMatchStart(task.title, needle) >= 0;
+        const bodyIndex = foldedMatchStart(task.body, needle);
+        if (!titleMatch && bodyIndex < 0) return [];
+        const body = Array.from(task.body);
+        const start = bodyIndex < 0 ? 0 : Math.max(0, bodyIndex - 80);
+        const snippet = body.slice(start, start + 200).join("");
+        return [{ result: { id: task.id, title: task.title, archived: task.archived, snippet }, titleMatch, updatedAt: task.updatedAt }];
+      })
+      .sort((left, right) => Number(right.titleMatch) - Number(left.titleMatch) || right.updatedAt.localeCompare(left.updatedAt))
+      .map(({ result }) => result);
   },
   async saveProperties(definitions: PropertyDefinition[]): Promise<PropertyDefinition[]> {
     if (isTauri) return invoke("save_properties", { definitions });

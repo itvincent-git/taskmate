@@ -1,8 +1,8 @@
 use crate::index::TaskIndex;
 use crate::markdown::{hash_content, parse_task, serialize_task};
 use crate::model::{
-    PropertyDefinition, PropertyOption, SaveTaskInput, Task, TaskQuery, TaskSummary,
-    WorkspaceSnapshot,
+    PropertyDefinition, PropertyOption, SaveTaskInput, Task, TaskQuery, TaskSearchResult,
+    TaskSummary, WorkspaceSnapshot,
 };
 use base64::Engine;
 use chrono::Utc;
@@ -117,6 +117,12 @@ impl Workspace {
         let index = TaskIndex::open(&self.root.join(".task-app/index.sqlite"))?;
         self.incremental_scan(&index)?;
         index.query(&query, &properties)
+    }
+
+    pub fn search(&self, search: &str) -> Result<Vec<TaskSearchResult>, String> {
+        let index = TaskIndex::open(&self.root.join(".task-app/index.sqlite"))?;
+        self.incremental_scan(&index)?;
+        index.search(search)
     }
 
     pub fn rebuild_index(&self) -> Result<Vec<TaskSummary>, String> {

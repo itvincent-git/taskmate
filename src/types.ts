@@ -43,6 +43,13 @@ export interface TaskSummary {
   properties: Record<string, unknown>;
 }
 
+export interface TaskSearchResult {
+  id: string;
+  title: string;
+  archived: boolean;
+  snippet: string;
+}
+
 export interface Task extends TaskSummary {
   body: string;
   contentHash: string;
