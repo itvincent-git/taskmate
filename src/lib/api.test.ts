@@ -56,3 +56,33 @@ describe("searchTasks", () => {
     await expect(api.searchTasks("   ")).resolves.toEqual([]);
   });
 });
+
+describe("queryTasks", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    localStorage.setItem("taskmate-browser-demo", JSON.stringify({
+      path: "/tmp/tasks",
+      properties: [],
+      tasks: [
+        { id: "a", title: "Alpha", fileName: "a.md", body: "", archived: false, createdAt: "2026-01-01", updatedAt: "2026-01-02", properties: { status: "doing", score: 2 }, contentHash: "a" },
+        { id: "b", title: "Beta", fileName: "b.md", body: "", archived: false, createdAt: "2026-01-01", updatedAt: "2026-01-03", properties: { status: "doing", score: 10 }, contentHash: "b" },
+        { id: "c", title: "Charlie", fileName: "c.md", body: "", archived: false, createdAt: "2026-01-01", updatedAt: "2026-01-04", properties: { status: "done" }, contentHash: "c" },
+        { id: "d", title: "Delta", fileName: "d.md", body: "", archived: false, createdAt: "2026-01-01", updatedAt: "2026-01-05", properties: { status: "doing" }, contentHash: "d" },
+      ],
+    }));
+  });
+
+  it("applies sort fields in priority order with per-field null placement", async () => {
+    const results = await api.queryTasks({
+      search: "",
+      archived: false,
+      filters: [],
+      sorts: [
+        { key: "status", direction: "desc", nulls: "last" },
+        { key: "score", direction: "desc", nulls: "first" },
+      ],
+    });
+
+    expect(results.map((task) => task.id)).toEqual(["c", "d", "b", "a"]);
+  });
+});

@@ -71,7 +71,7 @@ export interface TaskQuery {
   search: string;
   archived: boolean;
   filters: TaskFilter[];
-  sort?: TaskSort;
+  sorts: TaskSort[];
 }
 
 export interface WorkspaceSnapshot {

@@ -90,7 +90,8 @@ pub struct TaskQuery {
     pub archived: bool,
     #[serde(default)]
     pub filters: Vec<TaskFilter>,
-    pub sort: Option<TaskSort>,
+    #[serde(default)]
+    pub sorts: Vec<TaskSort>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

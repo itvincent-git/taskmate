@@ -252,15 +252,31 @@ describe("Taskmate application", () => {
     })));
     expect(filterButton).toHaveAttribute("aria-pressed", "true");
 
-    await user.click(within(dialog).getByLabelText("Sort"));
+    await user.click(within(dialog).getByLabelText("Sort 1"));
     await user.click(await screen.findByRole("option", { name: "Status · Asc" }));
     await waitFor(() => expect(queryTasks).toHaveBeenLastCalledWith(expect.objectContaining({
-      sort: { key: "status", direction: "asc", nulls: "last" },
+      sorts: [{ key: "status", direction: "asc", nulls: "last" }],
     })));
     await user.click(within(dialog).getByLabelText("Empty last"));
     await user.click(await screen.findByRole("option", { name: "Empty first" }));
     await waitFor(() => expect(queryTasks).toHaveBeenLastCalledWith(expect.objectContaining({
-      sort: { key: "status", direction: "asc", nulls: "first" },
+      sorts: [{ key: "status", direction: "asc", nulls: "first" }],
+    })));
+    await user.click(within(dialog).getByRole("button", { name: "Add sort" }));
+    await user.click(within(dialog).getByLabelText("Sort 2"));
+    await user.click(await screen.findByRole("option", { name: "Priority · Desc" }));
+    await waitFor(() => expect(queryTasks).toHaveBeenLastCalledWith(expect.objectContaining({
+      sorts: [
+        { key: "status", direction: "asc", nulls: "first" },
+        { key: "priority", direction: "desc", nulls: "last" },
+      ],
+    })));
+    await user.click(within(dialog).getByRole("button", { name: "Move sort 2 up" }));
+    await waitFor(() => expect(queryTasks).toHaveBeenLastCalledWith(expect.objectContaining({
+      sorts: [
+        { key: "priority", direction: "desc", nulls: "last" },
+        { key: "status", direction: "asc", nulls: "first" },
+      ],
     })));
     expect(localStorage.getItem("taskmate-filter-sort.v1")).toContain('"operator":"eq"');
     expect(localStorage.getItem("taskmate-filter-sort.v1")).toContain('"nulls":"first"');
@@ -290,13 +306,13 @@ describe("Taskmate application", () => {
       search: "",
       archived: false,
       filters: [{ key: "status", operator: "eq", value: "done" }],
-      sort: { key: "status", direction: "desc", nulls: "first" },
+      sorts: [{ key: "status", direction: "desc", nulls: "first" }],
     }));
 
     await user.click(within(toolbar).getByRole("button", { name: "Open filters and sorting" }));
     const dialog = screen.getByRole("dialog", { name: "Filter & sort" });
     expect(within(dialog).getByLabelText("Status Filter")).toHaveTextContent("Done");
-    expect(within(dialog).getByLabelText("Sort")).toHaveTextContent("Status · Desc");
+    expect(within(dialog).getByLabelText("Sort 1")).toHaveTextContent("Status · Desc");
     expect(within(dialog).getByLabelText("Empty last")).toHaveTextContent("Empty first");
   });
 

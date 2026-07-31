@@ -6,6 +6,8 @@ import {
   Archive,
   ArchiveRestore,
   Check,
+  ChevronDown,
+  ChevronUp,
   Cloud,
   Copy,
   Download,
@@ -26,6 +28,7 @@ import {
   Search,
   Settings2,
   Sun,
+  Trash2,
   X,
 } from "lucide-react";
 import { api } from "./lib/api";
@@ -37,6 +40,7 @@ import type {
   TaskFilter,
   TaskQuery,
   TaskSearchResult,
+  TaskSort,
   TaskSummary,
 } from "./types";
 import { PropertySettings } from "./components/PropertySettings";
@@ -99,7 +103,7 @@ function createWorkspaceStore() {
     tasks: [],
     task: null,
     openTabs: [],
-    query: { search: "", archived: false, filters: [] },
+    query: { search: "", archived: false, filters: [], sorts: [] },
     searchDraft: localStorage.getItem(TASK_SEARCH_KEY) || "",
     saveState: "saved",
     error: "",
@@ -169,24 +173,26 @@ function loadTaskPanel(): "files" | "search" {
   return localStorage.getItem(TASK_PANEL_KEY) === "search" ? "search" : "files";
 }
 
-function loadFilterSort(path: string): Pick<TaskQuery, "filters" | "sort"> {
+type StoredFilterSort = Pick<TaskQuery, "filters"> & { sorts?: TaskSort[]; sort?: TaskSort };
+
+function loadFilterSort(path: string): Pick<TaskQuery, "filters" | "sorts"> {
   try {
-    const stored = JSON.parse(localStorage.getItem(FILTER_SORT_KEY) || "{}") as Record<string, Pick<TaskQuery, "filters" | "sort">>;
+    const stored = JSON.parse(localStorage.getItem(FILTER_SORT_KEY) || "{}") as Record<string, StoredFilterSort>;
     const preference = stored[path];
-    if (!preference || !Array.isArray(preference.filters)) return { filters: [] };
-    return { filters: preference.filters, sort: preference.sort };
+    if (!preference || !Array.isArray(preference.filters)) return { filters: [], sorts: [] };
+    return { filters: preference.filters, sorts: Array.isArray(preference.sorts) ? preference.sorts : preference.sort ? [preference.sort] : [] };
   } catch {
-    return { filters: [] };
+    return { filters: [], sorts: [] };
   }
 }
 
 function saveFilterSort(path: string, query: TaskQuery) {
   try {
-    const stored = JSON.parse(localStorage.getItem(FILTER_SORT_KEY) || "{}") as Record<string, Pick<TaskQuery, "filters" | "sort">>;
-    stored[path] = { filters: query.filters, sort: query.sort };
+    const stored = JSON.parse(localStorage.getItem(FILTER_SORT_KEY) || "{}") as Record<string, StoredFilterSort>;
+    stored[path] = { filters: query.filters, sorts: query.sorts };
     localStorage.setItem(FILTER_SORT_KEY, JSON.stringify(stored));
   } catch {
-    localStorage.setItem(FILTER_SORT_KEY, JSON.stringify({ [path]: { filters: query.filters, sort: query.sort } }));
+    localStorage.setItem(FILTER_SORT_KEY, JSON.stringify({ [path]: { filters: query.filters, sorts: query.sorts } }));
   }
 }
 
@@ -431,7 +437,7 @@ function WorkspaceSession() {
   useEffect(() => {
     if (!workspaceOpen) return;
     saveFilterSort(workspacePath, query);
-  }, [query.filters, query.sort, workspaceOpen, workspacePath]);
+  }, [query.filters, query.sorts, workspaceOpen, workspacePath]);
 
   useEffect(() => {
     const element = detailPanel;
@@ -635,10 +641,23 @@ function WorkspaceSession() {
   const filterDefinitions = useMemo(() => definitions.filter((definition) => definition.enableFilter), [definitions]);
   const sortDefinitions = useMemo(() => definitions.filter((definition) => definition.enableSort), [definitions]);
   const detailDefinitions = useMemo(() => definitions.filter((definition) => definition.showInDetail).sort((a, b) => a.order - b.order), [definitions]);
-  const filterSortActive = query.filters.length > 0 || query.sort !== undefined;
+  const filterSortActive = query.filters.length > 0 || query.sorts.length > 0;
   const updateFilters = (definition: PropertyDefinition, filters: TaskFilter[]) => {
     const without = query.filters.filter((filter) => filter.key !== definition.key);
     setQuery({ ...query, filters: [...without, ...filters] });
+  };
+  const sortOptions = [
+    { value: "title:asc", label: t("tasks.sortTitle") },
+    ...sortDefinitions.flatMap((definition) => [
+      { value: `${definition.key}:asc`, label: `${localizedPropertyName(definition, locale)} · ${t("filter.asc")}` },
+      { value: `${definition.key}:desc`, label: `${localizedPropertyName(definition, locale)} · ${t("filter.desc")}` },
+    ]),
+  ];
+  const updateSort = (index: number, sort: TaskSort) => setQuery({ ...query, sorts: query.sorts.map((item, itemIndex) => itemIndex === index ? sort : item) });
+  const moveSort = (index: number, offset: -1 | 1) => {
+    const sorts = query.sorts.slice();
+    [sorts[index], sorts[index + offset]] = [sorts[index + offset], sorts[index]];
+    setQuery({ ...query, sorts });
   };
   const beginTaskListResize = (event: React.PointerEvent) => {
     event.preventDefault();
@@ -843,19 +862,32 @@ function WorkspaceSession() {
                 <div className="grid gap-2">
                   {filterDefinitions.map((definition) => <DynamicFilter key={definition.id} definition={definition} current={query.filters.filter((filter) => filter.key === definition.key)} onChange={(filters) => updateFilters(definition, filters)} />)}
                 </div>
-                <div className="flex flex-wrap gap-1.5 border-t border-line pt-3 [&>*]:w-auto [&>*]:flex-[1_1_210px]">
-                  <Select ariaLabel={t("properties.sort")} value={query.sort ? `${query.sort.key}:${query.sort.direction}` : "__recent"} onValueChange={(value) => {
-                    const [key, direction] = value === "__recent" ? ["", ""] : value.split(":");
-                    setQuery({ ...query, sort: key ? { key, direction: direction as "asc" | "desc", nulls: "last" } : undefined });
-                  }} options={[
-                    { value: "__recent", label: t("tasks.sortRecent") },
-                    { value: "title:asc", label: t("tasks.sortTitle") },
-                    ...sortDefinitions.flatMap((definition) => [
-                      { value: `${definition.key}:asc`, label: `${localizedPropertyName(definition, locale)} · ${t("filter.asc")}` },
-                      { value: `${definition.key}:desc`, label: `${localizedPropertyName(definition, locale)} · ${t("filter.desc")}` },
-                    ]),
-                  ]} />
-                  {query.sort ? <Select ariaLabel={t("tasks.emptyLast")} value={query.sort.nulls} onValueChange={(value) => setQuery({ ...query, sort: { ...query.sort!, nulls: value as "first" | "last" } })} options={[{ value: "last", label: t("tasks.emptyLast") }, { value: "first", label: t("tasks.emptyFirst") }]} /> : null}
+                <div className="grid gap-2 border-t border-line pt-3">
+                  {query.sorts.length === 0 ? <Select ariaLabel={`${t("properties.sort")} 1`} value="__recent" onValueChange={(value) => {
+                    if (value === "__recent") return;
+                    const [key, direction] = value.split(":");
+                    setQuery({ ...query, sorts: [{ key, direction: direction as "asc" | "desc", nulls: "last" }] });
+                  }} options={[{ value: "__recent", label: t("tasks.sortRecent") }, ...sortOptions]} /> : query.sorts.map((sort, index) => {
+                    const usedKeys = new Set(query.sorts.filter((_, itemIndex) => itemIndex !== index).map((item) => item.key));
+                    return <div className="flex items-center gap-1.5" key={`${sort.key}-${index}`}>
+                      <span className="w-5 shrink-0 text-center text-xs font-semibold text-muted">{index + 1}</span>
+                      <Select className="min-w-0 flex-1" ariaLabel={`${t("properties.sort")} ${index + 1}`} value={`${sort.key}:${sort.direction}`} onValueChange={(value) => {
+                        const [key, direction] = value.split(":");
+                        updateSort(index, { key, direction: direction as "asc" | "desc", nulls: "last" });
+                      }} options={sortOptions.filter((option) => !usedKeys.has(option.value.split(":")[0]))} />
+                      {sort.key !== "title" ? <Select ariaLabel={index === 0 ? t("tasks.emptyLast") : `${t("tasks.emptyLast")} ${index + 1}`} value={sort.nulls} onValueChange={(value) => updateSort(index, { ...sort, nulls: value as "first" | "last" })} options={[{ value: "last", label: t("tasks.emptyLast") }, { value: "first", label: t("tasks.emptyFirst") }]} /> : null}
+                      <Button variant="ghost" size="icon" aria-label={t("tasks.moveSortUp", { index: index + 1 })} disabled={index === 0} onClick={() => moveSort(index, -1)}><ChevronUp size={15} /></Button>
+                      <Button variant="ghost" size="icon" aria-label={t("tasks.moveSortDown", { index: index + 1 })} disabled={index === query.sorts.length - 1} onClick={() => moveSort(index, 1)}><ChevronDown size={15} /></Button>
+                      <Button variant="ghost" size="icon" className="text-danger" aria-label={t("tasks.removeSort", { index: index + 1 })} onClick={() => setQuery({ ...query, sorts: query.sorts.filter((_, itemIndex) => itemIndex !== index) })}><Trash2 size={15} /></Button>
+                    </div>;
+                  })}
+                  {query.sorts.length > 0 ? <Button variant="outline" className="justify-self-start" disabled={new Set(query.sorts.map((sort) => sort.key)).size >= new Set(sortOptions.map((option) => option.value.split(":")[0])).size} onClick={() => {
+                    const usedKeys = new Set(query.sorts.map((sort) => sort.key));
+                    const option = sortOptions.find((candidate) => !usedKeys.has(candidate.value.split(":")[0]));
+                    if (!option) return;
+                    const [key, direction] = option.value.split(":");
+                    setQuery({ ...query, sorts: [...query.sorts, { key, direction: direction as "asc" | "desc", nulls: "last" }] });
+                  }}><Plus size={15} />{t("tasks.addSort")}</Button> : null}
                 </div>
               </div>
             </Dialog>

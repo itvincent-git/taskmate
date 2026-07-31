@@ -191,13 +191,17 @@ export const api = {
       if (filter.operator === "any") return Array.isArray(filter.value) && (filter.value as unknown[]).some((item) => Array.isArray(value) ? value.includes(item) : value === item);
       return value === filter.value;
     }));
-    const sort = query.sort;
     items.sort((a, b) => {
-      if (!sort) return b.updatedAt.localeCompare(a.updatedAt) || a.title.localeCompare(b.title);
-      const av = sort.key === "title" ? a.title : sort.key === "updatedAt" ? a.updatedAt : a.properties[sort.key];
-      const bv = sort.key === "title" ? b.title : sort.key === "updatedAt" ? b.updatedAt : b.properties[sort.key];
-      const order = String(av ?? "").localeCompare(String(bv ?? ""), undefined, { numeric: true });
-      return sort.direction === "desc" ? -order : order;
+      for (const sort of query.sorts) {
+        const av = sort.key === "title" ? a.title : sort.key === "updatedAt" ? a.updatedAt : a.properties[sort.key];
+        const bv = sort.key === "title" ? b.title : sort.key === "updatedAt" ? b.updatedAt : b.properties[sort.key];
+        const aNull = av === undefined || av === null;
+        const bNull = bv === undefined || bv === null;
+        if (aNull !== bNull) return aNull === (sort.nulls === "first") ? -1 : 1;
+        const order = String(av ?? "").localeCompare(String(bv ?? ""), undefined, { numeric: true });
+        if (order !== 0) return sort.direction === "desc" ? -order : order;
+      }
+      return b.updatedAt.localeCompare(a.updatedAt) || a.title.localeCompare(b.title);
     });
     return items.map(summary);
   },

@@ -147,7 +147,7 @@ impl TaskIndex {
             .map(|(task, _)| task)
             .collect::<Vec<_>>();
 
-        tasks.sort_by(|left, right| compare_tasks(left, right, query.sort.as_ref(), definitions));
+        tasks.sort_by(|left, right| compare_tasks(left, right, &query.sorts, definitions));
         Ok(tasks)
     }
 
@@ -301,54 +301,62 @@ fn compare_values(left: Option<&Value>, right: Option<&Value>) -> Ordering {
 fn compare_tasks(
     left: &TaskSummary,
     right: &TaskSummary,
-    sort: Option<&TaskSort>,
+    sorts: &[TaskSort],
     definitions: &[PropertyDefinition],
 ) -> Ordering {
-    let primary = sort
-        .map(|sort| {
-            if sort.key != "title" && sort.key != "updatedAt" {
-                let left_value = left.properties.get(&sort.key);
-                let right_value = right.properties.get(&sort.key);
-                let left_null = left_value.is_none_or(|value| *value == Value::Null);
-                let right_null = right_value.is_none_or(|value| *value == Value::Null);
-                if left_null != right_null {
-                    return if left_null == (sort.nulls == "first") {
-                        Ordering::Less
-                    } else {
-                        Ordering::Greater
-                    };
-                }
-            }
-            let order = if sort.key == "title" {
-                left.title.to_lowercase().cmp(&right.title.to_lowercase())
-            } else if sort.key == "updatedAt" {
-                left.updated_at.cmp(&right.updated_at)
-            } else {
-                let definition = definitions
-                    .iter()
-                    .find(|definition| definition.key == sort.key);
-                match definition.map(|definition| definition.property_type.as_str()) {
-                    Some("select") => compare_option_values(
-                        left.properties.get(&sort.key),
-                        right.properties.get(&sort.key),
-                        definition.unwrap(),
-                    ),
-                    _ => compare_values(
-                        left.properties.get(&sort.key),
-                        right.properties.get(&sort.key),
-                    ),
-                }
-            };
-            if sort.direction == "desc" {
-                order.reverse()
-            } else {
-                order
-            }
-        })
-        .unwrap_or(Ordering::Equal);
-    primary
+    sorts
+        .iter()
+        .map(|sort| compare_task_sort(left, right, sort, definitions))
+        .find(|order| *order != Ordering::Equal)
+        .unwrap_or(Ordering::Equal)
         .then_with(|| right.updated_at.cmp(&left.updated_at))
         .then_with(|| left.title.to_lowercase().cmp(&right.title.to_lowercase()))
+}
+
+fn compare_task_sort(
+    left: &TaskSummary,
+    right: &TaskSummary,
+    sort: &TaskSort,
+    definitions: &[PropertyDefinition],
+) -> Ordering {
+    if sort.key != "title" && sort.key != "updatedAt" {
+        let left_value = left.properties.get(&sort.key);
+        let right_value = right.properties.get(&sort.key);
+        let left_null = left_value.is_none_or(|value| *value == Value::Null);
+        let right_null = right_value.is_none_or(|value| *value == Value::Null);
+        if left_null != right_null {
+            return if left_null == (sort.nulls == "first") {
+                Ordering::Less
+            } else {
+                Ordering::Greater
+            };
+        }
+    }
+    let order = if sort.key == "title" {
+        left.title.to_lowercase().cmp(&right.title.to_lowercase())
+    } else if sort.key == "updatedAt" {
+        left.updated_at.cmp(&right.updated_at)
+    } else {
+        let definition = definitions
+            .iter()
+            .find(|definition| definition.key == sort.key);
+        match definition.map(|definition| definition.property_type.as_str()) {
+            Some("select") => compare_option_values(
+                left.properties.get(&sort.key),
+                right.properties.get(&sort.key),
+                definition.unwrap(),
+            ),
+            _ => compare_values(
+                left.properties.get(&sort.key),
+                right.properties.get(&sort.key),
+            ),
+        }
+    };
+    if sort.direction == "desc" {
+        order.reverse()
+    } else {
+        order
+    }
 }
 
 fn compare_option_values(
@@ -435,11 +443,11 @@ mod tests {
         let sorted = index
             .query(
                 &TaskQuery {
-                    sort: Some(TaskSort {
+                    sorts: vec![TaskSort {
                         key: "score".into(),
                         direction: "asc".into(),
                         nulls: "last".into(),
-                    }),
+                    }],
                     ..TaskQuery::default()
                 },
                 &[],
@@ -454,6 +462,50 @@ mod tests {
         );
         index.remove("a").unwrap();
         assert_eq!(index.query(&TaskQuery::default(), &[]).unwrap().len(), 1);
+    }
+
+    #[test]
+    fn sorts_by_multiple_fields_in_priority_order() {
+        let temporary = tempfile::tempdir().unwrap();
+        let index = TaskIndex::open(&temporary.path().join("index.sqlite")).unwrap();
+        for task in [
+            task("a", "Alpha", 2, "group-b", &[]),
+            task("b", "Beta", 10, "group-b", &[]),
+            task("c", "Charlie", 5, "group-a", &[]),
+        ] {
+            index
+                .upsert(&task, &temporary.path().join(&task.file_name), 1)
+                .unwrap();
+        }
+
+        let sorted = index
+            .query(
+                &TaskQuery {
+                    sorts: vec![
+                        TaskSort {
+                            key: "status".into(),
+                            direction: "asc".into(),
+                            nulls: "last".into(),
+                        },
+                        TaskSort {
+                            key: "score".into(),
+                            direction: "desc".into(),
+                            nulls: "last".into(),
+                        },
+                    ],
+                    ..TaskQuery::default()
+                },
+                &[],
+            )
+            .unwrap();
+
+        assert_eq!(
+            sorted
+                .iter()
+                .map(|task| task.id.as_str())
+                .collect::<Vec<_>>(),
+            ["c", "b", "a"]
+        );
     }
 
     #[test]
