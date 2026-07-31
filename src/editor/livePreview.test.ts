@@ -114,7 +114,7 @@ describe("Live Preview activation", () => {
     expect(checkboxes[0]).toHaveAttribute("aria-checked", "false");
     expect(checkboxes[0]?.querySelector("svg")).toBeNull();
     expect(checkboxes[1]).toHaveAttribute("aria-checked", "true");
-    expect(checkboxes[1]?.querySelector("svg")).not.toBeNull();
+    expect(checkboxes[1]?.querySelector("svg")).toHaveClass("lucide", "lucide-check");
     expect(host.querySelector('[data-marker-kind="bullet"]')).toBeNull();
 
     checkboxes[0]?.click();

@@ -2,7 +2,25 @@ import { syntaxTree } from "@codemirror/language";
 import type { SyntaxNode } from "@lezer/common";
 import { RangeSetBuilder, type EditorState } from "@codemirror/state";
 import { Decoration, type DecorationSet, EditorView, ViewPlugin, type ViewUpdate, WidgetType } from "@codemirror/view";
+import { createElement } from "react";
+import { flushSync } from "react-dom";
+import { createRoot } from "react-dom/client";
+import { Check } from "lucide-react";
 import { api } from "../lib/api";
+
+let taskCheckIcon: Node | null = null;
+
+function cloneTaskCheckIcon() {
+  if (taskCheckIcon) return taskCheckIcon.cloneNode(true);
+  const host = document.createElement("span");
+  const root = createRoot(host);
+  flushSync(() => root.render(createElement(Check, { size: 14, strokeWidth: 3, "aria-hidden": true })));
+  const icon = host.querySelector("svg")?.cloneNode(true);
+  root.unmount();
+  if (!icon) throw new Error("Lucide task check icon failed to render");
+  taskCheckIcon = icon;
+  return taskCheckIcon.cloneNode(true);
+}
 
 const hiddenMarks = new Set([
   "HeaderMark",
@@ -87,22 +105,7 @@ class MarkerWidget extends WidgetType {
       checkbox.setAttribute("role", "checkbox");
       checkbox.setAttribute("aria-checked", String(checked));
       checkbox.setAttribute("aria-label", checked ? "Mark task incomplete" : "Mark task complete");
-      if (checked) {
-        const icon = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-        icon.setAttribute("viewBox", "0 0 24 24");
-        icon.setAttribute("width", "14");
-        icon.setAttribute("height", "14");
-        icon.setAttribute("fill", "none");
-        icon.setAttribute("stroke", "currentColor");
-        icon.setAttribute("stroke-width", "3");
-        icon.setAttribute("stroke-linecap", "round");
-        icon.setAttribute("stroke-linejoin", "round");
-        icon.setAttribute("aria-hidden", "true");
-        const check = document.createElementNS("http://www.w3.org/2000/svg", "path");
-        check.setAttribute("d", "m5 12 4 4L19 6");
-        icon.append(check);
-        checkbox.append(icon);
-      }
+      if (checked) checkbox.append(cloneTaskCheckIcon());
       checkbox.addEventListener("mousedown", (event) => event.preventDefault());
       checkbox.addEventListener("click", () => {
         view.dispatch({
