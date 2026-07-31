@@ -70,7 +70,7 @@ describe("TaskList", () => {
 
     expect(options.overscan).toBe(6);
     expect(options.getItemKey(0)).toBe("task");
-    expect(options.estimateSize()).toBe(130);
+    expect(options.estimateSize()).toBe(84);
     expect(options.getScrollElement()).toBe(sizeContainer?.parentElement);
     expect(virtualizerMock.virtualizer.measureElement).toHaveBeenCalledWith(row);
     expect((sizeContainer as HTMLElement).style.height).toBe("130px");
@@ -88,7 +88,7 @@ describe("TaskList", () => {
     rerender(<TaskList tasks={[task]} definitions={[status]} compact emptyState={null} onSelect={vi.fn()} onQuickEdit={vi.fn()} />);
 
     const options = virtualizerMock.options.mock.lastCall?.[0] as { estimateSize(): number };
-    expect(options.estimateSize()).toBe(48);
+    expect(options.estimateSize()).toBe(44);
     expect(virtualizerMock.virtualizer.measure).toHaveBeenCalledTimes(initialMeasureCalls + 1);
   });
 });

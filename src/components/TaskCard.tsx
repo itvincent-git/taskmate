@@ -1,4 +1,5 @@
 import type { MouseEvent } from "react";
+import { CalendarDays } from "lucide-react";
 import type { PropertyDefinition, TaskSummary } from "../types";
 import { localizedOptionLabel, useTaskmateI18n } from "../lib/taskmate-i18n";
 import { PropertyInput } from "./PropertyInput";
@@ -18,16 +19,16 @@ function PropertyValue({ definition, value }: { definition: PropertyDefinition; 
   if (value === undefined || value === null || value === "") return null;
   const option = definition.options.find((candidate) => candidate.id === value);
   if (definition.type === "select") {
-    return <span className="inline-flex h-[23px] items-center rounded-[12px] border border-[color-mix(in_srgb,var(--chip)_24%,transparent)] bg-[color-mix(in_srgb,var(--chip)_14%,var(--surface))] px-2 text-xs font-semibold text-[color-mix(in_srgb,var(--chip)_80%,var(--text))]" style={{ "--chip": option?.color || "#718096" } as React.CSSProperties}>{option ? localizedOptionLabel(option, locale) : String(value)}</span>;
+    return <span className="inline-flex h-[22px] items-center rounded-md border border-[color-mix(in_srgb,var(--chip)_20%,var(--line))] bg-[color-mix(in_srgb,var(--chip)_9%,var(--surface))] px-2 text-xs font-semibold text-[color-mix(in_srgb,var(--chip)_68%,var(--text))]" style={{ "--chip": option?.color || "#718096" } as React.CSSProperties}>{option ? localizedOptionLabel(option, locale) : String(value)}</span>;
   }
   if (definition.type === "multiselect" || definition.type === "tags") {
     return <>{(Array.isArray(value) ? value : []).slice(0, 4).map((item) => {
       const itemOption = definition.options.find((candidate) => candidate.id === item);
-      return <span className="inline-flex h-[23px] items-center rounded-[12px] border border-[color-mix(in_srgb,var(--muted)_24%,transparent)] bg-[color-mix(in_srgb,var(--muted)_14%,var(--surface))] px-2 text-xs font-semibold text-[color-mix(in_srgb,var(--muted)_80%,var(--text))]" key={String(item)}>{itemOption ? localizedOptionLabel(itemOption, locale) : String(item)}</span>;
+      return <span className="inline-flex h-[22px] items-center rounded-md border border-line bg-surface-soft px-2 text-xs font-medium text-muted" key={String(item)}>{itemOption ? localizedOptionLabel(itemOption, locale) : String(item)}</span>;
     })}</>;
   }
   if (definition.type === "boolean") return <span className="text-xs text-muted">{value ? t("common.yes") : t("common.no")}</span>;
-  if (definition.type === "date" || definition.type === "datetime") return <span className="text-xs text-muted">{new Intl.DateTimeFormat(undefined, { dateStyle: "medium" }).format(new Date(String(value)))}</span>;
+  if (definition.type === "date" || definition.type === "datetime") return <span className="inline-flex h-[22px] items-center gap-1 px-0.5 text-xs font-medium text-neutral"><CalendarDays size={13} strokeWidth={1.8} />{new Intl.DateTimeFormat(undefined, { dateStyle: "medium" }).format(new Date(String(value)))}</span>;
   return <span className="text-xs text-muted">{String(value).slice(0, 72)}</span>;
 }
 
@@ -35,10 +36,10 @@ export function TaskCard({ task, selected, definitions, compact = false, onSelec
   const visible = definitions.filter((definition) => definition.showInCard).sort((a, b) => a.order - b.order);
   const stop = (event: MouseEvent) => event.stopPropagation();
   return (
-    <article className={cn("cursor-pointer rounded-xl border border-line bg-surface p-2 shadow-none transition-[transform,box-shadow,border-color] duration-200 hover:-translate-y-0.5 hover:border-[color-mix(in_srgb,var(--accent)_48%,var(--line))] hover:shadow-panel", selected && "border-accent shadow-[0_0_0_1px_var(--accent)]", compact && "px-2 py-1.5")} onClick={onSelect}>
-      <div className={cn("mb-1 truncate text-sm font-normal", compact && "mb-0")} title={task.title}>{task.title}</div>
+    <article className={cn("cursor-pointer rounded-[10px] border border-line bg-surface p-3 shadow-[0_1px_2px_rgba(15,23,42,.035)] transition-[transform,box-shadow,border-color,background-color] duration-200 hover:-translate-y-px hover:border-[color-mix(in_srgb,var(--accent)_32%,var(--line))] hover:shadow-[0_5px_16px_rgba(15,23,42,.07)]", selected && "border-[color-mix(in_srgb,var(--accent)_42%,var(--line))] bg-[color-mix(in_srgb,var(--accent-soft)_42%,var(--surface))] shadow-[inset_3px_0_0_var(--accent),0_4px_14px_rgba(15,23,42,.06)]", compact && "px-3 py-2")} onClick={onSelect}>
+      <div className={cn("mb-2 truncate text-sm leading-[1.35] font-semibold tracking-[-.01em] text-foreground", compact && "mb-0")} title={task.title}>{task.title}</div>
       {!compact ? (
-        <div className="flex min-h-[26px] flex-wrap items-center gap-1">
+        <div className="flex min-h-[22px] flex-wrap items-center gap-1.5">
           {visible.map((definition) => (
             <div className="group relative has-[[data-state=open]]:[&>:first-child]:opacity-0" key={definition.id} onClick={stop}>
               <div className="inline-flex group-hover:opacity-0"><PropertyValue definition={definition} value={task.properties[definition.key]} /></div>

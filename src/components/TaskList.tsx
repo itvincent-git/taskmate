@@ -19,7 +19,7 @@ export const TaskList = memo(function TaskList({ tasks, definitions, selectedId,
     count: tasks.length,
     getScrollElement: () => listHost.current,
     getItemKey: (index) => tasks[index].id,
-    estimateSize: () => compact ? 48 : 130,
+    estimateSize: () => compact ? 44 : 84,
     overscan: 6,
   });
 
