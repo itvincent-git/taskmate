@@ -181,9 +181,12 @@ describe("Taskmate application", () => {
     const title = await screen.findByLabelText("Task title");
     fireEvent.change(title, { target: { value: "Latest title" } });
     await user.click(trigger);
-    expect(screen.getAllByRole("menuitem")).toHaveLength(2);
+    expect(screen.getAllByRole("menuitem")).toHaveLength(3);
+    expect(screen.getByRole("menuitem", { name: "Archive task" })).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: "Copy title" })).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: "Copy file path" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Archive task" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Permanently delete" })).not.toBeInTheDocument();
     await user.click(screen.getByRole("menuitem", { name: "Copy title" }));
 
     expect(copyText).toHaveBeenLastCalledWith("Latest title");
@@ -202,6 +205,18 @@ describe("Taskmate application", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent("clipboard unavailable");
   });
 
+  it("archives the current task from the task actions menu", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(screen.getByRole("button", { name: "Open workspace" }));
+    await user.click(await screen.findByRole("button", { name: "New task" }));
+    await user.click(screen.getByRole("button", { name: "Task actions" }));
+    await user.click(screen.getByRole("menuitem", { name: "Archive task" }));
+
+    expect(await screen.findByRole("heading", { name: "Select a task" })).toBeInTheDocument();
+    expect(localStorage.getItem("taskmate-browser-demo")).toContain('"archived":true');
+  });
+
   it("localizes the task copy menu in Simplified Chinese", async () => {
     localStorage.setItem("taskmate.locale.v1", "zh-CN");
     const user = userEvent.setup();
@@ -210,6 +225,7 @@ describe("Taskmate application", () => {
     await user.click(await screen.findByRole("button", { name: "新建任务" }));
     await user.click(screen.getByRole("button", { name: "任务操作" }));
 
+    expect(screen.getByRole("menuitem", { name: "归档任务" })).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: "复制标题" })).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: "复制文件路径" })).toBeInTheDocument();
   });

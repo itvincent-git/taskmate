@@ -26,7 +26,6 @@ import {
   Search,
   Settings2,
   Sun,
-  Trash2,
   X,
 } from "lucide-react";
 import { api } from "./lib/api";
@@ -351,7 +350,6 @@ function WorkspaceSession() {
   const searchRequest = useRef(0);
   const externalTask = useWorkspaceState((state) => state.externalTask);
   const setExternalTask = useWorkspaceState((state) => state.setExternalTask);
-  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [filterDialogOpen, setFilterDialogOpen] = useState(false);
   const [detailNarrow, setDetailNarrow] = useState(false);
   const [propertiesDrawerOpen, setPropertiesDrawerOpen] = useState(false);
@@ -606,26 +604,6 @@ function WorkspaceSession() {
     setTask(null);
     setOpenTabs((tabs) => tabs.filter((tab) => tab.id !== archivedId));
   };
-  const remove = async () => {
-    if (!task) return;
-    if (!task.archived) {
-      setError(t("tasks.archiveBeforeDelete"));
-      return;
-    }
-    setDeleteConfirmOpen(true);
-  };
-  const confirmDelete = async () => {
-    if (!task) return;
-    try {
-      await api.deleteTask(task.id);
-      setOpenTabs((tabs) => tabs.filter((tab) => tab.id !== task.id));
-      setTask(null);
-      setDeleteConfirmOpen(false);
-      await refresh();
-      setSearchEpoch((epoch) => epoch + 1);
-    } catch (cause) { setError(errorMessage(cause)); }
-  };
-
   const closeTab = async (id: string) => {
     if (task?.id === id && saveState === "dirty") await save(task);
     const index = openTabs.findIndex((tab) => tab.id === id);
@@ -926,6 +904,10 @@ function WorkspaceSession() {
                         </Tooltip>
                         <DropdownMenu.Portal>
                           <DropdownMenu.Content className="z-[200] w-[180px] rounded-lg border border-line bg-surface p-1 shadow-[0_12px_30px_rgba(0,0,0,.14)]" align="end" sideOffset={5} collisionPadding={8}>
+                            <DropdownMenu.Item className="flex min-h-[30px] cursor-default items-center gap-1.5 rounded-[5px] px-2 py-1.5 text-xs outline-none data-[highlighted]:bg-accent-soft data-[highlighted]:text-accent" onSelect={() => void archive()}>
+                              {task.archived ? <ArchiveRestore size={15} /> : <Archive size={15} />}
+                              {task.archived ? t("tasks.restore") : t("tasks.archiveAction")}
+                            </DropdownMenu.Item>
                             <DropdownMenu.Item className="flex min-h-[30px] cursor-default items-center gap-1.5 rounded-[5px] px-2 py-1.5 text-xs outline-none data-[highlighted]:bg-accent-soft data-[highlighted]:text-accent" onSelect={() => void copyText(task.title)}>
                               <Copy size={15} />
                               {t("editor.copyTitle")}
@@ -943,8 +925,6 @@ function WorkspaceSession() {
                           <Button ref={propertiesButton} variant="outline" size="icon" className="size-8 shrink-0 [&_svg]:size-[17px]" aria-label={t("editor.openProperties")} onClick={() => setPropertiesDrawerOpen(true)}><Settings2 /></Button>
                         </Tooltip>
                       ) : null}
-                      <Tooltip label={task.archived ? t("tasks.restore") : t("tasks.archiveAction")}><Button variant="ghost" size="icon" className="size-8 shrink-0 [&_svg]:size-[17px]" aria-pressed={task.archived} aria-label={task.archived ? t("tasks.restore") : t("tasks.archiveAction")} onClick={() => void archive()}>{task.archived ? <ArchiveRestore /> : <Archive />}</Button></Tooltip>
-                      <Tooltip label={t("tasks.deleteAction")}><Button variant="ghost" size="icon" className="size-8 shrink-0 text-danger [&_svg]:size-[17px]" aria-label={t("tasks.deleteAction")} onClick={() => void remove()}><Trash2 /></Button></Tooltip>
                     </header>
                     <div
                       className="grid min-h-0 flex-1 overflow-hidden"
@@ -999,14 +979,6 @@ function WorkspaceSession() {
         >
           {externalTask && task ? <div className="grid grid-cols-2 gap-2.5 [&_pre]:max-h-80 [&_pre]:overflow-auto [&_pre]:whitespace-pre-wrap [&_pre]:rounded-lg [&_pre]:border [&_pre]:border-line [&_pre]:bg-surface-soft [&_pre]:p-3 [&_pre]:text-xs"><div><strong>{t("external.editor")}</strong><pre>{task.body}</pre></div><div><strong>{t("external.disk")}</strong><pre>{externalTask.body}</pre></div></div> : null}
         </Dialog>
-        <Dialog
-          open={deleteConfirmOpen}
-          onOpenChange={setDeleteConfirmOpen}
-          title={t("tasks.deleteAction")}
-          description={t("tasks.deleteConfirm", { title: task?.title ?? "" })}
-          closeLabel={t("common.close")}
-          footer={<><Button variant="outline" onClick={() => setDeleteConfirmOpen(false)}>{t("common.cancel")}</Button><Button variant="destructive" onClick={() => void confirmDelete()}>{t("common.delete")}</Button></>}
-        />
       </main>
       </div>
     </div>
