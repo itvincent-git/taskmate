@@ -416,6 +416,29 @@ describe("Taskmate application", () => {
     expect(restored.container.querySelector('[data-testid="split-layout"]')).toHaveStyle({ gridTemplateColumns: "510px 5px minmax(0, 1fr)" });
   });
 
+  it("persists the resized task properties width", async () => {
+    const user = userEvent.setup();
+    const { container, unmount } = render(<App />);
+    await user.click(screen.getByRole("button", { name: "Open workspace" }));
+    await user.click(await screen.findByRole("button", { name: "New task" }));
+    const splitter = container.querySelector('[data-testid="properties-splitter"]') as HTMLElement;
+
+    fireEvent(splitter, Object.assign(new MouseEvent("pointerdown", { bubbles: true, clientX: 680 }), { pointerId: 1 }));
+    expect(document.body.style.userSelect).toBe("none");
+    fireEvent(window, new MouseEvent("pointermove", { clientX: 580 }));
+    fireEvent(window, new MouseEvent("pointerup"));
+
+    expect(document.body.style.userSelect).toBe("");
+    expect(localStorage.getItem("taskmate-task-properties-width.v1")).toBe("420");
+    expect(container.querySelector('[data-testid="detail-split-layout"]')).toHaveStyle({ gridTemplateColumns: "minmax(0, 1fr) 5px 420px" });
+
+    unmount();
+    const restored = render(<App />);
+    await user.click(screen.getByRole("button", { name: "Open workspace" }));
+    await user.click(await screen.findByRole("button", { name: "New task" }));
+    expect(restored.container.querySelector('[data-testid="detail-split-layout"]')).toHaveStyle({ gridTemplateColumns: "minmax(0, 1fr) 5px 420px" });
+  });
+
   it("switches between current and archived tasks from the list toolbar", async () => {
     const user = userEvent.setup();
     render(<App />);

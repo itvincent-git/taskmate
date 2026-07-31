@@ -58,6 +58,7 @@ const COMPACT_CARDS_KEY = "taskmate-compact-cards.v1";
 const FILTER_SORT_KEY = "taskmate-filter-sort.v1";
 const TASK_LIST_VISIBLE_KEY = "taskmate-task-list-visible.v1";
 const TASK_LIST_WIDTH_KEY = "taskmate-task-list-width.v1";
+const TASK_PROPERTIES_WIDTH_KEY = "taskmate-task-properties-width.v1";
 const MarkdownEditor = lazy(() => import("./components/MarkdownEditor").then((module) => ({ default: module.MarkdownEditor })));
 
 type StateUpdate<T> = SetStateAction<T>;
@@ -153,6 +154,12 @@ function loadTaskListWidth() {
   const stored = localStorage.getItem(TASK_LIST_WIDTH_KEY);
   const width = stored === null ? 390 : Number(stored);
   return Number.isFinite(width) ? Math.max(290, Math.min(620, width)) : 390;
+}
+
+function loadTaskPropertiesWidth() {
+  const stored = localStorage.getItem(TASK_PROPERTIES_WIDTH_KEY);
+  const width = stored === null ? 320 : Number(stored);
+  return Number.isFinite(width) ? Math.max(240, Math.min(520, width)) : 320;
 }
 
 function loadFilterSort(path: string): Pick<TaskQuery, "filters" | "sort"> {
@@ -326,6 +333,7 @@ function WorkspaceSession() {
   const setSchemaSaving = useWorkspaceState((state) => state.setSchemaSaving);
   const [dark, setDark] = useState(() => localStorage.getItem("taskmate-theme") === "dark");
   const [leftWidth, setLeftWidth] = useState(loadTaskListWidth);
+  const [propertiesWidth, setPropertiesWidth] = useState(loadTaskPropertiesWidth);
   const [compactCards, setCompactCards] = useState(() => localStorage.getItem(COMPACT_CARDS_KEY) === "true");
   const [taskListVisible, setTaskListVisible] = useState(() => localStorage.getItem(TASK_LIST_VISIBLE_KEY) !== "false");
   const externalTask = useWorkspaceState((state) => state.externalTask);
@@ -620,7 +628,7 @@ function WorkspaceSession() {
     const without = query.filters.filter((filter) => filter.key !== definition.key);
     setQuery({ ...query, filters: [...without, ...filters] });
   };
-  const beginResize = (event: React.PointerEvent) => {
+  const beginTaskListResize = (event: React.PointerEvent) => {
     event.preventDefault();
     event.currentTarget.setPointerCapture(event.pointerId);
     const start = event.clientX;
@@ -638,6 +646,29 @@ function WorkspaceSession() {
       window.removeEventListener("pointercancel", end);
       document.body.style.userSelect = previousUserSelect;
       localStorage.setItem(TASK_LIST_WIDTH_KEY, String(resizedWidth));
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", end);
+    window.addEventListener("pointercancel", end);
+  };
+  const beginTaskPropertiesResize = (event: React.PointerEvent) => {
+    event.preventDefault();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    const start = event.clientX;
+    const width = propertiesWidth;
+    const previousUserSelect = document.body.style.userSelect;
+    let resizedWidth = width;
+    document.body.style.userSelect = "none";
+    const move = (moveEvent: PointerEvent) => {
+      resizedWidth = Math.max(240, Math.min(520, width + start - moveEvent.clientX));
+      setPropertiesWidth(resizedWidth);
+    };
+    const end = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", end);
+      window.removeEventListener("pointercancel", end);
+      document.body.style.userSelect = previousUserSelect;
+      localStorage.setItem(TASK_PROPERTIES_WIDTH_KEY, String(resizedWidth));
     };
     window.addEventListener("pointermove", move);
     window.addEventListener("pointerup", end);
@@ -829,7 +860,7 @@ function WorkspaceSession() {
                   onQuickEdit={quickEditTask}
                 />
               </section>
-              <div className={cn("relative z-[2] cursor-col-resize bg-line hover:bg-accent", !taskListVisible && "invisible")} data-testid="splitter" onPointerDown={beginResize} />
+              <div className={cn("relative z-[2] cursor-col-resize bg-line hover:bg-accent", !taskListVisible && "invisible")} data-testid="splitter" onPointerDown={beginTaskListResize} />
               <section className="min-h-0 min-w-0 bg-surface" ref={setDetailPanel}>
                 {!task ? <div className="flex h-full flex-col items-center justify-center text-center text-muted [&>h2]:mt-3 [&>h2]:mb-[3px] [&>h2]:font-heading [&>h2]:text-base [&>h2]:text-foreground [&>p]:m-0 [&>p]:text-xs"><div className="grid size-[52px] place-items-center rounded-full bg-accent-soft text-accent"><Check /></div><h2>{t("tasks.select")}</h2><p>{t("tasks.selectHint")}</p></div> : (
                   <div className="flex h-full flex-col overflow-hidden">
@@ -863,16 +894,23 @@ function WorkspaceSession() {
                       <Tooltip label={task.archived ? t("tasks.restore") : t("tasks.archiveAction")}><Button variant="ghost" size="icon" className="size-8 shrink-0 [&_svg]:size-[17px]" aria-pressed={task.archived} aria-label={task.archived ? t("tasks.restore") : t("tasks.archiveAction")} onClick={() => void archive()}>{task.archived ? <ArchiveRestore /> : <Archive />}</Button></Tooltip>
                       <Tooltip label={t("tasks.deleteAction")}><Button variant="ghost" size="icon" className="size-8 shrink-0 text-danger [&_svg]:size-[17px]" aria-label={t("tasks.deleteAction")} onClick={() => void remove()}><Trash2 /></Button></Tooltip>
                     </header>
-                    <div className="flex min-h-0 flex-1 overflow-hidden">
+                    <div
+                      className="grid min-h-0 flex-1 overflow-hidden"
+                      data-testid="detail-split-layout"
+                      style={{ gridTemplateColumns: !detailNarrow ? `minmax(0, 1fr) 5px ${propertiesWidth}px` : "minmax(0, 1fr)" }}
+                    >
                       <div className="min-h-0 min-w-0 flex-1 overflow-hidden">
                         <Suspense fallback={<div className="flex min-h-[370px] items-center justify-center gap-2 text-muted"><LoaderCircle className="animate-spin" />{t("editor.loading")}</div>}>
                           <MarkdownEditor value={task.body} onChange={changeTaskBody} />
                         </Suspense>
                       </div>
                       {!detailNarrow ? (
-                        <aside className="min-h-0 w-[clamp(280px,30%,340px)] shrink-0 basis-[clamp(280px,30%,340px)] overflow-hidden border-l border-line">
-                          <TaskProperties definitions={detailDefinitions} task={task} onChange={changeTaskProperty} />
-                        </aside>
+                        <>
+                          <div className="relative z-[2] cursor-col-resize bg-line hover:bg-accent" data-testid="properties-splitter" onPointerDown={beginTaskPropertiesResize} />
+                          <aside className="min-h-0 min-w-0 overflow-hidden">
+                            <TaskProperties definitions={detailDefinitions} task={task} onChange={changeTaskProperty} />
+                          </aside>
+                        </>
                       ) : null}
                     </div>
                   </div>
