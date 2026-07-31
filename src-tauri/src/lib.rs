@@ -10,13 +10,35 @@ use model::{
     WorkspaceSnapshot,
 };
 use notify::{RecommendedWatcher, RecursiveMode, Watcher};
+use serde::Serialize;
 use std::path::PathBuf;
-use std::sync::Mutex;
+use std::sync::{
+    atomic::{AtomicU64, Ordering},
+    Arc, Mutex,
+};
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::{MouseButton, TrayIconBuilder, TrayIconEvent};
 use tauri::{Emitter, Manager, RunEvent, State, WindowEvent};
 use tauri_plugin_autostart::MacosLauncher;
+use tauri_plugin_updater::UpdaterExt;
 use workspace::Workspace;
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct UpdateCheckResponse {
+    version: String,
+    current_version: String,
+    body: Option<String>,
+    date: Option<String>,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct UpdateDownloadProgress {
+    downloaded: u64,
+    total: Option<u64>,
+    finished: bool,
+}
 
 struct AppState {
     workspace: Mutex<Option<PathBuf>>,
@@ -182,6 +204,77 @@ fn git_history(state: State<'_, AppState>) -> Result<Vec<String>, String> {
     with_workspace(state, |workspace| git::history(&workspace.root))
 }
 
+#[tauri::command]
+async fn check_for_updates(app: tauri::AppHandle) -> Result<Option<UpdateCheckResponse>, String> {
+    let current_version = app.package_info().version.to_string();
+    let update = app
+        .updater()
+        .map_err(|error| format!("Unable to initialize updater: {error}"))?
+        .check()
+        .await
+        .map_err(|error| format!("Unable to check for updates: {error}"))?;
+
+    Ok(update.map(|update| UpdateCheckResponse {
+        version: update.version,
+        current_version,
+        body: update.body,
+        date: update.date.map(|date| date.to_string()),
+    }))
+}
+
+#[tauri::command]
+async fn download_and_install_update(app: tauri::AppHandle) -> Result<String, String> {
+    let update = app
+        .updater()
+        .map_err(|error| format!("Unable to initialize updater: {error}"))?
+        .check()
+        .await
+        .map_err(|error| format!("Unable to check for updates: {error}"))?
+        .ok_or_else(|| "No update is available.".to_string())?;
+    let version = update.version.clone();
+    let downloaded = Arc::new(AtomicU64::new(0));
+    let finished_downloaded = Arc::clone(&downloaded);
+    let progress_app = app.clone();
+
+    update
+        .download_and_install(
+            move |chunk_length, content_length| {
+                let downloaded = downloaded
+                    .fetch_add(chunk_length as u64, Ordering::Relaxed)
+                    .saturating_add(chunk_length as u64);
+                let _ = progress_app.emit(
+                    "update-download-progress",
+                    UpdateDownloadProgress {
+                        downloaded,
+                        total: content_length,
+                        finished: false,
+                    },
+                );
+            },
+            move || {
+                let downloaded = finished_downloaded.load(Ordering::Relaxed);
+                let _ = app.emit(
+                    "update-download-progress",
+                    UpdateDownloadProgress {
+                        downloaded,
+                        total: Some(downloaded),
+                        finished: true,
+                    },
+                );
+            },
+        )
+        .await
+        .map_err(|error| format!("Unable to download and install update: {error}"))?;
+
+    log::info!("Update {version} installed and ready to restart.");
+    Ok(version)
+}
+
+#[tauri::command]
+fn restart_app(app: tauri::AppHandle) {
+    app.request_restart();
+}
+
 fn show_main_window(app: &tauri::AppHandle) {
     if let Some(window) = app.get_webview_window("main") {
         let _ = window.show();
@@ -206,7 +299,6 @@ pub fn run() {
             Some(vec!["--hidden"]),
         ))
         .plugin(tauri_plugin_updater::Builder::new().build())
-        .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_clipboard_manager::init())
         .invoke_handler(tauri::generate_handler![
@@ -227,7 +319,10 @@ pub fn run() {
             git_commit,
             git_push,
             git_pull,
-            git_history
+            git_history,
+            check_for_updates,
+            download_and_install_update,
+            restart_app
         ])
         .setup(|app| {
             let show = MenuItem::with_id(app, "show", "Show Taskmate", true, None::<&str>)?;

@@ -1,7 +1,6 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import { getVersion } from "@tauri-apps/api/app";
-import { check, type Update } from "@tauri-apps/plugin-updater";
-import { relaunch } from "@tauri-apps/plugin-process";
+import { useCallback, useEffect, useState } from "react";
+import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import type { UpdateInfo, UpdatePhase, UpdateProgress } from "../types";
 
 let startupCheckScheduled = false;
@@ -16,11 +15,32 @@ function canCheckOnStartup() {
 }
 
 export function useUpdater() {
-  const updateRef = useRef<Update | null>(null);
   const [phase, setPhase] = useState<UpdatePhase>(() => canUpdate() ? "idle" : "disabled");
   const [info, setInfo] = useState<UpdateInfo | null>(null);
   const [progress, setProgress] = useState<UpdateProgress>({ downloaded: 0, total: null, percent: null });
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!canUpdate()) return;
+    let mounted = true;
+    let unlisten: (() => void) | undefined;
+    void listen<{ downloaded: number; total: number | null; finished: boolean }>("update-download-progress", ({ payload }) => {
+      if (!mounted) return;
+      const total = payload.total && payload.total > 0 ? payload.total : null;
+      setProgress({
+        downloaded: payload.downloaded,
+        total,
+        percent: total ? Math.min(100, Math.round((payload.downloaded / total) * 100)) : null,
+      });
+    }).then((cleanup) => {
+      if (mounted) unlisten = cleanup;
+      else cleanup();
+    }).catch((reason) => console.warn("Unable to listen for update progress", reason));
+    return () => {
+      mounted = false;
+      unlisten?.();
+    };
+  }, []);
 
   const checkForUpdate = useCallback(async () => {
     if (!canUpdate()) {
@@ -30,14 +50,13 @@ export function useUpdater() {
     setPhase("checking");
     setError(null);
     try {
-      const [currentVersion, update] = await Promise.all([getVersion(), check()]);
-      updateRef.current = update;
+      const update = await invoke<UpdateInfo | null>("check_for_updates");
       if (!update) {
         setInfo(null);
         setPhase("current");
         return;
       }
-      setInfo({ version: update.version, currentVersion, body: update.body, date: update.date });
+      setInfo(update);
       setPhase("available");
     } catch (reason) {
       setError(String(reason));
@@ -53,33 +72,23 @@ export function useUpdater() {
   }, [checkForUpdate]);
 
   const downloadAndInstall = useCallback(async () => {
-    const update = updateRef.current;
-    if (!update) return;
+    if (!info) return;
     setPhase("downloading");
     setError(null);
-    let downloaded = 0;
-    let total: number | null = null;
+    setProgress({ downloaded: 0, total: null, percent: null });
     try {
-      await update.downloadAndInstall((event) => {
-        if (event.event === "Started") total = event.data.contentLength ?? null;
-        if (event.event === "Progress") downloaded += event.data.chunkLength;
-        setProgress({
-          downloaded,
-          total,
-          percent: total ? Math.min(100, Math.round((downloaded / total) * 100)) : null,
-        });
-      });
+      await invoke<string>("download_and_install_update");
       setPhase("ready");
     } catch (reason) {
       setError(String(reason));
       setPhase("error");
     }
-  }, []);
+  }, [info]);
 
   const restart = useCallback(async () => {
     setPhase("restarting");
     try {
-      await relaunch();
+      await invoke("restart_app");
     } catch (reason) {
       setError(String(reason));
       setPhase("error");
