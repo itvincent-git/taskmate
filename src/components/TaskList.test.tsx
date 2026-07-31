@@ -4,13 +4,12 @@ import type { PropertyDefinition, TaskSummary } from "../types";
 import { TaskList } from "./TaskList";
 
 const virtualizerMock = vi.hoisted(() => {
-  const containerRef = vi.fn();
   const measure = vi.fn();
   const measureElement = vi.fn();
   const virtualizer = {
-    containerRef,
     measure,
     measureElement,
+    getTotalSize: () => 130,
     getVirtualItems: () => [{ index: 0, key: "task", start: 0, end: 130, size: 130, lane: 0 }],
   };
   return { options: vi.fn(), virtualizer };
@@ -47,7 +46,7 @@ const task: TaskSummary = {
 };
 
 describe("TaskList", () => {
-  it("uses direct DOM updates and connects the scroll container and virtual rows", () => {
+  it("renders stable virtual row positions keyed by task id", () => {
     render(
       <TaskList
         tasks={[task]}
@@ -61,24 +60,21 @@ describe("TaskList", () => {
     );
 
     const options = virtualizerMock.options.mock.lastCall?.[0] as {
-      directDomUpdates: boolean;
-      directDomUpdatesMode: string;
       overscan: number;
       getScrollElement(): Element | null;
+      getItemKey(index: number): React.Key;
       estimateSize(): number;
     };
     const row = screen.getByText("Virtual task").closest("[data-index]");
     const sizeContainer = row?.parentElement;
 
-    expect(options.directDomUpdates).toBe(true);
-    expect(options.directDomUpdatesMode).toBe("transform");
     expect(options.overscan).toBe(6);
+    expect(options.getItemKey(0)).toBe("task");
     expect(options.estimateSize()).toBe(130);
     expect(options.getScrollElement()).toBe(sizeContainer?.parentElement);
-    expect(virtualizerMock.virtualizer.containerRef).toHaveBeenCalledWith(sizeContainer);
     expect(virtualizerMock.virtualizer.measureElement).toHaveBeenCalledWith(row);
-    expect((sizeContainer as HTMLElement).style.height).toBe("");
-    expect((row as HTMLElement).style.transform).toBe("");
+    expect((sizeContainer as HTMLElement).style.height).toBe("130px");
+    expect((row as HTMLElement).style.transform).toBe("translateY(0px)");
   });
 
   it("remeasures with the compact card estimate", () => {

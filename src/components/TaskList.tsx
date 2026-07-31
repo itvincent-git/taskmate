@@ -18,10 +18,9 @@ export const TaskList = memo(function TaskList({ tasks, definitions, selectedId,
   const virtualizer = useVirtualizer({
     count: tasks.length,
     getScrollElement: () => listHost.current,
+    getItemKey: (index) => tasks[index].id,
     estimateSize: () => compact ? 48 : 130,
     overscan: 6,
-    directDomUpdates: true,
-    directDomUpdatesMode: "transform",
   });
 
   useEffect(() => {
@@ -31,11 +30,11 @@ export const TaskList = memo(function TaskList({ tasks, definitions, selectedId,
   return (
     <div className="min-h-0 flex-1 overflow-auto px-2.5 pb-3.5" ref={listHost}>
       {tasks.length === 0 ? emptyState : (
-        <div ref={virtualizer.containerRef} style={{ position: "relative" }}>
+        <div style={{ height: virtualizer.getTotalSize(), position: "relative" }}>
           {virtualizer.getVirtualItems().map((item) => {
             const task = tasks[item.index];
             return (
-              <div key={task.id} ref={virtualizer.measureElement} data-index={item.index} className="absolute top-0 left-0 w-full pb-2">
+              <div key={item.key} ref={virtualizer.measureElement} data-index={item.index} className="absolute top-0 left-0 w-full pb-2" style={{ transform: `translateY(${item.start}px)` }}>
                 <TaskCard
                   task={task}
                   selected={task.id === selectedId}
