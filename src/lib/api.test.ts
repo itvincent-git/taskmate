@@ -1,6 +1,23 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { api, taskFilePath } from "./api";
 
+describe("default properties", () => {
+  beforeEach(() => localStorage.clear());
+
+  it("does not include the removed category field", async () => {
+    const snapshot = await api.openWorkspace("/tmp/tasks");
+
+    expect(snapshot.properties.map((property) => property.key)).toEqual([
+      "status",
+      "priority",
+      "tags",
+      "startDate",
+      "endDate",
+      "notes",
+    ]);
+  });
+});
+
 describe("taskFilePath", () => {
   beforeEach(() => localStorage.clear());
   it("resolves active and archived task files from the workspace path", () => {

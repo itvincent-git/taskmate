@@ -60,11 +60,10 @@ const defaultProperties: PropertyDefinition[] = [
       { id: "low", label: "Low", color: "#22a06b", order: 2 },
     ],
   },
-  { id: "category", key: "category", name: "Category", type: "select", showInDetail: true, showInCard: true, enableFilter: true, enableSort: false, order: 2, options: [] },
-  { id: "tags", key: "tags", name: "Tags", type: "tags", showInDetail: true, showInCard: true, enableFilter: true, enableSort: false, order: 3, options: [] },
-  { id: "startDate", key: "startDate", name: "Start date", type: "date", showInDetail: true, showInCard: false, enableFilter: true, enableSort: true, order: 4, options: [] },
-  { id: "endDate", key: "endDate", name: "Due date", type: "date", showInDetail: true, showInCard: true, enableFilter: true, enableSort: true, order: 5, options: [] },
-  { id: "notes", key: "notes", name: "Notes", type: "textarea", showInDetail: true, showInCard: false, enableFilter: false, enableSort: false, order: 6, options: [] },
+  { id: "tags", key: "tags", name: "Tags", type: "tags", showInDetail: true, showInCard: true, enableFilter: true, enableSort: false, order: 2, options: [] },
+  { id: "startDate", key: "startDate", name: "Start date", type: "date", showInDetail: true, showInCard: false, enableFilter: true, enableSort: true, order: 3, options: [] },
+  { id: "endDate", key: "endDate", name: "Due date", type: "date", showInDetail: true, showInCard: true, enableFilter: true, enableSort: true, order: 4, options: [] },
+  { id: "notes", key: "notes", name: "Notes", type: "textarea", showInDetail: true, showInCard: false, enableFilter: false, enableSort: false, order: 5, options: [] },
 ];
 
 function loadDemo(path = "~/Taskmate"): DemoState {

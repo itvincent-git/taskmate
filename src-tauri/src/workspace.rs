@@ -531,19 +531,6 @@ fn default_properties() -> Vec<PropertyDefinition> {
             1,
         ),
         property(
-            "category",
-            "Category",
-            "select",
-            true,
-            true,
-            true,
-            false,
-            None,
-            vec![],
-            None,
-            2,
-        ),
-        property(
             "tags",
             "Tags",
             "tags",
@@ -554,7 +541,7 @@ fn default_properties() -> Vec<PropertyDefinition> {
             None,
             vec![],
             Some(Value::Sequence(vec![])),
-            3,
+            2,
         ),
         property(
             "startDate",
@@ -567,7 +554,7 @@ fn default_properties() -> Vec<PropertyDefinition> {
             None,
             vec![],
             None,
-            4,
+            3,
         ),
         property(
             "endDate",
@@ -580,7 +567,7 @@ fn default_properties() -> Vec<PropertyDefinition> {
             None,
             vec![],
             None,
-            5,
+            4,
         ),
         property(
             "notes",
@@ -593,7 +580,7 @@ fn default_properties() -> Vec<PropertyDefinition> {
             None,
             vec![],
             None,
-            6,
+            5,
         ),
     ]
 }
@@ -636,6 +623,24 @@ fn to_string(error: impl ToString) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn default_properties_exclude_category() {
+        assert_eq!(
+            default_properties()
+                .iter()
+                .map(|definition| definition.key.as_str())
+                .collect::<Vec<_>>(),
+            vec![
+                "status",
+                "priority",
+                "tags",
+                "startDate",
+                "endDate",
+                "notes"
+            ]
+        );
+    }
 
     #[test]
     fn sanitizes_unsafe_file_names() {

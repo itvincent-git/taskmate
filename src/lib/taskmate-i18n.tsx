@@ -398,7 +398,6 @@ function interpolate(message: string, values?: Record<string, string | number>) 
 const builtInPropertyNames: Record<string, { en: string; zh: string }> = {
   status: { en: "Status", zh: "状态" },
   priority: { en: "Priority", zh: "优先级" },
-  category: { en: "Category", zh: "分类" },
   tags: { en: "Tags", zh: "标签" },
   startDate: { en: "Start date", zh: "开始日期" },
   endDate: { en: "Due date", zh: "截止日期" },
