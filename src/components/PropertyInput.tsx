@@ -1,9 +1,12 @@
 import * as Popover from "@radix-ui/react-popover";
-import { Check, X } from "lucide-react";
+import { enUS, zhCN } from "react-day-picker/locale";
+import { CalendarDays, Check, X } from "lucide-react";
 import { useMemo, useState } from "react";
 import type { PropertyDefinition, PropertyOption } from "../types";
 import { localizedOptionLabel, localizedPropertyName, useTaskmateI18n } from "../lib/taskmate-i18n";
 import { Checkbox } from "./ui/Checkbox";
+import { Button } from "./ui/Button";
+import { Calendar } from "./ui/Calendar";
 import { Input } from "./ui/Input";
 import { Select } from "./ui/Select";
 import { Textarea } from "./ui/Textarea";
@@ -12,8 +15,63 @@ interface Props {
   definition: PropertyDefinition;
   value: unknown;
   compact?: boolean;
+  datePicker?: boolean;
   onChange(value: unknown): void;
   onCreateOption?(label: string): Promise<PropertyOption>;
+}
+
+function parseDate(value: unknown) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(value ?? ""));
+  if (!match) return undefined;
+  const date = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+  return date.getFullYear() === Number(match[1]) && date.getMonth() === Number(match[2]) - 1 && date.getDate() === Number(match[3]) ? date : undefined;
+}
+
+function formatDate(date: Date) {
+  const year = String(date.getFullYear()).padStart(4, "0");
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function DateInput({ definition, value, compact, onChange }: Props) {
+  const { locale, t } = useTaskmateI18n();
+  const [open, setOpen] = useState(false);
+  const name = localizedPropertyName(definition, locale);
+  const selected = parseDate(value);
+  const rawValue = String(value ?? "");
+  const displayValue = selected
+    ? new Intl.DateTimeFormat(locale, { dateStyle: "medium" }).format(selected)
+    : rawValue || t("common.notSet");
+
+  return (
+    <div className={`flex items-center gap-1 ${compact ? "w-full max-w-40" : "w-full"}`}>
+      <Popover.Root open={open} onOpenChange={setOpen}>
+        <Popover.Trigger asChild>
+          <Button variant="outline" aria-label={name} className="min-w-0 flex-1 justify-start px-3 font-normal">
+            <CalendarDays className="size-4 shrink-0 text-muted" />
+            <span className={rawValue ? "truncate" : "truncate text-muted"}>{displayValue}</span>
+          </Button>
+        </Popover.Trigger>
+        <Popover.Portal>
+          <Popover.Content className="z-[350] w-auto rounded-lg border border-line bg-surface p-0 shadow-[0_12px_30px_rgba(0,0,0,.14)]" align="start" sideOffset={6}>
+            <Calendar
+              mode="single"
+              selected={selected}
+              defaultMonth={selected}
+              locale={locale === "zh-CN" ? zhCN : enUS}
+              onSelect={(date) => {
+                if (!date) return;
+                onChange(formatDate(date));
+                setOpen(false);
+              }}
+            />
+          </Popover.Content>
+        </Popover.Portal>
+      </Popover.Root>
+      {rawValue ? <Button variant="ghost" size="icon" className="shrink-0" aria-label={`${t("common.unset")} ${name}`} onClick={() => onChange(null)}><X className="size-4" /></Button> : null}
+    </div>
+  );
 }
 
 function TagsInput({ definition, value, compact, onChange, onCreateOption }: Props) {
@@ -92,7 +150,7 @@ function TagsInput({ definition, value, compact, onChange, onCreateOption }: Pro
   );
 }
 
-export function PropertyInput({ definition, value, compact, onChange, onCreateOption }: Props) {
+export function PropertyInput({ definition, value, compact, datePicker, onChange, onCreateOption }: Props) {
   const { locale, t } = useTaskmateI18n();
   const name = localizedPropertyName(definition, locale);
   const className = compact ? "min-h-7 w-full max-w-40 px-1.5 py-1" : "w-full";
@@ -106,5 +164,6 @@ export function PropertyInput({ definition, value, compact, onChange, onCreateOp
   }
   if (definition.type === "boolean") return <Checkbox aria-label={name} checked={value === true} onCheckedChange={(checked) => onChange(checked === true)} onClick={(event) => event.stopPropagation()} />;
   if (definition.type === "textarea") return <Textarea className={className} aria-label={name} value={String(value ?? "")} onChange={(event) => onChange(event.target.value)} rows={compact ? 2 : 3} />;
+  if (definition.type === "date" && datePicker) return <DateInput definition={definition} value={value} compact={compact} onChange={onChange} />;
   return <Input className={className} aria-label={name} type={definition.type === "datetime" ? "datetime-local" : definition.type === "date" ? "date" : definition.type === "number" ? "number" : definition.type === "url" ? "url" : "text"} value={String(value ?? "")} onChange={(event) => onChange(definition.type === "number" ? (event.target.value === "" ? null : Number(event.target.value)) : event.target.value)} />;
 }

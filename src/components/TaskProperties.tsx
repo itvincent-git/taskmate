@@ -34,6 +34,7 @@ export const TaskProperties = memo(function TaskProperties({
               <PropertyInput
                 definition={definition}
                 value={task.properties[definition.key]}
+                datePicker
                 onChange={(value) => onChange(definition.key, value)}
                 onCreateOption={onCreateOption ? (label) => onCreateOption(definition, label) : undefined}
               />
