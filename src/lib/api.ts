@@ -6,6 +6,7 @@ import { open } from "@tauri-apps/plugin-dialog";
 import type {
   GitStatus,
   PropertyDefinition,
+  PropertyOption,
   Task,
   TaskQuery,
   TaskSearchResult,
@@ -228,6 +229,21 @@ export const api = {
     state.properties = definitions;
     storeDemo(state);
     return definitions;
+  },
+  async createPropertyOption(propertyId: string, label: string): Promise<PropertyOption> {
+    if (isTauri) return invoke("create_property_option", { propertyId, label });
+    const trimmed = label.trim();
+    if (!trimmed) throw new Error("Tag labels cannot be empty.");
+    const state = loadDemo();
+    const definition = state.properties.find((candidate) => candidate.id === propertyId);
+    if (!definition) throw new Error("Property not found.");
+    if (definition.type !== "tags") throw new Error("Options can only be created for tags properties.");
+    const existing = definition.options.find((option) => option.id.toLocaleLowerCase() === trimmed.toLocaleLowerCase() || option.label.toLocaleLowerCase() === trimmed.toLocaleLowerCase());
+    if (existing) return existing;
+    const option = { id: trimmed, label: trimmed, color: "#9C9C9C", order: Math.max(-1, ...definition.options.map((candidate) => candidate.order)) + 1 };
+    definition.options.push(option);
+    storeDemo(state);
+    return option;
   },
   async rebuildIndex(): Promise<TaskSummary[]> {
     if (isTauri) return invoke("rebuild_index");

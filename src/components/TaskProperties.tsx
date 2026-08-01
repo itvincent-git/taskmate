@@ -1,5 +1,5 @@
 import { memo } from "react";
-import type { PropertyDefinition, Task } from "../types";
+import type { PropertyDefinition, PropertyOption, Task } from "../types";
 import { localizedPropertyName, useTaskmateI18n } from "../lib/taskmate-i18n";
 import { PropertyInput } from "./PropertyInput";
 
@@ -7,11 +7,13 @@ export const TaskProperties = memo(function TaskProperties({
   definitions,
   task,
   onChange,
+  onCreateOption,
   showHeading = true,
 }: {
   definitions: PropertyDefinition[];
   task: Task;
   onChange(key: string, value: unknown): void;
+  onCreateOption?(definition: PropertyDefinition, label: string): Promise<PropertyOption>;
   showHeading?: boolean;
 }) {
   const { locale, t } = useTaskmateI18n();
@@ -33,6 +35,7 @@ export const TaskProperties = memo(function TaskProperties({
                 definition={definition}
                 value={task.properties[definition.key]}
                 onChange={(value) => onChange(definition.key, value)}
+                onCreateOption={onCreateOption ? (label) => onCreateOption(definition, label) : undefined}
               />
             </label>
           ))}
@@ -44,5 +47,6 @@ export const TaskProperties = memo(function TaskProperties({
   previous.definitions === next.definitions
   && previous.task.properties === next.task.properties
   && previous.onChange === next.onChange
+  && previous.onCreateOption === next.onCreateOption
   && previous.showHeading === next.showHeading
 ));

@@ -6,8 +6,8 @@ mod workspace;
 
 use git::GitStatus;
 use model::{
-    PropertyDefinition, SaveTaskInput, Task, TaskQuery, TaskSearchResult, TaskSummary,
-    WorkspaceSnapshot,
+    PropertyDefinition, PropertyOption, SaveTaskInput, Task, TaskQuery, TaskSearchResult,
+    TaskSummary, WorkspaceSnapshot,
 };
 use notify::{RecommendedWatcher, RecursiveMode, Watcher};
 use serde::Serialize;
@@ -151,6 +151,17 @@ fn save_properties(
     state: State<'_, AppState>,
 ) -> Result<Vec<PropertyDefinition>, String> {
     with_workspace(state, |workspace| workspace.save_properties(definitions))
+}
+
+#[tauri::command]
+fn create_property_option(
+    property_id: String,
+    label: String,
+    state: State<'_, AppState>,
+) -> Result<PropertyOption, String> {
+    with_workspace(state, |workspace| {
+        workspace.create_property_option(&property_id, &label)
+    })
 }
 
 #[tauri::command]
@@ -311,6 +322,7 @@ pub fn run() {
             rebuild_index,
             delete_task,
             save_properties,
+            create_property_option,
             check_external_change,
             read_attachment,
             git_status,

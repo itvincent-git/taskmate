@@ -1,5 +1,5 @@
 import { ChevronDown, ChevronUp, GripVertical, Plus, Trash2, X } from "lucide-react";
-import type { PropertyDefinition, PropertyType } from "../types";
+import type { PropertyDefinition, PropertyOption, PropertyType } from "../types";
 import { localizedPropertyName, useTaskmateI18n } from "../lib/taskmate-i18n";
 import { PropertyInput } from "./PropertyInput";
 import { Button } from "./ui/Button";
@@ -51,6 +51,27 @@ export function PropertySettings({ definitions, lockedIds, onChange, onSave, onR
       order: definitions.length,
     }]);
   };
+  const createDraftOption = async (definition: PropertyDefinition, label: string): Promise<PropertyOption> => {
+    const trimmed = label.trim();
+    const existing = definition.options.find((option) => option.id.toLocaleLowerCase() === trimmed.toLocaleLowerCase() || option.label.toLocaleLowerCase() === trimmed.toLocaleLowerCase());
+    if (existing) return existing;
+    const option = { id: trimmed, label: trimmed, color: "#9C9C9C", order: Math.max(-1, ...definition.options.map((candidate) => candidate.order)) + 1 };
+    update(definition.id, { options: [...definition.options, option] });
+    return option;
+  };
+  const updateDefaultValue = (definition: PropertyDefinition, defaultValue: unknown) => {
+    if (definition.type !== "tags" || !Array.isArray(defaultValue)) {
+      update(definition.id, { defaultValue });
+      return;
+    }
+    const options = definition.options.slice();
+    for (const item of defaultValue.map(String)) {
+      if (!options.some((option) => option.id.toLocaleLowerCase() === item.toLocaleLowerCase() || option.label.toLocaleLowerCase() === item.toLocaleLowerCase())) {
+        options.push({ id: item, label: item, color: "#9C9C9C", order: Math.max(-1, ...options.map((option) => option.order)) + 1 });
+      }
+    }
+    update(definition.id, { defaultValue, options });
+  };
   const typeLabels: Record<PropertyType, string> = locale === "zh-CN"
     ? { text: "单行文本", textarea: "多行文本", number: "数字", boolean: "布尔值", select: "单选", multiselect: "多选", tags: "标签", date: "日期", datetime: "日期时间", url: "URL" }
     : { text: "Text", textarea: "Long text", number: "Number", boolean: "Boolean", select: "Select", multiselect: "Multi-select", tags: "Tags", date: "Date", datetime: "Date & time", url: "URL" };
@@ -99,7 +120,7 @@ export function PropertySettings({ definitions, lockedIds, onChange, onSave, onR
                   </div>
                 </div>
               ) : null}
-              <div className="col-[1/-1] grid grid-cols-[80px_minmax(140px,320px)] items-center px-2 pb-1"><label className="font-semibold text-muted">{t("properties.default")}</label><PropertyInput compact definition={definition} value={definition.defaultValue} onChange={(defaultValue) => update(definition.id, { defaultValue })} /></div>
+              <div className="col-[1/-1] grid grid-cols-[80px_minmax(140px,320px)] items-center px-2 pb-1"><label className="font-semibold text-muted">{t("properties.default")}</label><PropertyInput compact definition={definition} value={definition.defaultValue} onChange={(defaultValue) => updateDefaultValue(definition, defaultValue)} onCreateOption={(label) => createDraftOption(definition, label)} /></div>
             </div>
           );
         })}

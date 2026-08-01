@@ -1,6 +1,6 @@
 import type { MouseEvent } from "react";
 import { CalendarDays } from "lucide-react";
-import type { PropertyDefinition, TaskSummary } from "../types";
+import type { PropertyDefinition, PropertyOption, TaskSummary } from "../types";
 import { localizedOptionLabel, useTaskmateI18n } from "../lib/taskmate-i18n";
 import { PropertyInput } from "./PropertyInput";
 import { cn } from "../lib/utils";
@@ -12,6 +12,7 @@ interface Props {
   compact?: boolean;
   onSelect(): void;
   onQuickEdit(key: string, value: unknown): void;
+  onCreateOption?(definition: PropertyDefinition, label: string): Promise<PropertyOption>;
 }
 
 function PropertyValue({ definition, value }: { definition: PropertyDefinition; value: unknown }) {
@@ -32,7 +33,7 @@ function PropertyValue({ definition, value }: { definition: PropertyDefinition; 
   return <span className="text-xs text-muted">{String(value).slice(0, 72)}</span>;
 }
 
-export function TaskCard({ task, selected, definitions, compact = false, onSelect, onQuickEdit }: Props) {
+export function TaskCard({ task, selected, definitions, compact = false, onSelect, onQuickEdit, onCreateOption }: Props) {
   const visible = definitions.filter((definition) => definition.showInCard).sort((a, b) => a.order - b.order);
   const stop = (event: MouseEvent) => event.stopPropagation();
   return (
@@ -44,7 +45,7 @@ export function TaskCard({ task, selected, definitions, compact = false, onSelec
             <div className="group relative has-[[data-state=open]]:[&>:first-child]:opacity-0" key={definition.id} onClick={stop}>
               <div className="inline-flex group-hover:opacity-0"><PropertyValue definition={definition} value={task.properties[definition.key]} /></div>
               <div className="pointer-events-none invisible absolute -top-[5px] -left-[5px] z-[3] min-w-[120px] group-hover:pointer-events-auto group-hover:visible group-has-[[data-state=open]]:pointer-events-auto group-has-[[data-state=open]]:visible">
-                <PropertyInput compact definition={definition} value={task.properties[definition.key]} onChange={(value) => onQuickEdit(definition.key, value)} />
+                <PropertyInput compact definition={definition} value={task.properties[definition.key]} onChange={(value) => onQuickEdit(definition.key, value)} onCreateOption={onCreateOption ? (label) => onCreateOption(definition, label) : undefined} />
               </div>
             </div>
           ))}

@@ -18,7 +18,7 @@ const base: PropertyDefinition = {
 };
 
 describe("PropertyInput", () => {
-  it("allows selecting an existing option or entering a custom value", () => {
+  it("keeps select values limited to existing options and not set", async () => {
     const onChange = vi.fn();
     render(<PropertyInput definition={{
       ...base,
@@ -29,18 +29,54 @@ describe("PropertyInput", () => {
       ],
     }} value="work" onChange={onChange} />);
 
-    const input = screen.getByLabelText("Field");
-    expect(input).toHaveValue("Work");
-    expect(input).toHaveAttribute("list");
-    const optionList = document.getElementById(input.getAttribute("list")!);
-    expect(Array.from(optionList!.querySelectorAll("option"), (option) => option.value)).toEqual(["Personal", "Work"]);
-
-    fireEvent.change(input, { target: { value: "Personal" } });
+    const user = userEvent.setup();
+    expect(screen.queryByRole("textbox", { name: "Field" })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("combobox", { name: "Field" }));
+    expect(screen.getAllByRole("option").map((option) => option.textContent)).toEqual(["Not set", "Personal", "Work"]);
+    await user.click(screen.getByRole("option", { name: "Personal" }));
     expect(onChange).toHaveBeenLastCalledWith("personal");
-    fireEvent.change(input, { target: { value: "Errands" } });
-    expect(onChange).toHaveBeenLastCalledWith("Errands");
-    fireEvent.change(input, { target: { value: "" } });
+    await user.click(screen.getByRole("combobox", { name: "Field" }));
+    await user.click(screen.getByRole("option", { name: "Not set" }));
     expect(onChange).toHaveBeenLastCalledWith(null);
+  });
+
+  it("searches, toggles, creates, and preserves legacy tag values", async () => {
+    const user = userEvent.setup();
+    const onChange = vi.fn();
+    const onCreateOption = vi.fn(async (label: string) => ({ id: label, label, color: "#9C9C9C", order: 2 }));
+    render(<PropertyInput definition={{ ...base, type: "tags", options: [{ id: "rust", label: "Rust", order: 0 }, { id: "tauri", label: "Tauri", order: 1 }] }} value={["rust", "legacy"]} onChange={onChange} onCreateOption={onCreateOption} />);
+
+    expect(screen.getByText("legacy")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Remove legacy" }));
+    expect(onChange).toHaveBeenLastCalledWith(["rust"]);
+
+    const input = screen.getByRole("textbox", { name: "Field" });
+    await user.type(input, "TAU");
+    expect(screen.getByRole("option", { name: "Tauri" })).toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: "Rust" })).not.toBeInTheDocument();
+    await user.type(input, "RI");
+    await user.keyboard("{Enter}");
+    expect(onCreateOption).not.toHaveBeenCalled();
+    expect(onChange).toHaveBeenLastCalledWith(["rust", "legacy", "tauri"]);
+
+    await user.type(input, "  Release, 1  {Enter}");
+    expect(onCreateOption).toHaveBeenCalledWith("Release, 1");
+    expect(onChange).toHaveBeenLastCalledWith(["rust", "legacy", "Release, 1"]);
+  });
+
+  it("rejects blank tag creation and retains input when creation fails", async () => {
+    const user = userEvent.setup();
+    const onChange = vi.fn();
+    const onCreateOption = vi.fn().mockRejectedValue(new Error("persist failed"));
+    render(<PropertyInput definition={{ ...base, type: "tags" }} value={[]} onChange={onChange} onCreateOption={onCreateOption} />);
+    const input = screen.getByRole("textbox", { name: "Field" });
+    await user.type(input, "   {Enter}");
+    expect(onCreateOption).not.toHaveBeenCalled();
+    await user.clear(input);
+    await user.type(input, "Blocked{Enter}");
+    expect(onCreateOption).toHaveBeenCalledWith("Blocked");
+    expect(onChange).not.toHaveBeenCalled();
+    expect(input).toHaveValue("Blocked");
   });
 
   it("uses typed controls and returns typed values", async () => {

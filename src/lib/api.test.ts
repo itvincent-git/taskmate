@@ -30,6 +30,34 @@ describe("taskFilePath", () => {
   });
 });
 
+describe("createPropertyOption", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    localStorage.setItem("taskmate-browser-demo", JSON.stringify({
+      path: "/tmp/tasks",
+      properties: [
+        { id: "tags", key: "tags", name: "Tags", type: "tags", showInDetail: true, showInCard: true, enableFilter: true, enableSort: false, order: 0, options: [] },
+        { id: "status", key: "status", name: "Status", type: "select", showInDetail: true, showInCard: true, enableFilter: true, enableSort: true, order: 1, options: [] },
+      ],
+      tasks: [],
+    }));
+  });
+
+  it("atomically persists creatable tags and treats repeated labels as the same option", async () => {
+    const created = await api.createPropertyOption("tags", "  Release, 1  ");
+    expect(created).toEqual({ id: "Release, 1", label: "Release, 1", color: "#9C9C9C", order: 0 });
+    await expect(api.createPropertyOption("tags", "release, 1")).resolves.toEqual(created);
+    const stored = JSON.parse(localStorage.getItem("taskmate-browser-demo")!);
+    expect(stored.properties[0].options).toEqual([created]);
+  });
+
+  it("rejects empty labels, missing properties, and non-tag properties", async () => {
+    await expect(api.createPropertyOption("tags", "  ")).rejects.toThrow("empty");
+    await expect(api.createPropertyOption("missing", "Later")).rejects.toThrow("not found");
+    await expect(api.createPropertyOption("status", "Later")).rejects.toThrow("only");
+  });
+});
+
 describe("searchTasks", () => {
   beforeEach(() => {
     localStorage.clear();

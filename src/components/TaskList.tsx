@@ -1,6 +1,6 @@
 import { memo, useEffect, useRef, type ReactNode } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import type { PropertyDefinition, TaskSummary } from "../types";
+import type { PropertyDefinition, PropertyOption, TaskSummary } from "../types";
 import { TaskCard } from "./TaskCard";
 
 interface Props {
@@ -11,9 +11,10 @@ interface Props {
   emptyState: ReactNode;
   onSelect(task: TaskSummary): void;
   onQuickEdit(task: TaskSummary, key: string, value: unknown): void;
+  onCreateOption?(definition: PropertyDefinition, label: string): Promise<PropertyOption>;
 }
 
-export const TaskList = memo(function TaskList({ tasks, definitions, selectedId, compact, emptyState, onSelect, onQuickEdit }: Props) {
+export const TaskList = memo(function TaskList({ tasks, definitions, selectedId, compact, emptyState, onSelect, onQuickEdit, onCreateOption }: Props) {
   const listHost = useRef<HTMLDivElement>(null);
   const virtualizer = useVirtualizer({
     count: tasks.length,
@@ -42,6 +43,7 @@ export const TaskList = memo(function TaskList({ tasks, definitions, selectedId,
                   compact={compact}
                   onSelect={() => onSelect(task)}
                   onQuickEdit={(key, value) => onQuickEdit(task, key, value)}
+                  onCreateOption={onCreateOption}
                 />
               </div>
             );

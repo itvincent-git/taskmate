@@ -35,6 +35,7 @@ import { api } from "./lib/api";
 import type {
   GitStatus,
   PropertyDefinition,
+  PropertyOption,
   SaveState,
   Task,
   TaskFilter,
@@ -605,6 +606,16 @@ function WorkspaceSession() {
       setSearchEpoch((epoch) => epoch + 1);
     } catch (cause) { setError(`Quick edit failed: ${errorMessage(cause)}`); }
   };
+  const createPropertyOption = useCallback(async (definition: PropertyDefinition, label: string): Promise<PropertyOption> => {
+    try {
+      const option = await api.createPropertyOption(definition.id, label);
+      setDefinitions((current) => current.map((item) => item.id !== definition.id || item.options.some((candidate) => candidate.id === option.id) ? item : { ...item, options: [...item.options, option] }));
+      return option;
+    } catch (cause) {
+      setError(errorMessage(cause));
+      throw cause;
+    }
+  }, []);
   const archive = async () => {
     if (!task) return;
     const archivedId = task.id;
@@ -934,6 +945,7 @@ function WorkspaceSession() {
                   emptyState={taskListEmptyState}
                   onSelect={selectTask}
                   onQuickEdit={quickEditTask}
+                  onCreateOption={createPropertyOption}
                 />
                 </> : <TaskSearchPanel search={searchDraft} results={searchResults} loading={searchLoading} onSearchChange={setSearchDraft} onSelect={(result) => void chooseTask(result.id)} />}
               </section>
@@ -987,7 +999,7 @@ function WorkspaceSession() {
                         <>
                           <div className="relative z-[2] cursor-col-resize bg-line hover:bg-accent" data-testid="properties-splitter" onPointerDown={beginTaskPropertiesResize} />
                           <aside className="min-h-0 min-w-0 overflow-hidden">
-                            <TaskProperties definitions={detailDefinitions} task={task} onChange={changeTaskProperty} />
+                            <TaskProperties definitions={detailDefinitions} task={task} onChange={changeTaskProperty} onCreateOption={createPropertyOption} />
                           </aside>
                         </>
                       ) : null}
@@ -1014,7 +1026,7 @@ function WorkspaceSession() {
           closeLabel={t("common.close")}
           returnFocusRef={propertiesButton}
         >
-          {task ? <TaskProperties definitions={detailDefinitions} task={task} onChange={changeTaskProperty} showHeading={false} /> : null}
+          {task ? <TaskProperties definitions={detailDefinitions} task={task} onChange={changeTaskProperty} onCreateOption={createPropertyOption} showHeading={false} /> : null}
         </Dialog>
         <Dialog
           open={Boolean(externalTask && task)}

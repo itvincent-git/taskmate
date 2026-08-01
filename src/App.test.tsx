@@ -606,7 +606,7 @@ describe("Taskmate application", () => {
     expect(screen.getAllByLabelText("Priority")).toHaveLength(1);
     const priority = within(drawer).getByLabelText("Priority");
     await user.click(priority);
-    fireEvent.change(priority, { target: { value: "High" } });
+    await user.click(await screen.findByRole("option", { name: "High" }));
     await waitFor(() => {
       expect(saveTask).toHaveBeenCalledWith(expect.objectContaining({
         properties: expect.objectContaining({ priority: "high" }),
@@ -651,5 +651,38 @@ describe("Taskmate application", () => {
 
     expect(await screen.findByRole("heading", { name: "Properties" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Open task properties" })).not.toBeInTheDocument();
+  });
+
+  it("persists a new tag option before saving it on the task", async () => {
+    const user = userEvent.setup();
+    const createOption = vi.spyOn(api, "createPropertyOption").mockResolvedValue({ id: "Release, 1", label: "Release, 1", color: "#9C9C9C", order: 0 });
+    const saveTask = vi.spyOn(api, "saveTask");
+    render(<App />);
+    await user.click(screen.getByRole("button", { name: "Open workspace" }));
+    await user.click(await screen.findByRole("button", { name: "New task" }));
+
+    await user.type(screen.getByRole("textbox", { name: "Tags" }), "  Release, 1  {Enter}");
+
+    expect(createOption).toHaveBeenCalledWith(expect.any(String), "Release, 1");
+    await waitFor(() => expect(saveTask).toHaveBeenCalledWith(expect.objectContaining({
+      properties: expect.objectContaining({ tags: ["Release, 1"] }),
+    })), { timeout: 2500 });
+    expect(createOption.mock.invocationCallOrder[0]).toBeLessThan(saveTask.mock.invocationCallOrder[0]);
+  });
+
+  it("keeps an unpersisted tag in the input and leaves the task unchanged", async () => {
+    const user = userEvent.setup();
+    vi.spyOn(api, "createPropertyOption").mockRejectedValue(new Error("tag persistence failed"));
+    const saveTask = vi.spyOn(api, "saveTask");
+    render(<App />);
+    await user.click(screen.getByRole("button", { name: "Open workspace" }));
+    await user.click(await screen.findByRole("button", { name: "New task" }));
+    const input = screen.getByRole("textbox", { name: "Tags" });
+
+    await user.type(input, "Blocked tag{Enter}");
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("tag persistence failed");
+    expect(input).toHaveValue("Blocked tag");
+    expect(saveTask).not.toHaveBeenCalled();
   });
 });

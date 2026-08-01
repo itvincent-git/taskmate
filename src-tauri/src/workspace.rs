@@ -11,10 +11,12 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
+use std::sync::Mutex;
 use std::time::UNIX_EPOCH;
 use uuid::Uuid;
 
 const PROPERTIES_FILE: &str = "properties.json";
+static PROPERTIES_WRITE_LOCK: Mutex<()> = Mutex::new(());
 
 pub struct Workspace {
     pub root: PathBuf,
@@ -146,6 +148,9 @@ impl Workspace {
         &self,
         definitions: Vec<PropertyDefinition>,
     ) -> Result<Vec<PropertyDefinition>, String> {
+        let _write_guard = PROPERTIES_WRITE_LOCK
+            .lock()
+            .map_err(|_| "Property storage is unavailable.".to_string())?;
         validate_definitions(&definitions)?;
         let path = self.root.join(".task-app").join(PROPERTIES_FILE);
         atomic_write(
@@ -155,6 +160,55 @@ impl Workspace {
                 .as_slice(),
         )?;
         Ok(definitions)
+    }
+
+    pub fn create_property_option(
+        &self,
+        property_id: &str,
+        label: &str,
+    ) -> Result<PropertyOption, String> {
+        let _write_guard = PROPERTIES_WRITE_LOCK
+            .lock()
+            .map_err(|_| "Property storage is unavailable.".to_string())?;
+        let label = label.trim();
+        if label.is_empty() {
+            return Err("Tag labels cannot be empty.".into());
+        }
+        let mut definitions = self.load_or_create_properties()?;
+        let definition = definitions
+            .iter_mut()
+            .find(|definition| definition.id == property_id)
+            .ok_or_else(|| "Property not found.".to_string())?;
+        if definition.property_type != "tags" {
+            return Err("Options can only be created for tags properties.".into());
+        }
+        let folded_label = label.to_lowercase();
+        if let Some(option) = definition.options.iter().find(|option| {
+            option.id.to_lowercase() == folded_label || option.label.to_lowercase() == folded_label
+        }) {
+            return Ok(option.clone());
+        }
+        let option = PropertyOption {
+            id: label.to_string(),
+            label: label.to_string(),
+            color: Some("#9C9C9C".into()),
+            order: definition
+                .options
+                .iter()
+                .map(|option| option.order)
+                .max()
+                .map_or(0, |order| order + 1),
+        };
+        definition.options.push(option.clone());
+        validate_definitions(&definitions)?;
+        let path = self.root.join(".task-app").join(PROPERTIES_FILE);
+        atomic_write(
+            &path,
+            serde_json::to_vec_pretty(&definitions)
+                .map_err(to_string)?
+                .as_slice(),
+        )?;
+        Ok(option)
     }
 
     pub fn check_external_change(
@@ -590,6 +644,61 @@ mod tests {
             "bad--------- name"
         );
         assert_eq!(safe_file_stem("..."), "untitled");
+    }
+
+    #[test]
+    fn creates_tag_options_idempotently_and_persists_them() {
+        let temporary = tempfile::tempdir().unwrap();
+        let workspace = Workspace::new(temporary.path().to_path_buf());
+        let snapshot = workspace.initialize().unwrap();
+        let tags = snapshot
+            .properties
+            .iter()
+            .find(|definition| definition.property_type == "tags")
+            .unwrap();
+        let created = workspace
+            .create_property_option(&tags.id, "  Release, 1  ")
+            .unwrap();
+        assert_eq!(created.id, "Release, 1");
+        assert_eq!(created.label, "Release, 1");
+        assert_eq!(created.color.as_deref(), Some("#9C9C9C"));
+        assert_eq!(
+            workspace
+                .create_property_option(&tags.id, "release, 1")
+                .unwrap()
+                .id,
+            created.id
+        );
+        let reopened = workspace.initialize().unwrap();
+        let options = &reopened
+            .properties
+            .iter()
+            .find(|definition| definition.id == tags.id)
+            .unwrap()
+            .options;
+        assert_eq!(options.len(), 1);
+        assert_eq!(options[0].id, created.id);
+    }
+
+    #[test]
+    fn rejects_invalid_property_option_creation() {
+        let temporary = tempfile::tempdir().unwrap();
+        let workspace = Workspace::new(temporary.path().to_path_buf());
+        let snapshot = workspace.initialize().unwrap();
+        let select = snapshot
+            .properties
+            .iter()
+            .find(|definition| definition.property_type == "select")
+            .unwrap();
+        assert!(workspace
+            .create_property_option(&select.id, "Later")
+            .is_err());
+        assert!(workspace
+            .create_property_option("missing", "Later")
+            .is_err());
+        assert!(workspace
+            .create_property_option(select.id.as_str(), "  ")
+            .is_err());
     }
 
     #[test]
