@@ -1,8 +1,8 @@
+import { useId } from "react";
 import type { PropertyDefinition } from "../types";
 import { localizedOptionLabel, localizedPropertyName, useTaskmateI18n } from "../lib/taskmate-i18n";
 import { Checkbox } from "./ui/Checkbox";
 import { Input } from "./ui/Input";
-import { Select } from "./ui/Select";
 import { Textarea } from "./ui/Textarea";
 
 interface Props {
@@ -14,18 +14,30 @@ interface Props {
 
 export function PropertyInput({ definition, value, compact, onChange }: Props) {
   const { locale, t } = useTaskmateI18n();
+  const optionListId = useId();
   const name = localizedPropertyName(definition, locale);
   const className = compact ? "min-h-7 w-full max-w-40 px-1.5 py-1" : "w-full";
   if (definition.type === "select") {
+    const options = definition.options.slice().sort((a, b) => a.order - b.order);
+    const selected = options.find((option) => option.id === value);
     return (
-      <Select
-        className={className}
-        ariaLabel={name}
-        value={String(value ?? "")}
-        placeholder={t("common.notSet")}
-        onValueChange={(next) => onChange(next === "__unset" ? null : next)}
-        options={[{ value: "__unset", label: t("common.notSet") }, ...definition.options.slice().sort((a, b) => a.order - b.order).map((option) => ({ value: option.id, label: localizedOptionLabel(option, locale) }))]}
-      />
+      <>
+        <Input
+          className={className}
+          aria-label={name}
+          list={optionListId}
+          value={selected ? localizedOptionLabel(selected, locale) : String(value ?? "")}
+          placeholder={t("common.notSet")}
+          onChange={(event) => {
+            const next = event.target.value;
+            const option = options.find((candidate) => localizedOptionLabel(candidate, locale) === next);
+            onChange(next === "" ? null : option?.id ?? next);
+          }}
+        />
+        <datalist id={optionListId}>
+          {options.map((option) => <option value={localizedOptionLabel(option, locale)} key={option.id} />)}
+        </datalist>
+      </>
     );
   }
   if (definition.type === "multiselect" || definition.type === "tags") {

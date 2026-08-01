@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import type { PropertyDefinition, TaskSummary } from "../types";
@@ -42,8 +42,7 @@ describe("TaskCard quick editing", () => {
     const onQuickEdit = vi.fn();
     render(<TaskCard task={task} selected={false} definitions={[status]} onSelect={onSelect} onQuickEdit={onQuickEdit} />);
     await user.hover(screen.getAllByText("To do")[0]);
-    await user.click(screen.getByRole("combobox", { name: "Status" }));
-    await user.click(await screen.findByRole("option", { name: "Done" }));
+    fireEvent.change(screen.getByRole("combobox", { name: "Status" }), { target: { value: "Done" } });
     expect(onQuickEdit).toHaveBeenCalledWith("status", "done");
     expect(onSelect).not.toHaveBeenCalled();
   });

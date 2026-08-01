@@ -604,8 +604,9 @@ describe("Taskmate application", () => {
     const drawer = screen.getByRole("dialog", { name: "Properties" });
     expect(within(drawer).getByLabelText("Priority")).toBeInTheDocument();
     expect(screen.getAllByLabelText("Priority")).toHaveLength(1);
-    await user.click(within(drawer).getByLabelText("Priority"));
-    await user.click(await screen.findByRole("option", { name: "High" }));
+    const priority = within(drawer).getByLabelText("Priority");
+    await user.click(priority);
+    fireEvent.change(priority, { target: { value: "High" } });
     await waitFor(() => {
       expect(saveTask).toHaveBeenCalledWith(expect.objectContaining({
         properties: expect.objectContaining({ priority: "high" }),
