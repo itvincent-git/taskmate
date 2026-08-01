@@ -29,7 +29,7 @@ export const TaskProperties = memo(function TaskProperties({
       <div className={showHeading ? "min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pt-3.5 pb-7" : "min-h-0 flex-1 overflow-y-auto overscroll-contain px-0 pt-3.5 pb-7"}>
         <div className="grid grid-cols-[minmax(0,1fr)] gap-2.5">
           {definitions.map((definition) => (
-            <label className="grid gap-1" key={definition.id}>
+            <div className="grid gap-1" key={definition.id}>
               <span className="text-xs font-[680] text-muted">{localizedPropertyName(definition, locale)}{definition.required ? <em className="text-danger not-italic">*</em> : null}</span>
               <PropertyInput
                 definition={definition}
@@ -38,7 +38,7 @@ export const TaskProperties = memo(function TaskProperties({
                 onChange={(value) => onChange(definition.key, value)}
                 onCreateOption={onCreateOption ? (label) => onCreateOption(definition, label) : undefined}
               />
-            </label>
+            </div>
           ))}
         </div>
       </div>

@@ -79,4 +79,26 @@ describe("TaskProperties", () => {
     await user.click(screen.getByRole("button", { name: "Unset Due date" }));
     expect(onChange).toHaveBeenLastCalledWith("due", null);
   });
+
+  it("does not remove a selected tag when its label is clicked", async () => {
+    const user = userEvent.setup();
+    const onChange = vi.fn();
+    render(
+      <TaskProperties
+        definitions={[{
+          ...definition,
+          id: "tags",
+          key: "tags",
+          name: "Tags",
+          type: "tags",
+          options: [{ id: "rust", label: "Rust", order: 0 }],
+        }]}
+        task={{ ...task, properties: { tags: ["rust"] } }}
+        onChange={onChange}
+      />,
+    );
+
+    await user.click(screen.getByText("Rust"));
+    expect(onChange).not.toHaveBeenCalled();
+  });
 });
