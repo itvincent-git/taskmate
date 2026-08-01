@@ -12,8 +12,9 @@ describe("Live Preview activation", () => {
     expect(rangeIsActive(4, 12, [{ from: 13, to: 15 }])).toBe(false);
   });
 
-  it("keeps all markers visible during IME composition", () => {
-    expect(rangeIsActive(4, 12, [{ from: 30, to: 30 }], true)).toBe(true);
+  it("only reveals the selected syntax node during IME composition", () => {
+    expect(rangeIsActive(4, 12, [{ from: 8, to: 8 }], true)).toBe(true);
+    expect(rangeIsActive(4, 12, [{ from: 30, to: 30 }], true)).toBe(false);
   });
 
   it("hides inactive markers and reveals them when the cursor enters the syntax node", () => {

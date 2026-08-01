@@ -58,9 +58,8 @@ export function rangeIsActive(
   from: number,
   to: number,
   ranges: readonly { from: number; to: number }[],
-  composing = false,
+  _composing = false,
 ) {
-  if (composing) return true;
   return ranges.some((range) => range.from <= to && range.to >= from);
 }
 

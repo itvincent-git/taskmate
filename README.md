@@ -51,7 +51,7 @@ Unknown frontmatter values are preserved on read/write. The stable UUID, rather 
 - `src/lib/api.ts` is the typed Tauri command boundary and includes a browser-only local demo adapter for UI development.
 - `src/editor/` contains Markdown toolbar commands and Lezer-tree-driven CodeMirror decorations.
 
-Live Preview is a single CodeMirror editing surface. Decorations hide safe markers only when their parsed syntax node is inactive. Moving a cursor or selection into the node, or starting IME composition, reveals the original source without changing the document.
+Live Preview is a single CodeMirror editing surface. Decorations hide safe markers only when their parsed syntax node is inactive. Moving a cursor or selection into the node reveals the original source without changing the document.
 
 ## Development
 
