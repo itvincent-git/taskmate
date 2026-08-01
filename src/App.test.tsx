@@ -328,6 +328,27 @@ describe("Taskmate application", () => {
     expect(screen.getByRole("button", { name: "Save changes" })).toBeInTheDocument();
   });
 
+  it("opens workspace pages as reusable, closable tabs", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(screen.getByRole("button", { name: "Open workspace" }));
+    await screen.findByRole("toolbar", { name: "Task list" });
+
+    await user.click(screen.getByRole("link", { name: "Properties" }));
+    await user.click(screen.getByRole("link", { name: "Git backup" }));
+    await user.click(screen.getByRole("link", { name: "Settings" }));
+    await user.click(screen.getByRole("link", { name: "Properties" }));
+
+    const tabs = screen.getAllByRole("tab");
+    expect(tabs).toHaveLength(3);
+    expect(tabs[0]).toHaveTextContent("Properties");
+    expect(tabs[0]).toHaveAttribute("aria-selected", "true");
+
+    await user.click(within(tabs[0]).getByRole("button", { name: "Close tab: Properties" }));
+    expect(screen.getAllByRole("tab")).toHaveLength(2);
+    expect(screen.getByRole("heading", { name: "Git & GitHub" })).toBeInTheDocument();
+  });
+
   it("switches the complete Taskmate shell to Simplified Chinese from settings", async () => {
     const user = userEvent.setup();
     render(<App />);

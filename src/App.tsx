@@ -69,6 +69,8 @@ const TASK_PROPERTIES_WIDTH_KEY = "taskmate-task-properties-width.v1";
 const MarkdownEditor = lazy(() => import("./components/MarkdownEditor").then((module) => ({ default: module.MarkdownEditor })));
 
 type StateUpdate<T> = SetStateAction<T>;
+type WorkspacePage = "/properties" | "/backup" | "/settings";
+type OpenTab = ({ kind: "task" } & Pick<Task, "id" | "title" | "fileName">) | { kind: "page"; id: WorkspacePage };
 type WorkspaceData = {
   workspacePath: string;
   recentWorkspaces: string[];
@@ -78,7 +80,7 @@ type WorkspaceData = {
   lockedPropertyIds: Set<string>;
   tasks: TaskSummary[];
   task: Task | null;
-  openTabs: Array<Pick<Task, "id" | "title" | "fileName">>;
+  openTabs: OpenTab[];
   query: TaskQuery;
   searchDraft: string;
   saveState: SaveState;
@@ -392,7 +394,7 @@ function WorkspaceSession() {
       if (snapshot.tasks[0]) {
         const first = await api.getTask(snapshot.tasks[0].id);
         setTask(first);
-        setOpenTabs([{ id: first.id, title: first.title, fileName: first.fileName }]);
+        setOpenTabs([{ kind: "task", id: first.id, title: first.title, fileName: first.fileName }]);
       } else {
         setTask(null);
         setOpenTabs([]);
@@ -506,7 +508,7 @@ function WorkspaceSession() {
     try {
       const saved = await api.saveTask(current);
       setTask((open) => open?.id === saved.id ? saved : open);
-      setOpenTabs((tabs) => tabs.map((tab) => tab.id === saved.id ? { id: saved.id, title: saved.title, fileName: saved.fileName } : tab));
+      setOpenTabs((tabs) => tabs.map((tab) => tab.kind === "task" && tab.id === saved.id ? { kind: "task", id: saved.id, title: saved.title, fileName: saved.fileName } : tab));
       setSaveState("saved");
       await refresh();
       setSearchEpoch((epoch) => epoch + 1);
@@ -555,7 +557,7 @@ function WorkspaceSession() {
   const editTask = (patch: Partial<Task>) => {
     setTask((current) => current ? { ...current, ...patch } : current);
     if (patch.title !== undefined && task) {
-      setOpenTabs((tabs) => tabs.map((tab) => tab.id === task.id ? { ...tab, title: patch.title! } : tab));
+      setOpenTabs((tabs) => tabs.map((tab) => tab.kind === "task" && tab.id === task.id ? { ...tab, title: patch.title! } : tab));
     }
     setSaveState("dirty");
   };
@@ -580,7 +582,7 @@ function WorkspaceSession() {
     try {
       const next = await api.getTask(id);
       setTask(next);
-      setOpenTabs((tabs) => tabs.some((tab) => tab.id === next.id) ? tabs : [...tabs, { id: next.id, title: next.title, fileName: next.fileName }]);
+      setOpenTabs((tabs) => tabs.some((tab) => tab.kind === "task" && tab.id === next.id) ? tabs : [...tabs, { kind: "task", id: next.id, title: next.title, fileName: next.fileName }]);
       setSaveState("saved");
     } catch (cause) { setError(errorMessage(cause)); }
   };
@@ -588,7 +590,7 @@ function WorkspaceSession() {
     try {
       const created = await api.createTask(t("tasks.untitled"));
       setTask(created);
-      setOpenTabs((tabs) => [...tabs, { id: created.id, title: created.title, fileName: created.fileName }]);
+      setOpenTabs((tabs) => [...tabs, { kind: "task", id: created.id, title: created.title, fileName: created.fileName }]);
       setSaveState("saved");
       await refresh();
       setSearchEpoch((epoch) => epoch + 1);
@@ -608,25 +610,38 @@ function WorkspaceSession() {
     const archivedId = task.id;
     await save({ ...task, archived: !task.archived });
     setTask(null);
-    setOpenTabs((tabs) => tabs.filter((tab) => tab.id !== archivedId));
+    setOpenTabs((tabs) => tabs.filter((tab) => tab.kind !== "task" || tab.id !== archivedId));
   };
-  const closeTab = async (id: string) => {
-    if (task?.id === id && saveState === "dirty") await save(task);
-    const index = openTabs.findIndex((tab) => tab.id === id);
-    const remaining = openTabs.filter((tab) => tab.id !== id);
+  const tabKey = (tab: OpenTab) => `${tab.kind}:${tab.id}`;
+  const tabTitle = (tab: OpenTab) => tab.kind === "task" ? tab.title : t(tab.id === "/properties" ? "nav.properties" : tab.id === "/backup" ? "nav.backup" : "nav.settings");
+  const activeTabKey = page === "/tasks" ? (selectedId ? `task:${selectedId}` : "") : `page:${page}`;
+  const closeTab = async (closing: OpenTab) => {
+    const closingKey = tabKey(closing);
+    if (closing.kind === "task" && task?.id === closing.id && saveState === "dirty") await save(task);
+    const index = openTabs.findIndex((tab) => tabKey(tab) === closingKey);
+    const remaining = openTabs.filter((tab) => tabKey(tab) !== closingKey);
     setOpenTabs(remaining);
-    if (task?.id !== id) return;
+    if (activeTabKey !== closingKey) return;
     const next = remaining[Math.min(index, remaining.length - 1)];
     if (!next) {
       setTask(null);
+      navigate("/tasks");
+      return;
+    }
+    if (next.kind === "page") {
+      navigate(next.id);
       return;
     }
     try {
+      navigate("/tasks");
       setTask(await api.getTask(next.id));
       setSaveState("saved");
     } catch (cause) {
       setError(errorMessage(cause));
     }
+  };
+  const openPage = (nextPage: WorkspacePage) => {
+    setOpenTabs((tabs) => tabs.some((tab) => tab.kind === "page" && tab.id === nextPage) ? tabs : [...tabs, { kind: "page", id: nextPage }]);
   };
 
   const switchWorkspace = async () => {
@@ -787,13 +802,13 @@ function WorkspaceSession() {
         <div className="flex min-w-0 flex-1 items-end gap-0.5 overflow-x-auto overflow-y-hidden px-1.5 pt-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" role="tablist" aria-label={t("editor.openFiles")}>
           {openTabs.map((tab) => (
             <div
-              key={tab.id}
-              className={cn("group flex h-8 min-w-32 max-w-56 shrink-0 items-center rounded-t-md border border-b-0 px-2 text-xs", tab.id === selectedId && page === "/tasks" ? "border-line bg-background text-foreground" : "border-transparent text-muted hover:bg-surface-soft")}
+              key={tabKey(tab)}
+              className={cn("group flex h-8 min-w-32 max-w-56 shrink-0 items-center rounded-t-md border border-b-0 px-2 text-xs", tabKey(tab) === activeTabKey ? "border-line bg-background text-foreground" : "border-transparent text-muted hover:bg-surface-soft")}
               role="tab"
-              aria-selected={tab.id === selectedId && page === "/tasks"}
+              aria-selected={tabKey(tab) === activeTabKey}
             >
-              <button className="min-w-0 flex-1 cursor-pointer truncate text-left" onClick={() => { navigate("/tasks"); void chooseTask(tab.id); }}>{tab.title}</button>
-              <button className="ml-1.5 grid size-5 shrink-0 cursor-pointer place-items-center rounded opacity-0 hover:bg-line group-hover:opacity-100 focus:opacity-100" aria-label={`${t("tasks.closeTab")}: ${tab.title}`} onClick={() => void closeTab(tab.id)}><X size={12} /></button>
+              <button className="min-w-0 flex-1 cursor-pointer truncate text-left" onClick={() => tab.kind === "task" ? (navigate("/tasks"), void chooseTask(tab.id)) : navigate(tab.id)}>{tabTitle(tab)}</button>
+              <button className="ml-1.5 grid size-5 shrink-0 cursor-pointer place-items-center rounded opacity-0 hover:bg-line group-hover:opacity-100 focus:opacity-100" aria-label={`${t("tasks.closeTab")}: ${tabTitle(tab)}`} onClick={() => void closeTab(tab)}><X size={12} /></button>
             </div>
           ))}
         </div>
@@ -803,9 +818,9 @@ function WorkspaceSession() {
           <div className="mb-3 grid size-7 place-items-center rounded-lg bg-[var(--accent)] text-white"><Check size={15} /></div>
           <nav className="grid gap-0.5" aria-label={t("nav.application")}>
             <Tooltip label={t("nav.tasks")}><NavLink to="/tasks" aria-label={t("nav.tasks")} aria-pressed={page === "/tasks"} className={buttonVariants({ variant: "ghost", size: "icon" })}><LayoutList size={18} /></NavLink></Tooltip>
-            <Tooltip label={t("nav.properties")}><NavLink to="/properties" aria-label={t("nav.properties")} aria-pressed={page === "/properties"} className={buttonVariants({ variant: "ghost", size: "icon" })}><Settings2 size={18} /></NavLink></Tooltip>
-            <Tooltip label={t("nav.backup")}><NavLink to="/backup" aria-label={t("nav.backup")} aria-pressed={page === "/backup"} className={buttonVariants({ variant: "ghost", size: "icon" })}><GitBranch size={18} /></NavLink></Tooltip>
-            <Tooltip label={t("nav.settings")}><NavLink to="/settings" aria-label={t("nav.settings")} aria-pressed={page === "/settings"} className={buttonVariants({ variant: "ghost", size: "icon" })}><Settings2 size={18} /></NavLink></Tooltip>
+            <Tooltip label={t("nav.properties")}><NavLink to="/properties" onClick={() => openPage("/properties")} aria-label={t("nav.properties")} aria-pressed={page === "/properties"} className={buttonVariants({ variant: "ghost", size: "icon" })}><Settings2 size={18} /></NavLink></Tooltip>
+            <Tooltip label={t("nav.backup")}><NavLink to="/backup" onClick={() => openPage("/backup")} aria-label={t("nav.backup")} aria-pressed={page === "/backup"} className={buttonVariants({ variant: "ghost", size: "icon" })}><GitBranch size={18} /></NavLink></Tooltip>
+            <Tooltip label={t("nav.settings")}><NavLink to="/settings" onClick={() => openPage("/settings")} aria-label={t("nav.settings")} aria-pressed={page === "/settings"} className={buttonVariants({ variant: "ghost", size: "icon" })}><Settings2 size={18} /></NavLink></Tooltip>
           </nav>
           <div className="mt-auto grid gap-0.5">
             <DropdownMenu.Root>
