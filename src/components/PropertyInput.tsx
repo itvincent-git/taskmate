@@ -83,6 +83,7 @@ function TagsInput({ definition, value, compact, onChange, onCreateOption }: Pro
   const options = useMemo(() => definition.options.slice().sort((a, b) => a.order - b.order), [definition.options]);
   const query = input.trim().toLocaleLowerCase();
   const candidates = options.filter((option) => !query || option.id.toLocaleLowerCase().includes(query) || localizedOptionLabel(option, locale).toLocaleLowerCase().includes(query));
+  const showSuggestions = candidates.length > 0 || query.length > 0;
   const matchingValue = (option: PropertyOption) => values.find((item) => item.toLocaleLowerCase() === option.id.toLocaleLowerCase() || item.toLocaleLowerCase() === option.label.toLocaleLowerCase());
   const toggleOption = (option: PropertyOption) => {
     const selected = matchingValue(option);
@@ -111,7 +112,7 @@ function TagsInput({ definition, value, compact, onChange, onCreateOption }: Pro
   };
 
   return (
-    <Popover.Root open={open} onOpenChange={setOpen}>
+    <Popover.Root open={open && showSuggestions} onOpenChange={setOpen}>
       <Popover.Anchor asChild>
         <div data-state={open ? "open" : "closed"} className={`flex min-h-[34px] flex-wrap items-center gap-1 rounded-md border border-line bg-surface px-1.5 py-1 focus-within:border-accent focus-within:ring-3 focus-within:ring-[color-mix(in_srgb,var(--accent)_12%,transparent)] ${compact ? "w-full max-w-40" : "w-full"}`} onClick={() => setOpen(true)}>
           {values.map((item) => {

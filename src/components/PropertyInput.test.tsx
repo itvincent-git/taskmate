@@ -79,6 +79,18 @@ describe("PropertyInput", () => {
     expect(input).toHaveValue("Blocked");
   });
 
+  it("does not show an empty tag dropdown before any tags exist", async () => {
+    const user = userEvent.setup();
+    render(<PropertyInput definition={{ ...base, type: "tags" }} value={[]} onChange={vi.fn()} onCreateOption={vi.fn()} />);
+
+    const input = screen.getByRole("textbox", { name: "Field" });
+    await user.click(input);
+    expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
+
+    await user.type(input, "First tag");
+    expect(screen.getByRole("listbox")).toHaveTextContent("First tag");
+  });
+
   it("uses typed controls and returns typed values", async () => {
     const onChange = vi.fn();
     const { rerender } = render(<PropertyInput definition={{ ...base, type: "number" }} value={3} onChange={onChange} />);
