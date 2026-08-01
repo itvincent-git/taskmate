@@ -569,19 +569,6 @@ fn default_properties() -> Vec<PropertyDefinition> {
             None,
             4,
         ),
-        property(
-            "notes",
-            "Notes",
-            "textarea",
-            true,
-            false,
-            false,
-            false,
-            None,
-            vec![],
-            None,
-            5,
-        ),
     ]
 }
 
@@ -625,20 +612,13 @@ mod tests {
     use super::*;
 
     #[test]
-    fn default_properties_exclude_category() {
+    fn default_properties_match_builtin_schema() {
         assert_eq!(
             default_properties()
                 .iter()
                 .map(|definition| definition.key.as_str())
                 .collect::<Vec<_>>(),
-            vec![
-                "status",
-                "priority",
-                "tags",
-                "startDate",
-                "endDate",
-                "notes"
-            ]
+            vec!["status", "priority", "tags", "startDate", "endDate"]
         );
     }
 

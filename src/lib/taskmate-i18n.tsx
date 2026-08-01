@@ -401,7 +401,6 @@ const builtInPropertyNames: Record<string, { en: string; zh: string }> = {
   tags: { en: "Tags", zh: "标签" },
   startDate: { en: "Start date", zh: "开始日期" },
   endDate: { en: "Due date", zh: "截止日期" },
-  notes: { en: "Notes", zh: "备注" },
 };
 const builtInOptions: Record<string, { en: string; zh: string }> = {
   "not-started": { en: "Not started", zh: "未开始" },

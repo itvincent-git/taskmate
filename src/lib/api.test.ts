@@ -4,7 +4,7 @@ import { api, taskFilePath } from "./api";
 describe("default properties", () => {
   beforeEach(() => localStorage.clear());
 
-  it("does not include the removed category field", async () => {
+  it("exposes the current built-in schema", async () => {
     const snapshot = await api.openWorkspace("/tmp/tasks");
 
     expect(snapshot.properties.map((property) => property.key)).toEqual([
@@ -13,7 +13,6 @@ describe("default properties", () => {
       "tags",
       "startDate",
       "endDate",
-      "notes",
     ]);
   });
 });
