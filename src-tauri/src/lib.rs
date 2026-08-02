@@ -10,7 +10,7 @@ use model::{
     TaskSummary, WorkspaceSnapshot,
 };
 use notify::{RecommendedWatcher, RecursiveMode, Watcher};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::sync::{
     atomic::{AtomicU64, Ordering},
@@ -38,6 +38,46 @@ struct UpdateDownloadProgress {
     downloaded: u64,
     total: Option<u64>,
     finished: bool,
+}
+
+#[derive(Deserialize)]
+struct ReleaseVersion {
+    version: String,
+}
+
+#[derive(Deserialize)]
+struct GithubRelease {
+    tag_name: String,
+    body: Option<String>,
+    published_at: Option<String>,
+}
+
+fn parse_version(version: &str) -> Option<(u32, u32, u32)> {
+    let parts = version
+        .trim_start_matches("app-v")
+        .trim_start_matches('v')
+        .split('.')
+        .collect::<Vec<_>>();
+    if parts.len() < 3 {
+        return None;
+    }
+
+    let patch = parts[2]
+        .chars()
+        .take_while(|character| character.is_ascii_digit())
+        .collect::<String>();
+    Some((
+        parts[0].parse().ok()?,
+        parts[1].parse().ok()?,
+        patch.parse().ok()?,
+    ))
+}
+
+fn is_newer(current: &str, latest: &str) -> bool {
+    matches!(
+        (parse_version(current), parse_version(latest)),
+        (Some(current), Some(latest)) if latest > current
+    )
 }
 
 struct AppState {
@@ -218,19 +258,105 @@ fn git_history(state: State<'_, AppState>) -> Result<Vec<String>, String> {
 #[tauri::command]
 async fn check_for_updates(app: tauri::AppHandle) -> Result<Option<UpdateCheckResponse>, String> {
     let current_version = app.package_info().version.to_string();
-    let update = app
-        .updater()
-        .map_err(|error| format!("Unable to initialize updater: {error}"))?
-        .check()
-        .await
-        .map_err(|error| format!("Unable to check for updates: {error}"))?;
+    tauri::async_runtime::spawn_blocking(move || {
+        let client = reqwest::blocking::Client::builder()
+            .timeout(std::time::Duration::from_secs(8))
+            .build()
+            .map_err(|error| format!("Unable to initialize update client: {error}"))?;
 
-    Ok(update.map(|update| UpdateCheckResponse {
-        version: update.version,
-        current_version,
-        body: update.body,
-        date: update.date.map(|date| date.to_string()),
-    }))
+        let static_urls = [
+            "https://raw.githubusercontent.com/itvincent-git/taskmate/main/src-tauri/tauri.conf.json",
+            "https://cdn.jsdelivr.net/gh/itvincent-git/taskmate@main/src-tauri/tauri.conf.json",
+        ];
+        let mut latest_version = None;
+
+        for url in static_urls {
+            match client
+                .get(url)
+                .header("User-Agent", "taskmate")
+                .header("Accept", "application/json")
+                .send()
+            {
+                Ok(response) if response.status().is_success() => {
+                    match response.json::<ReleaseVersion>() {
+                        Ok(release) => {
+                            latest_version = Some(release.version);
+                            break;
+                        }
+                        Err(error) => log::warn!("Unable to parse update version from {url}: {error}"),
+                    }
+                }
+                Ok(response) => log::warn!(
+                    "Update version request to {url} returned {}",
+                    response.status()
+                ),
+                Err(error) => log::warn!("Update version request to {url} failed: {error}"),
+            }
+        }
+
+        if latest_version
+            .as_deref()
+            .is_some_and(|version| !is_newer(&current_version, version))
+        {
+            return Ok(None);
+        }
+
+        let api_url = "https://api.github.com/repos/itvincent-git/taskmate/releases/latest";
+        match client
+            .get(api_url)
+            .header("User-Agent", "taskmate")
+            .header("Accept", "application/vnd.github+json")
+            .send()
+        {
+            Ok(response) if response.status().is_success() => {
+                let release = response
+                    .json::<GithubRelease>()
+                    .map_err(|error| format!("Unable to parse update response: {error}"))?;
+                let version = release
+                    .tag_name
+                    .trim_start_matches("app-v")
+                    .trim_start_matches('v')
+                    .to_string();
+                if !is_newer(&current_version, &version) {
+                    return Ok(None);
+                }
+                Ok(Some(UpdateCheckResponse {
+                    version,
+                    current_version,
+                    body: release.body,
+                    date: release.published_at,
+                }))
+            }
+            Ok(response) if latest_version.is_some() => {
+                log::warn!(
+                    "GitHub release request returned {}; using static version metadata",
+                    response.status()
+                );
+                Ok(Some(UpdateCheckResponse {
+                    version: latest_version.expect("checked above"),
+                    current_version,
+                    body: None,
+                    date: None,
+                }))
+            }
+            Ok(response) => Err(format!(
+                "Unable to check for updates: GitHub returned {}",
+                response.status()
+            )),
+            Err(error) if latest_version.is_some() => {
+                log::warn!("GitHub release request failed; using static version metadata: {error}");
+                Ok(Some(UpdateCheckResponse {
+                    version: latest_version.expect("checked above"),
+                    current_version,
+                    body: None,
+                    date: None,
+                }))
+            }
+            Err(error) => Err(format!("Unable to check for updates: {error}")),
+        }
+    })
+    .await
+    .map_err(|error| format!("Update check task failed: {error}"))?
 }
 
 #[tauri::command]
@@ -389,4 +515,26 @@ pub fn run() {
         RunEvent::Reopen { .. } => show_main_window(app),
         _ => {}
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{is_newer, parse_version};
+
+    #[test]
+    fn parses_release_versions() {
+        assert_eq!(parse_version("0.6.0"), Some((0, 6, 0)));
+        assert_eq!(parse_version("app-v1.2.3"), Some((1, 2, 3)));
+        assert_eq!(parse_version("v2.0.1-beta.1"), Some((2, 0, 1)));
+        assert_eq!(parse_version("invalid"), None);
+    }
+
+    #[test]
+    fn compares_release_versions() {
+        assert!(is_newer("0.5.0", "0.6.0"));
+        assert!(is_newer("app-v0.9.9", "v1.0.0"));
+        assert!(!is_newer("0.6.0", "0.6.0"));
+        assert!(!is_newer("1.0.0", "0.9.9"));
+        assert!(!is_newer("invalid", "1.0.0"));
+    }
 }
