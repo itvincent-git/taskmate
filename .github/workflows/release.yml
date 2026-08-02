@@ -53,7 +53,7 @@ jobs:
         run: |
           set -euo pipefail
           version="${RELEASE_TAG#app-v}"
-          node -e 'const notes=require("./changelog.json")[process.argv[1]]; if (!notes) process.exit(1); process.stdout.write(notes.en)' "${version}" > release-notes.md
+          node -e 'const notes=require("./changelog.json")[process.argv[1]]; if (!notes) process.exit(1); process.stdout.write(notes.en + "\n")' "${version}" > release-notes.md
           {
             echo "body<<EOF"
             cat release-notes.md
