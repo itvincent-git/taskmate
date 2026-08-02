@@ -49,6 +49,7 @@ import { TaskList } from "./components/TaskList";
 import { TaskSearchPanel } from "./components/TaskSearchPanel";
 import { TaskProperties } from "./components/TaskProperties";
 import { DynamicFilter } from "./components/DynamicFilter";
+import { EditorShortcutSettings } from "./components/EditorShortcutSettings";
 import { Button, buttonVariants } from "./components/ui/Button";
 import { Dialog } from "./components/ui/Dialog";
 import { Input } from "./components/ui/Input";
@@ -313,6 +314,7 @@ function SettingsView({ updater }: { updater: ReturnType<typeof useUpdater> }) {
             <Select className="min-w-36" ariaLabel={t("nav.language")} value={locale} onValueChange={(value) => setLocale(value as typeof locale)} options={[{ value: "en", label: "English" }, { value: "zh-CN", label: "简体中文" }]} />
           </div>
         </section>
+        <EditorShortcutSettings />
         <section className="rounded-xl border border-line bg-surface p-4 transition-shadow hover:shadow-panel">
           <h2 className="m-0 mb-3 font-heading text-base">{t("updates.title")}</h2>
           <div className="mb-3 flex items-center gap-2 text-muted"><Download size={20} /><p className="m-0">{message}</p></div>

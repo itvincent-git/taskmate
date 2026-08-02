@@ -1,9 +1,9 @@
-import { memo, useEffect, useRef } from "react";
+import { memo, useEffect, useRef, useSyncExternalStore } from "react";
 import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
 import { markdown } from "@codemirror/lang-markdown";
 import { GFM } from "@lezer/markdown";
 import { syntaxHighlighting, defaultHighlightStyle } from "@codemirror/language";
-import { Annotation, EditorState } from "@codemirror/state";
+import { Annotation, Compartment, EditorState, Prec } from "@codemirror/state";
 import { keymap, EditorView, placeholder } from "@codemirror/view";
 import {
   Bold,
@@ -23,6 +23,17 @@ import {
 } from "lucide-react";
 import { applyMarkdownAction, type MarkdownAction } from "../editor/commands";
 import { livePreview } from "../editor/livePreview";
+import {
+  EDITOR_SHORTCUT_ACTIONS,
+  formatShortcut,
+  getEditorShortcuts,
+  getShortcutPlatform,
+  shortcutToAria,
+  shortcutToCodeMirror,
+  subscribeEditorShortcuts,
+  type EditorShortcuts,
+  type MarkdownShortcutAction,
+} from "../lib/editor-shortcuts";
 import { useTaskmateI18n } from "../lib/taskmate-i18n";
 import { Button } from "./ui/Button";
 import { Tooltip } from "./ui/Tooltip";
@@ -53,8 +64,11 @@ const syncValue = Annotation.define<boolean>();
 
 export const MarkdownEditor = memo(function MarkdownEditor({ value, onChange }: Props) {
   const { locale, t } = useTaskmateI18n();
+  const shortcuts = useSyncExternalStore(subscribeEditorShortcuts, getEditorShortcuts, getEditorShortcuts);
+  const platform = getShortcutPlatform();
   const host = useRef<HTMLDivElement>(null);
   const editor = useRef<EditorView | null>(null);
+  const shortcutCompartment = useRef(new Compartment());
   const changeHandler = useRef(onChange);
   changeHandler.current = onChange;
 
@@ -70,6 +84,7 @@ export const MarkdownEditor = memo(function MarkdownEditor({ value, onChange }: 
           syntaxHighlighting(defaultHighlightStyle),
           livePreview,
           placeholder(t("editor.placeholder")),
+          shortcutCompartment.current.of(markdownShortcutKeymap(shortcuts)),
           keymap.of([indentWithTab, ...defaultKeymap, ...historyKeymap]),
           EditorView.lineWrapping,
           EditorView.updateListener.of((update) => {
@@ -96,6 +111,12 @@ export const MarkdownEditor = memo(function MarkdownEditor({ value, onChange }: 
   }, [t]);
 
   useEffect(() => {
+    editor.current?.dispatch({
+      effects: shortcutCompartment.current.reconfigure(markdownShortcutKeymap(shortcuts)),
+    });
+  }, [shortcuts]);
+
+  useEffect(() => {
     const view = editor.current;
     if (!view || view.state.doc.toString() === value) return;
     view.dispatch({
@@ -107,19 +128,47 @@ export const MarkdownEditor = memo(function MarkdownEditor({ value, onChange }: 
   return (
     <section className="flex h-full min-h-0 flex-col overflow-hidden border-b border-line">
       <div className="flex min-h-[38px] shrink-0 items-center gap-0.5 overflow-x-auto border-b border-line bg-surface px-3.5 py-1 [&_button]:size-7 [&_button]:min-h-0 [&_button]:p-0" role="toolbar" aria-label={t("editor.toolbar")}>
-        {tools.map(([action, label, Icon]) => (
-          <Tooltip label={locale === "zh-CN" ? toolbarLabel(action) : label} key={action}>
-            <Button variant="ghost" size="icon" aria-label={locale === "zh-CN" ? toolbarLabel(action) : label} onMouseDown={(event) => {
-              event.preventDefault();
-              if (editor.current) applyMarkdownAction(editor.current, action);
-            }}><Icon size={16} /></Button>
-          </Tooltip>
-        ))}
+        {tools.map(([action, label, Icon]) => {
+          const actionLabel = locale === "zh-CN" ? toolbarLabel(action) : label;
+          const shortcut = isShortcutAction(action) ? shortcuts[action] : null;
+          const accessibleLabel = shortcut ? `${actionLabel} (${formatShortcut(shortcut, platform)})` : actionLabel;
+          return (
+            <Tooltip label={accessibleLabel} key={action}>
+              <Button
+                variant="ghost"
+                size="icon"
+                aria-label={accessibleLabel}
+                aria-keyshortcuts={shortcut ? shortcutToAria(shortcut, platform) : undefined}
+                onMouseDown={(event) => {
+                  event.preventDefault();
+                  if (editor.current) applyMarkdownAction(editor.current, action);
+                }}
+              ><Icon size={16} /></Button>
+            </Tooltip>
+          );
+        })}
       </div>
       <div className="min-h-0 flex-1 overflow-hidden [&_.cm-content]:min-h-full [&_.cm-editor]:h-full [&_.cm-editor]:min-h-0 [&_.cm-editor]:bg-surface [&_.cm-editor]:text-foreground [&_.cm-scroller]:h-full [&_.cm-scroller]:overscroll-contain [&_.cm-scroller]:overflow-y-auto!" ref={host} />
     </section>
   );
 });
+
+function markdownShortcutKeymap(shortcuts: EditorShortcuts) {
+  return Prec.high(keymap.of(EDITOR_SHORTCUT_ACTIONS.flatMap((action) => {
+    const shortcut = shortcuts[action];
+    return shortcut ? [{
+      key: shortcutToCodeMirror(shortcut),
+      run(view: EditorView) {
+        applyMarkdownAction(view, action);
+        return true;
+      },
+    }] : [];
+  })));
+}
+
+function isShortcutAction(action: MarkdownAction): action is MarkdownShortcutAction {
+  return EDITOR_SHORTCUT_ACTIONS.includes(action as MarkdownShortcutAction);
+}
 
 function toolbarLabel(action: MarkdownAction) {
   return {
