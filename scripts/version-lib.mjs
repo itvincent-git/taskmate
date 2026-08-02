@@ -18,3 +18,13 @@ export function nextVersion(currentValue, targetValue) {
   }
   return target.join(".");
 }
+
+export function releaseNotes(subjects) {
+  const versionCommit = /^chore\(release\):\s*\d+\.\d+\.\d+$/i;
+  const changes = subjects
+    .map((subject) => subject.trim())
+    .filter((subject) => subject && !versionCommit.test(subject) && !/^merge\b/i.test(subject));
+  return (changes.length ? changes : ["Minor updates and bug fixes."])
+    .map((subject) => `- ${subject}`)
+    .join("\n");
+}

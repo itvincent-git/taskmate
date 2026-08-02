@@ -52,6 +52,48 @@ struct GithubRelease {
     published_at: Option<String>,
 }
 
+fn notes_from_changelog(changelog: &serde_json::Value, version: &str) -> Option<String> {
+    match changelog.get(version)? {
+        serde_json::Value::String(notes) => Some(notes.clone()),
+        serde_json::Value::Object(notes) => serde_json::to_string(notes).ok(),
+        _ => None,
+    }
+}
+
+fn fetch_changelog_notes(client: &reqwest::blocking::Client, version: &str) -> Option<String> {
+    let urls = [
+        "https://raw.githubusercontent.com/itvincent-git/taskmate/main/changelog.json",
+        "https://cdn.jsdelivr.net/gh/itvincent-git/taskmate@main/changelog.json",
+    ];
+    for url in urls {
+        match client
+            .get(url)
+            .header("User-Agent", "taskmate")
+            .header("Accept", "application/json")
+            .send()
+        {
+            Ok(response) if response.status().is_success() => {
+                match response.json::<serde_json::Value>() {
+                    Ok(changelog) => {
+                        if let Some(notes) = notes_from_changelog(&changelog, version) {
+                            return Some(notes);
+                        }
+                    }
+                    Err(error) => {
+                        log::warn!("Unable to parse update changelog from {url}: {error}")
+                    }
+                }
+            }
+            Ok(response) => log::warn!(
+                "Update changelog request to {url} returned {}",
+                response.status()
+            ),
+            Err(error) => log::warn!("Update changelog request to {url} failed: {error}"),
+        }
+    }
+    None
+}
+
 fn parse_version(version: &str) -> Option<(u32, u32, u32)> {
     let parts = version
         .trim_start_matches("app-v")
@@ -320,10 +362,14 @@ async fn check_for_updates(app: tauri::AppHandle) -> Result<Option<UpdateCheckRe
                 if !is_newer(&current_version, &version) {
                     return Ok(None);
                 }
+                let body = release
+                    .body
+                    .filter(|body| !body.trim().is_empty())
+                    .or_else(|| fetch_changelog_notes(&client, &version));
                 Ok(Some(UpdateCheckResponse {
                     version,
                     current_version,
-                    body: release.body,
+                    body,
                     date: release.published_at,
                 }))
             }
@@ -333,9 +379,12 @@ async fn check_for_updates(app: tauri::AppHandle) -> Result<Option<UpdateCheckRe
                     response.status()
                 );
                 Ok(Some(UpdateCheckResponse {
+                    body: fetch_changelog_notes(
+                        &client,
+                        latest_version.as_deref().expect("checked above"),
+                    ),
                     version: latest_version.expect("checked above"),
                     current_version,
-                    body: None,
                     date: None,
                 }))
             }
@@ -346,9 +395,12 @@ async fn check_for_updates(app: tauri::AppHandle) -> Result<Option<UpdateCheckRe
             Err(error) if latest_version.is_some() => {
                 log::warn!("GitHub release request failed; using static version metadata: {error}");
                 Ok(Some(UpdateCheckResponse {
+                    body: fetch_changelog_notes(
+                        &client,
+                        latest_version.as_deref().expect("checked above"),
+                    ),
                     version: latest_version.expect("checked above"),
                     current_version,
-                    body: None,
                     date: None,
                 }))
             }
@@ -519,7 +571,7 @@ pub fn run() {
 
 #[cfg(test)]
 mod tests {
-    use super::{is_newer, parse_version};
+    use super::{is_newer, notes_from_changelog, parse_version};
 
     #[test]
     fn parses_release_versions() {
@@ -536,5 +588,22 @@ mod tests {
         assert!(!is_newer("0.6.0", "0.6.0"));
         assert!(!is_newer("1.0.0", "0.9.9"));
         assert!(!is_newer("invalid", "1.0.0"));
+    }
+
+    #[test]
+    fn reads_plain_and_localized_changelog_notes() {
+        let changelog = serde_json::json!({
+            "0.7.0": { "en": "- New details", "zh": "- 新增更新内容" },
+            "0.6.0": "- Previous details"
+        });
+        let localized = notes_from_changelog(&changelog, "0.7.0").unwrap();
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(&localized).unwrap(),
+            serde_json::json!({ "en": "- New details", "zh": "- 新增更新内容" })
+        );
+        assert_eq!(
+            notes_from_changelog(&changelog, "0.6.0").as_deref(),
+            Some("- Previous details")
+        );
     }
 }

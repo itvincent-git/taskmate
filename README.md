@@ -70,7 +70,7 @@ Taskmate publishes signed macOS (Intel and Apple Silicon) and Windows x64 instal
 
 The updater private key is deliberately excluded from Git at `.tauri-signing/taskmate.key`. Before the first release, store its exact contents in the repository's `TAURI_SIGNING_PRIVATE_KEY` GitHub Actions secret and keep an offline backup. Losing that key prevents installed clients from accepting future updates.
 
-For a new version, run `pnpm release <patch|minor|major|x.y.z>`, then push the resulting commit and annotated tag. The GitHub workflow verifies that the tag matches the app version, builds all three platforms, and publishes `latest.json` with signed updater artifacts. macOS is ad-hoc signed for internal distribution, so Gatekeeper may require user confirmation; Windows SmartScreen may do the same.
+For a new version, run `pnpm release <patch|minor|major|x.y.z>`, then push the resulting commit and annotated tag. The release command records commit subjects since the previous app tag in `changelog.json`; the GitHub workflow publishes those notes to both the GitHub release and `latest.json` before publishing the signed updater artifacts. macOS is ad-hoc signed for internal distribution, so Gatekeeper may require user confirmation; Windows SmartScreen may do the same.
 
 ## Verification
 

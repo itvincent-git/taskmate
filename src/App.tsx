@@ -57,6 +57,7 @@ import { Select } from "./components/ui/Select";
 import { Tooltip } from "./components/ui/Tooltip";
 import { TaskmateI18nProvider, localizedPropertyName, useTaskmateI18n } from "./lib/taskmate-i18n";
 import { useUpdater } from "./hooks/useUpdater";
+import { localizeUpdateNotes } from "./lib/update-notes";
 import { cn } from "./lib/utils";
 
 const initialPath = localStorage.getItem("taskmate-workspace") || `${navigator.platform.includes("Mac") ? "/Users/Shared" : "."}/Taskmate`;
@@ -287,6 +288,18 @@ function updateMessage(phase: ReturnType<typeof useUpdater>["phase"], version: s
   return t("updates.description");
 }
 
+function UpdateContents({ body }: { body: string | null | undefined }) {
+  const { locale, t } = useTaskmateI18n();
+  const notes = useMemo(() => localizeUpdateNotes(body, locale), [body, locale]);
+  if (!notes) return null;
+  return (
+    <section className="mt-4 rounded-lg border border-line bg-surface-soft p-3">
+      <h3 className="m-0 mb-2 text-sm font-semibold">{t("updates.contents")}</h3>
+      <div className="max-h-52 overflow-y-auto whitespace-pre-wrap text-sm leading-relaxed text-muted select-text">{notes}</div>
+    </section>
+  );
+}
+
 function SettingsView({ updater }: { updater: ReturnType<typeof useUpdater> }) {
   const { locale, setLocale, t } = useTaskmateI18n();
   const message = updateMessage(updater.phase, updater.info?.version, t);
@@ -303,8 +316,9 @@ function SettingsView({ updater }: { updater: ReturnType<typeof useUpdater> }) {
         <section className="rounded-xl border border-line bg-surface p-4 transition-shadow hover:shadow-panel">
           <h2 className="m-0 mb-3 font-heading text-base">{t("updates.title")}</h2>
           <div className="mb-3 flex items-center gap-2 text-muted"><Download size={20} /><p className="m-0">{message}</p></div>
+          {updater.phase === "available" ? <UpdateContents body={updater.info?.body} /> : null}
           {updater.phase === "downloading" ? <Progress className="mb-3 w-[min(360px,100%)]" value={updater.progress.percent} /> : null}
-          <div className="flex gap-1.5">
+          <div className="mt-3 flex gap-1.5">
             <Button variant="outline" disabled={updater.phase === "checking" || updater.phase === "disabled"} onClick={() => void updater.checkForUpdate()}>{updater.phase === "error" ? t("updates.retry") : t("updates.check")}</Button>
             {updater.phase === "available" ? <Button onClick={() => void updater.downloadAndInstall()}>{t("updates.install")}</Button> : null}
             {updater.phase === "ready" ? <Button onClick={() => void updater.restart()}>{t("updates.restart")}</Button> : null}
@@ -1018,7 +1032,9 @@ function WorkspaceSession() {
           description={t("updates.availableDescription", { version: updater.info?.version ?? "" })}
           closeLabel={t("common.close")}
           footer={<><Button variant="outline" onClick={() => setDismissedUpdate(updater.info?.version ?? null)}>{t("updates.later")}</Button><Button onClick={() => void updater.downloadAndInstall()}>{t("updates.install")}</Button></>}
-        />
+        >
+          <UpdateContents body={updater.info?.body} />
+        </Dialog>
         <Dialog
           open={propertiesDrawerOpen && detailNarrow && Boolean(task)}
           onOpenChange={setPropertiesDrawerOpen}

@@ -47,6 +47,18 @@ jobs:
         run: |
           version="$(node -p "require('./src-tauri/tauri.conf.json').version")"
           test "${RELEASE_TAG}" = "app-v${version}"
+      - name: Generate release notes
+        id: release_notes
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="${RELEASE_TAG#app-v}"
+          node -e 'const notes=require("./changelog.json")[process.argv[1]]; if (!notes) process.exit(1); process.stdout.write(notes.en)' "${version}" > release-notes.md
+          {
+            echo "body<<EOF"
+            cat release-notes.md
+            echo "EOF"
+          } >> "${GITHUB_OUTPUT}"
       - name: Build and publish
         uses: tauri-apps/tauri-action@v1
         env:
@@ -56,6 +68,7 @@ jobs:
         with:
           tagName: ${{ env.RELEASE_TAG }}
           releaseName: Taskmate ${{ env.RELEASE_TAG }}
+          releaseBody: ${{ steps.release_notes.outputs.body }}
           releaseDraft: false
           prerelease: false
           args: --target ${{ matrix.target }} --bundles ${{ matrix.bundles }} --config src-tauri/tauri.release.conf.json
@@ -137,17 +150,20 @@ jobs:
           gh release download "${RELEASE_TAG}" --repo "${GITHUB_REPOSITORY}" --dir assets --pattern 'taskmate-*.app.tar.gz*' --pattern 'taskmate-*-setup.exe*'
       - name: Build complete latest.json
         shell: bash
+        env: { GH_TOKEN: "${{ secrets.GITHUB_TOKEN }}" }
         run: |
           version="${RELEASE_TAG#app-v}"
           base="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/releases/download/${RELEASE_TAG}"
+          notes="$(gh release view "${RELEASE_TAG}" --repo "${GITHUB_REPOSITORY}" --json body --jq .body)"
           jq -n \
             --arg version "${version}" \
             --arg date "$(date -u +'%Y-%m-%dT%H:%M:%SZ')" \
+            --arg notes "${notes}" \
             --arg mx "$(cat assets/taskmate-macos-x64.app.tar.gz.sig)" \
             --arg ma "$(cat assets/taskmate-macos-arm64.app.tar.gz.sig)" \
             --arg wx "$(cat assets/taskmate-windows-x64-setup.exe.sig)" \
             --arg base "${base}" \
-            '{version:$version,notes:"See the release notes.",pub_date:$date,platforms:{
+            '{version:$version,notes:$notes,pub_date:$date,platforms:{
               "darwin-x86_64":{signature:$mx,url:($base+"/taskmate-macos-x64.app.tar.gz")},
               "darwin-aarch64":{signature:$ma,url:($base+"/taskmate-macos-arm64.app.tar.gz")},
               "windows-x86_64":{signature:$wx,url:($base+"/taskmate-windows-x64-setup.exe")}

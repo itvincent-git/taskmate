@@ -29,4 +29,11 @@ describe("release configuration", () => {
       for (const placeholder of placeholders) expect(source, file).not.toContain(placeholder);
     }
   });
+
+  it("publishes generated release notes to GitHub and the updater manifest", () => {
+    const workflow = readFileSync(join(root, ".github/workflows/release.yml"), "utf8");
+    expect(workflow).toContain("releaseBody: ${{ steps.release_notes.outputs.body }}");
+    expect(workflow).toContain("'{version:$version,notes:$notes,pub_date:$date,platforms:{");
+    expect(JSON.parse(readFileSync(join(root, "changelog.json"), "utf8"))).toEqual(expect.any(Object));
+  });
 });

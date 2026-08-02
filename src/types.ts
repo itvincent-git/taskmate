@@ -102,8 +102,8 @@ export type UpdatePhase = "disabled" | "idle" | "checking" | "current" | "availa
 export interface UpdateInfo {
   version: string;
   currentVersion: string;
-  body?: string;
-  date?: string;
+  body?: string | null;
+  date?: string | null;
 }
 export interface UpdateProgress {
   downloaded: number;
