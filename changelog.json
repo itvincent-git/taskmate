@@ -1,1 +1,6 @@
-{}
+{
+  "0.7.0": {
+    "en": "- fix(ui): theme update progress bar\n- feat(updater): show release notes",
+    "zh": "- fix(ui): theme update progress bar\n- feat(updater): show release notes"
+  }
+}
