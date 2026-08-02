@@ -52,6 +52,7 @@ import { DynamicFilter } from "./components/DynamicFilter";
 import { Button, buttonVariants } from "./components/ui/Button";
 import { Dialog } from "./components/ui/Dialog";
 import { Input } from "./components/ui/Input";
+import { Progress } from "./components/ui/Progress";
 import { Select } from "./components/ui/Select";
 import { Tooltip } from "./components/ui/Tooltip";
 import { TaskmateI18nProvider, localizedPropertyName, useTaskmateI18n } from "./lib/taskmate-i18n";
@@ -302,7 +303,7 @@ function SettingsView({ updater }: { updater: ReturnType<typeof useUpdater> }) {
         <section className="rounded-xl border border-line bg-surface p-4 transition-shadow hover:shadow-panel">
           <h2 className="m-0 mb-3 font-heading text-base">{t("updates.title")}</h2>
           <div className="mb-3 flex items-center gap-2 text-muted"><Download size={20} /><p className="m-0">{message}</p></div>
-          {updater.phase === "downloading" ? <progress className="mb-3 w-[min(360px,100%)]" max={100} value={updater.progress.percent ?? undefined} /> : null}
+          {updater.phase === "downloading" ? <Progress className="mb-3 w-[min(360px,100%)]" value={updater.progress.percent} /> : null}
           <div className="flex gap-1.5">
             <Button variant="outline" disabled={updater.phase === "checking" || updater.phase === "disabled"} onClick={() => void updater.checkForUpdate()}>{updater.phase === "error" ? t("updates.retry") : t("updates.check")}</Button>
             {updater.phase === "available" ? <Button onClick={() => void updater.downloadAndInstall()}>{t("updates.install")}</Button> : null}
