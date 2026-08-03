@@ -24,6 +24,7 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   Plus,
+  RotateCcw,
   Rows3,
   Search,
   Settings2,
@@ -332,10 +333,48 @@ function SettingsView({ updater }: { updater: ReturnType<typeof useUpdater> }) {
   );
 }
 
+function SidebarUpdateAction({ updater }: { updater: ReturnType<typeof useUpdater> }) {
+  const { t } = useTaskmateI18n();
+  const version = updater.info?.version;
+  if (updater.phase === "available" && version) {
+    const label = t("updates.navAvailable", { version });
+    return (
+      <Tooltip label={label}>
+        <span><Button className="shadow-[0_4px_12px_color-mix(in_srgb,var(--accent)_35%,transparent)]" size="icon" aria-label={label} onClick={() => void updater.downloadAndInstall()}><Download size={18} /></Button></span>
+      </Tooltip>
+    );
+  }
+  if (updater.phase === "downloading") {
+    const percent = updater.progress.percent;
+    const label = percent === null ? t("updates.navDownloading") : t("updates.navDownloadingPercent", { percent });
+    return (
+      <Tooltip label={label}>
+        <span><Button variant="outline" size="icon" aria-label={label} disabled>{percent === null ? <LoaderCircle className="animate-spin" size={18} /> : <span aria-hidden="true" className="text-[10px] tabular-nums">{percent}%</span>}</Button></span>
+      </Tooltip>
+    );
+  }
+  if (updater.phase === "ready") {
+    const label = t("updates.navRestart");
+    return (
+      <Tooltip label={label}>
+        <span><Button size="icon" aria-label={label} onClick={() => void updater.restart()}><RotateCcw size={18} /></Button></span>
+      </Tooltip>
+    );
+  }
+  if (updater.phase === "error" && version) {
+    const label = t("updates.navRetry", { version });
+    return (
+      <Tooltip label={label}>
+        <span><Button variant="destructive" size="icon" aria-label={label} onClick={() => void updater.downloadAndInstall()}><Download size={18} /></Button></span>
+      </Tooltip>
+    );
+  }
+  return null;
+}
+
 function WorkspaceSession() {
   const { locale, t } = useTaskmateI18n();
   const updater = useUpdater();
-  const [dismissedUpdate, setDismissedUpdate] = useState<string | null>(null);
   const workspacePath = useWorkspaceState((state) => state.workspacePath);
   const setWorkspacePath = useWorkspaceState((state) => state.setWorkspacePath);
   const recentWorkspaces = useWorkspaceState((state) => state.recentWorkspaces);
@@ -856,6 +895,7 @@ function WorkspaceSession() {
             <Tooltip label={t("nav.settings")}><NavLink to="/settings" onClick={() => openPage("/settings")} aria-label={t("nav.settings")} aria-pressed={page === "/settings"} className={buttonVariants({ variant: "ghost", size: "icon" })}><Settings2 size={18} /></NavLink></Tooltip>
           </nav>
           <div className="mt-auto grid gap-0.5">
+            <SidebarUpdateAction updater={updater} />
             <DropdownMenu.Root>
               <Tooltip label={t("workspace.switch")}>
                 <DropdownMenu.Trigger asChild>
@@ -1032,16 +1072,6 @@ function WorkspaceSession() {
             </div>
           </>
         )}
-        <Dialog
-          open={updater.phase === "available" && updater.info?.version !== dismissedUpdate}
-          onOpenChange={(open) => { if (!open) setDismissedUpdate(updater.info?.version ?? null); }}
-          title={t("updates.availableTitle")}
-          description={t("updates.availableDescription", { version: updater.info?.version ?? "" })}
-          closeLabel={t("common.close")}
-          footer={<><Button variant="outline" onClick={() => setDismissedUpdate(updater.info?.version ?? null)}>{t("updates.later")}</Button><Button onClick={() => void updater.downloadAndInstall()}>{t("updates.install")}</Button></>}
-        >
-          <UpdateContents body={updater.info?.body} />
-        </Dialog>
         <Dialog
           open={propertiesDrawerOpen && detailNarrow && Boolean(task)}
           onOpenChange={setPropertiesDrawerOpen}

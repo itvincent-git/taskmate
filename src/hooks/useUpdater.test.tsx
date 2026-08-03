@@ -66,3 +66,21 @@ it("allows a failed update check to be retried", async () => {
   await act(() => result.current.checkForUpdate());
   expect(result.current.phase).toBe("current");
 });
+
+it("keeps update information when a download fails so it can be retried", async () => {
+  mocks.invoke.mockImplementation(async (command: string) => {
+    if (command === "check_for_updates") return { version: "0.2.0", currentVersion: "0.1.0", body: "Changes", date: "2026-01-01" };
+    if (command === "download_and_install_update") throw new Error("download failed");
+    throw new Error(`Unexpected command: ${command}`);
+  });
+  const { useUpdater } = await import("./useUpdater");
+  const { result } = renderHook(() => useUpdater());
+  await act(() => result.current.checkForUpdate());
+  await act(() => result.current.downloadAndInstall());
+  expect(result.current.phase).toBe("error");
+  expect(result.current.info?.version).toBe("0.2.0");
+  expect(result.current.error).toContain("download failed");
+  await act(() => result.current.downloadAndInstall());
+  expect(mocks.invoke).toHaveBeenCalledWith("download_and_install_update");
+  expect(mocks.invoke).toHaveBeenCalledTimes(3);
+});
