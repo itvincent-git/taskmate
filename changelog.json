@@ -1,4 +1,8 @@
 {
+  "0.8.0": {
+    "en": "- fix(ui): keep tab bar scrollbar hidden\n- fix(ui): reveal newly opened tabs\n- fix(tasks): restore blank edited titles\n- feat(updater): show update progress in sidebar",
+    "zh": "- fix(ui): keep tab bar scrollbar hidden\n- fix(ui): reveal newly opened tabs\n- fix(tasks): restore blank edited titles\n- feat(updater): show update progress in sidebar"
+  },
   "0.7.1": {
     "en": "- feat(editor): add configurable markdown shortcuts\n- fix(ci): terminate release notes output delimiter",
     "zh": "- feat(editor): add configurable markdown shortcuts\n- fix(ci): terminate release notes output delimiter"
