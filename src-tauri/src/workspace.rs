@@ -93,7 +93,7 @@ impl Workspace {
         }
         let mut task = Task {
             id: current.id,
-            title: clean_title(&input.title),
+            title: clean_title(&input.title, &current.title),
             file_name: current.file_name,
             body: input.body,
             archived: input.archived,
@@ -446,10 +446,10 @@ pub fn safe_file_stem(title: &str) -> String {
     cleaned.chars().take(80).collect()
 }
 
-fn clean_title(title: &str) -> String {
+fn clean_title(title: &str, fallback: &str) -> String {
     let trimmed = title.trim();
     if trimmed.is_empty() {
-        "Untitled task".into()
+        fallback.into()
     } else {
         trimmed.into()
     }
@@ -716,6 +716,29 @@ mod tests {
             })
             .unwrap();
         assert_eq!(archived[0].id, saved.id);
+    }
+
+    #[test]
+    fn restores_the_existing_title_when_saving_a_blank_title() {
+        let temporary = tempfile::tempdir().unwrap();
+        let workspace = Workspace::new(temporary.path().to_path_buf());
+        workspace.initialize().unwrap();
+        let created = workspace.create_task(Some("Original title".into())).unwrap();
+        let saved = workspace
+            .save_task(SaveTaskInput {
+                id: created.id,
+                title: "   ".into(),
+                body: created.body,
+                archived: created.archived,
+                created_at: created.created_at,
+                properties: created.properties,
+                expected_hash: Some(created.content_hash),
+            })
+            .unwrap();
+
+        assert_eq!(saved.title, "Original title");
+        assert_eq!(saved.file_name, "Original title.md");
+        assert!(temporary.path().join("tasks/Original title.md").exists());
     }
 
     #[test]

@@ -174,7 +174,9 @@ export const api = {
     };
     if (isTauri) return invoke("save_task", { input });
     const state = loadDemo();
-    const saved = { ...task, updatedAt: new Date().toISOString(), fileName: `${task.title.replace(/[\\/:*?"<>|]/g, "-")}.md`, contentHash: uuid() };
+    const current = state.tasks.find((candidate) => candidate.id === task.id);
+    const title = task.title.trim() ? task.title : current?.title ?? task.title;
+    const saved = { ...task, title, updatedAt: new Date().toISOString(), fileName: `${title.replace(/[\\/:*?"<>|]/g, "-")}.md`, contentHash: uuid() };
     state.tasks = state.tasks.map((candidate) => candidate.id === task.id ? saved : candidate);
     storeDemo(state);
     return saved;

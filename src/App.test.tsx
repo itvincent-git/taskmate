@@ -146,6 +146,10 @@ describe("Taskmate application", () => {
     const stored = localStorage.getItem("taskmate-browser-demo");
     expect(stored).toContain("Release checklist");
     expect(stored).toContain("not-started");
+
+    await user.clear(title);
+    await waitFor(() => expect(title).toHaveValue("Release checklist"), { timeout: 2500 });
+    expect(localStorage.getItem("taskmate-browser-demo")).toContain("Release checklist");
   });
 
   it("keeps status in task properties while simplifying the editor header", async () => {
