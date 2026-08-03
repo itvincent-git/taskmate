@@ -827,7 +827,7 @@ function WorkspaceSession() {
             </Tooltip>
           </div>
         ) : null}
-        <div className="flex min-w-0 flex-1 items-end gap-0.5 overflow-x-auto overflow-y-hidden px-1.5 pt-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" role="tablist" aria-label={t("editor.openFiles")}>
+        <div className="scrollbar-hidden flex min-w-0 flex-1 items-end gap-0.5 overflow-x-auto overflow-y-hidden px-1.5 pt-1" role="tablist" aria-label={t("editor.openFiles")}>
           {openTabs.map((tab) => (
             <div
               key={tabKey(tab)}

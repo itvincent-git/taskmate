@@ -72,6 +72,14 @@ body {
   background-color: var(--scrollbar-thumb-hover);
 }
 
+.scrollbar-hidden {
+  scrollbar-width: none;
+}
+
+.scrollbar-hidden::-webkit-scrollbar {
+  display: none;
+}
+
 [data-theme="dark"] {
   color-scheme: dark;
   --bg: #111113;
