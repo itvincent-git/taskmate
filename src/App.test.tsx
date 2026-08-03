@@ -400,6 +400,7 @@ describe("Taskmate application", () => {
 
   it("opens Markdown tasks in tabs and persists card display controls", async () => {
     const user = userEvent.setup();
+    const scrollIntoView = vi.spyOn(HTMLElement.prototype, "scrollIntoView");
     render(<App />);
     await user.click(screen.getByRole("button", { name: "Open workspace" }));
     await user.click(await screen.findByRole("button", { name: "New task" }));
@@ -407,6 +408,8 @@ describe("Taskmate application", () => {
     const tabs = screen.getAllByRole("tab");
     expect(tabs).toHaveLength(2);
     expect(tabs[1]).toHaveAttribute("aria-selected", "true");
+    await waitFor(() => expect(scrollIntoView).toHaveBeenLastCalledWith({ block: "nearest", inline: "nearest" }));
+    expect(scrollIntoView.mock.instances.at(-1)).toBe(tabs[1]);
     expect(tabs[0].closest("header")).toHaveAttribute("data-tauri-drag-region", "deep");
     const tablist = screen.getByRole("tablist", { name: "Open Markdown files" });
     expect(tablist).toHaveClass("scrollbar-hidden", "overflow-x-auto", "overflow-y-hidden");

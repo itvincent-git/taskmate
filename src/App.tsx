@@ -384,6 +384,7 @@ function WorkspaceSession() {
   const [detailPanel, setDetailPanel] = useState<HTMLElement | null>(null);
   const propertiesButton = useRef<HTMLButtonElement>(null);
   const filterButton = useRef<HTMLButtonElement>(null);
+  const activeTab = useRef<HTMLDivElement>(null);
   const autoOpened = useRef(false);
   const [restoringWorkspace, setRestoringWorkspace] = useState(recentWorkspaces.length > 0);
   const selectedId = task?.id;
@@ -643,6 +644,9 @@ function WorkspaceSession() {
   const tabKey = (tab: OpenTab) => `${tab.kind}:${tab.id}`;
   const tabTitle = (tab: OpenTab) => tab.kind === "task" ? tab.title : t(tab.id === "/properties" ? "nav.properties" : tab.id === "/backup" ? "nav.backup" : "nav.settings");
   const activeTabKey = page === "/tasks" ? (selectedId ? `task:${selectedId}` : "") : `page:${page}`;
+  useEffect(() => {
+    activeTab.current?.scrollIntoView({ block: "nearest", inline: "nearest" });
+  }, [activeTabKey]);
   const closeTab = async (closing: OpenTab) => {
     const closingKey = tabKey(closing);
     if (closing.kind === "task" && task?.id === closing.id && saveState === "dirty") await save(task);
@@ -831,6 +835,7 @@ function WorkspaceSession() {
           {openTabs.map((tab) => (
             <div
               key={tabKey(tab)}
+              ref={tabKey(tab) === activeTabKey ? activeTab : undefined}
               className={cn("group flex h-8 min-w-32 max-w-56 shrink-0 items-center rounded-t-md border border-b-0 px-2 text-xs", tabKey(tab) === activeTabKey ? "border-line bg-background text-foreground" : "border-transparent text-muted hover:bg-surface-soft")}
               role="tab"
               aria-selected={tabKey(tab) === activeTabKey}
