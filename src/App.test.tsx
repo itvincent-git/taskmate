@@ -417,7 +417,7 @@ describe("Taskmate application", () => {
     expect(tabs[0].closest("header")).toHaveAttribute("data-tauri-drag-region", "deep");
     const tablist = screen.getByRole("tablist", { name: "Open Markdown files" });
     expect(tablist).toHaveClass("scrollbar-hidden", "overflow-x-auto", "overflow-y-hidden");
-    expect(tabs[0]).toHaveClass("shrink-0");
+    expect(tabs[0]).toHaveClass("shrink-0", "select-none");
     const filesButton = screen.getByRole("button", { name: "Files" });
     const searchButton = screen.getByRole("button", { name: "Search" });
     const hideListButton = screen.getByRole("button", { name: "Collapse" });

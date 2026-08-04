@@ -895,7 +895,7 @@ function WorkspaceSession() {
               <ContextMenu.Trigger asChild>
                 <div
                   ref={tabKey(tab) === activeTabKey ? activeTab : undefined}
-                  className={cn("group flex h-8 min-w-32 max-w-56 shrink-0 items-center rounded-t-md border border-b-0 px-2 text-xs", tabKey(tab) === activeTabKey ? "border-line bg-background text-foreground" : "border-transparent text-muted hover:bg-surface-soft")}
+                  className={cn("group flex h-8 min-w-32 max-w-56 shrink-0 select-none items-center rounded-t-md border border-b-0 px-2 text-xs", tabKey(tab) === activeTabKey ? "border-line bg-background text-foreground" : "border-transparent text-muted hover:bg-surface-soft")}
                   role="tab"
                   aria-selected={tabKey(tab) === activeTabKey}
                 >
