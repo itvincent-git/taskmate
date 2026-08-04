@@ -61,6 +61,7 @@ describe("TaskList", () => {
 
     const options = virtualizerMock.options.mock.lastCall?.[0] as {
       overscan: number;
+      paddingStart: number;
       getScrollElement(): Element | null;
       getItemKey(index: number): React.Key;
       estimateSize(): number;
@@ -69,6 +70,7 @@ describe("TaskList", () => {
     const sizeContainer = row?.parentElement;
 
     expect(options.overscan).toBe(6);
+    expect(options.paddingStart).toBe(8);
     expect(options.getItemKey(0)).toBe("task");
     expect(options.estimateSize()).toBe(84);
     expect(options.getScrollElement()).toBe(sizeContainer?.parentElement);
@@ -76,7 +78,7 @@ describe("TaskList", () => {
     expect((sizeContainer as HTMLElement).style.height).toBe("130px");
     expect((row as HTMLElement).style.transform).toBe("translateY(0px)");
     expect(row).toHaveClass("pb-1");
-    expect(sizeContainer?.parentElement).toHaveClass("px-2", "pb-2");
+    expect(sizeContainer?.parentElement).toHaveClass("overflow-x-hidden", "overflow-y-auto", "px-2", "pb-2");
   });
 
   it("remeasures with the compact card estimate", () => {

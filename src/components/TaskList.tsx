@@ -21,6 +21,7 @@ export const TaskList = memo(function TaskList({ tasks, definitions, selectedId,
     getScrollElement: () => listHost.current,
     getItemKey: (index) => tasks[index].id,
     estimateSize: () => compact ? 44 : 84,
+    paddingStart: 8,
     overscan: 6,
   });
 
@@ -29,7 +30,7 @@ export const TaskList = memo(function TaskList({ tasks, definitions, selectedId,
   }, [compact, virtualizer]);
 
   return (
-    <div className="min-h-0 flex-1 overflow-auto px-2 pt-2 pb-2" ref={listHost}>
+    <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto px-2 pb-2" ref={listHost}>
       {tasks.length === 0 ? emptyState : (
         <div style={{ height: virtualizer.getTotalSize(), position: "relative" }}>
           {virtualizer.getVirtualItems().map((item) => {
