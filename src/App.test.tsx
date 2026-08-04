@@ -444,6 +444,57 @@ describe("Taskmate application", () => {
     expect(screen.queryByRole("button", { name: "Expand" })).not.toBeInTheDocument();
   });
 
+  it("closes tabs from the tab context menu", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(screen.getByRole("button", { name: "Open workspace" }));
+    for (let index = 0; index < 4; index += 1) await user.click(await screen.findByRole("button", { name: "New task" }));
+
+    let tabs = screen.getAllByRole("tab");
+    fireEvent.contextMenu(tabs[0]);
+    await user.click(await screen.findByRole("menuitem", { name: "Close", exact: true }));
+    expect(screen.getAllByRole("tab")).toHaveLength(3);
+
+    tabs = screen.getAllByRole("tab");
+    fireEvent.contextMenu(tabs[1]);
+    await user.click(await screen.findByRole("menuitem", { name: "Close tab after" }));
+    expect(screen.getAllByRole("tab")).toHaveLength(2);
+
+    await user.click(screen.getByRole("button", { name: "New task" }));
+    await user.click(screen.getByRole("button", { name: "New task" }));
+    tabs = screen.getAllByRole("tab");
+    fireEvent.contextMenu(tabs[1]);
+    await user.click(await screen.findByRole("menuitem", { name: "Close others" }));
+    expect(screen.getAllByRole("tab")).toHaveLength(1);
+    expect(screen.getByRole("tab")).toHaveAttribute("aria-selected", "true");
+
+    await user.click(screen.getByRole("button", { name: "New task" }));
+    fireEvent.contextMenu(screen.getAllByRole("tab")[0]);
+    await user.click(await screen.findByRole("menuitem", { name: "Close all" }));
+    expect(screen.queryByRole("tab")).not.toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Select a task" })).toBeInTheDocument();
+  });
+
+  it("offers current task actions for the tab that was right-clicked", async () => {
+    const user = userEvent.setup();
+    const copyText = vi.spyOn(api, "copyText").mockResolvedValue();
+    render(<App />);
+    await user.click(screen.getByRole("button", { name: "Open workspace" }));
+    await user.click(await screen.findByRole("button", { name: "New task" }));
+    fireEvent.change(await screen.findByLabelText("Task title"), { target: { value: "Background task" } });
+    await user.click(screen.getByRole("button", { name: "New task" }));
+
+    const backgroundTab = screen.getAllByRole("tab")[0];
+    fireEvent.contextMenu(backgroundTab);
+    expect(await screen.findByText("Task actions")).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Archive task" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Copy file path" })).toBeInTheDocument();
+    await user.click(screen.getByRole("menuitem", { name: "Copy title" }));
+
+    expect(copyText).toHaveBeenLastCalledWith("Background task");
+    expect(screen.getAllByRole("tab")[1]).toHaveAttribute("aria-selected", "true");
+  });
+
   it("persists and restores the side panel, search text, and collapsed state", async () => {
     const user = userEvent.setup();
     const first = render(<App />);

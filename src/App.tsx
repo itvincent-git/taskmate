@@ -1,4 +1,5 @@
 import { createContext, lazy, Suspense, useCallback, useContext, useEffect, useMemo, useRef, useState, type Dispatch, type ReactNode, type SetStateAction } from "react";
+import * as ContextMenu from "@radix-ui/react-context-menu";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { HashRouter, Navigate, NavLink, Route, Routes, useLocation, useNavigate } from "react-router";
 import { createStore, useStore } from "zustand";
@@ -75,7 +76,7 @@ const MarkdownEditor = lazy(() => import("./components/MarkdownEditor").then((mo
 
 type StateUpdate<T> = SetStateAction<T>;
 type WorkspacePage = "/properties" | "/backup" | "/settings";
-type OpenTab = ({ kind: "task" } & Pick<Task, "id" | "title" | "fileName">) | { kind: "page"; id: WorkspacePage };
+type OpenTab = ({ kind: "task" } & Pick<Task, "id" | "title" | "fileName" | "archived">) | { kind: "page"; id: WorkspacePage };
 type WorkspaceData = {
   workspacePath: string;
   recentWorkspaces: string[];
@@ -452,7 +453,7 @@ function WorkspaceSession() {
       if (snapshot.tasks[0]) {
         const first = await api.getTask(snapshot.tasks[0].id);
         setTask(first);
-        setOpenTabs([{ kind: "task", id: first.id, title: first.title, fileName: first.fileName }]);
+        setOpenTabs([{ kind: "task", id: first.id, title: first.title, fileName: first.fileName, archived: first.archived }]);
       } else {
         setTask(null);
         setOpenTabs([]);
@@ -566,7 +567,7 @@ function WorkspaceSession() {
     try {
       const saved = await api.saveTask(current);
       setTask((open) => open?.id === saved.id ? saved : open);
-      setOpenTabs((tabs) => tabs.map((tab) => tab.kind === "task" && tab.id === saved.id ? { kind: "task", id: saved.id, title: saved.title, fileName: saved.fileName } : tab));
+      setOpenTabs((tabs) => tabs.map((tab) => tab.kind === "task" && tab.id === saved.id ? { kind: "task", id: saved.id, title: saved.title, fileName: saved.fileName, archived: saved.archived } : tab));
       setSaveState("saved");
       await refresh();
       setSearchEpoch((epoch) => epoch + 1);
@@ -627,7 +628,7 @@ function WorkspaceSession() {
       setError(errorMessage(cause));
     }
   };
-  const copyTaskFilePath = async (current: Task) => {
+  const copyTaskFilePath = async (current: Pick<Task, "archived" | "fileName">) => {
     try {
       await api.copyText(await api.resolveTaskFilePath(workspacePath, current));
     } catch (cause) {
@@ -640,7 +641,7 @@ function WorkspaceSession() {
     try {
       const next = await api.getTask(id);
       setTask(next);
-      setOpenTabs((tabs) => tabs.some((tab) => tab.kind === "task" && tab.id === next.id) ? tabs : [...tabs, { kind: "task", id: next.id, title: next.title, fileName: next.fileName }]);
+      setOpenTabs((tabs) => tabs.some((tab) => tab.kind === "task" && tab.id === next.id) ? tabs : [...tabs, { kind: "task", id: next.id, title: next.title, fileName: next.fileName, archived: next.archived }]);
       setSaveState("saved");
     } catch (cause) { setError(errorMessage(cause)); }
   };
@@ -648,7 +649,7 @@ function WorkspaceSession() {
     try {
       const created = await api.createTask(t("tasks.untitled"));
       setTask(created);
-      setOpenTabs((tabs) => [...tabs, { kind: "task", id: created.id, title: created.title, fileName: created.fileName }]);
+      setOpenTabs((tabs) => [...tabs, { kind: "task", id: created.id, title: created.title, fileName: created.fileName, archived: created.archived }]);
       setSaveState("saved");
       await refresh();
       setSearchEpoch((epoch) => epoch + 1);
@@ -680,20 +681,37 @@ function WorkspaceSession() {
     setTask(null);
     setOpenTabs((tabs) => tabs.filter((tab) => tab.kind !== "task" || tab.id !== archivedId));
   };
+  const archiveTabTask = async (tab: Extract<OpenTab, { kind: "task" }>) => {
+    if (task?.id === tab.id) {
+      await archive();
+      return;
+    }
+    try {
+      const current = await api.getTask(tab.id);
+      await api.saveTask({ ...current, archived: !current.archived });
+      setOpenTabs((tabs) => tabs.filter((candidate) => tabKey(candidate) !== tabKey(tab)));
+      await refresh();
+      setSearchEpoch((epoch) => epoch + 1);
+    } catch (cause) {
+      setError(errorMessage(cause));
+    }
+  };
   const tabKey = (tab: OpenTab) => `${tab.kind}:${tab.id}`;
   const tabTitle = (tab: OpenTab) => tab.kind === "task" ? tab.title : t(tab.id === "/properties" ? "nav.properties" : tab.id === "/backup" ? "nav.backup" : "nav.settings");
   const activeTabKey = page === "/tasks" ? (selectedId ? `task:${selectedId}` : "") : `page:${page}`;
   useEffect(() => {
     activeTab.current?.scrollIntoView({ block: "nearest", inline: "nearest" });
   }, [activeTabKey]);
-  const closeTab = async (closing: OpenTab) => {
-    const closingKey = tabKey(closing);
-    if (closing.kind === "task" && task?.id === closing.id && saveState === "dirty") await save(task);
-    const index = openTabs.findIndex((tab) => tabKey(tab) === closingKey);
-    const remaining = openTabs.filter((tab) => tabKey(tab) !== closingKey);
+  const closeTabs = async (closing: OpenTab[], preferred?: OpenTab) => {
+    const closingKeys = new Set(closing.map(tabKey));
+    if (task && closingKeys.has(`task:${task.id}`) && saveState === "dirty") await save(task);
+    const firstClosingIndex = openTabs.findIndex((tab) => closingKeys.has(tabKey(tab)));
+    const remaining = openTabs.filter((tab) => !closingKeys.has(tabKey(tab)));
     setOpenTabs(remaining);
-    if (activeTabKey !== closingKey) return;
-    const next = remaining[Math.min(index, remaining.length - 1)];
+    if (!closingKeys.has(activeTabKey)) return;
+    const next = preferred && remaining.some((tab) => tabKey(tab) === tabKey(preferred))
+      ? preferred
+      : remaining[Math.min(firstClosingIndex, remaining.length - 1)];
     if (!next) {
       setTask(null);
       navigate("/tasks");
@@ -711,6 +729,7 @@ function WorkspaceSession() {
       setError(errorMessage(cause));
     }
   };
+  const closeTab = (closing: OpenTab) => closeTabs([closing]);
   const openPage = (nextPage: WorkspacePage) => {
     setOpenTabs((tabs) => tabs.some((tab) => tab.kind === "page" && tab.id === nextPage) ? tabs : [...tabs, { kind: "page", id: nextPage }]);
   };
@@ -871,17 +890,44 @@ function WorkspaceSession() {
           </div>
         ) : null}
         <div className="scrollbar-hidden flex min-w-0 flex-1 items-end gap-0.5 overflow-x-auto overflow-y-hidden px-1.5 pt-1" role="tablist" aria-label={t("editor.openFiles")}>
-          {openTabs.map((tab) => (
-            <div
-              key={tabKey(tab)}
-              ref={tabKey(tab) === activeTabKey ? activeTab : undefined}
-              className={cn("group flex h-8 min-w-32 max-w-56 shrink-0 items-center rounded-t-md border border-b-0 px-2 text-xs", tabKey(tab) === activeTabKey ? "border-line bg-background text-foreground" : "border-transparent text-muted hover:bg-surface-soft")}
-              role="tab"
-              aria-selected={tabKey(tab) === activeTabKey}
-            >
-              <button className="min-w-0 flex-1 cursor-pointer truncate text-left" onClick={() => tab.kind === "task" ? (navigate("/tasks"), void chooseTask(tab.id)) : navigate(tab.id)}>{tabTitle(tab)}</button>
-              <button className="ml-1.5 grid size-5 shrink-0 cursor-pointer place-items-center rounded opacity-0 hover:bg-line group-hover:opacity-100 focus:opacity-100" aria-label={`${t("tasks.closeTab")}: ${tabTitle(tab)}`} onClick={() => void closeTab(tab)}><X size={12} /></button>
-            </div>
+          {openTabs.map((tab, index) => (
+            <ContextMenu.Root key={tabKey(tab)}>
+              <ContextMenu.Trigger asChild>
+                <div
+                  ref={tabKey(tab) === activeTabKey ? activeTab : undefined}
+                  className={cn("group flex h-8 min-w-32 max-w-56 shrink-0 items-center rounded-t-md border border-b-0 px-2 text-xs", tabKey(tab) === activeTabKey ? "border-line bg-background text-foreground" : "border-transparent text-muted hover:bg-surface-soft")}
+                  role="tab"
+                  aria-selected={tabKey(tab) === activeTabKey}
+                >
+                  <button className="min-w-0 flex-1 cursor-pointer truncate text-left" onClick={() => tab.kind === "task" ? (navigate("/tasks"), void chooseTask(tab.id)) : navigate(tab.id)}>{tabTitle(tab)}</button>
+                  <button className="ml-1.5 grid size-5 shrink-0 cursor-pointer place-items-center rounded opacity-0 hover:bg-line group-hover:opacity-100 focus:opacity-100" aria-label={`${t("tasks.closeTab")}: ${tabTitle(tab)}`} onClick={() => void closeTab(tab)}><X size={12} /></button>
+                </div>
+              </ContextMenu.Trigger>
+              <ContextMenu.Portal>
+                <ContextMenu.Content className="z-[200] w-[180px] rounded-lg border border-line bg-surface p-1 shadow-[0_12px_30px_rgba(0,0,0,.14)]" collisionPadding={8}>
+                  <ContextMenu.Item className="flex min-h-[30px] cursor-default items-center rounded-[5px] px-2 py-1.5 text-xs outline-none data-[highlighted]:bg-accent-soft data-[highlighted]:text-accent" onSelect={() => void closeTab(tab)}>{t("tabs.close")}</ContextMenu.Item>
+                  <ContextMenu.Item className="flex min-h-[30px] cursor-default items-center rounded-[5px] px-2 py-1.5 text-xs outline-none data-[disabled]:opacity-45 data-[highlighted]:bg-accent-soft data-[highlighted]:text-accent" disabled={openTabs.length === 1} onSelect={() => void closeTabs(openTabs.filter((candidate) => tabKey(candidate) !== tabKey(tab)), tab)}>{t("tabs.closeOthers")}</ContextMenu.Item>
+                  <ContextMenu.Item className="flex min-h-[30px] cursor-default items-center rounded-[5px] px-2 py-1.5 text-xs outline-none data-[disabled]:opacity-45 data-[highlighted]:bg-accent-soft data-[highlighted]:text-accent" disabled={index === openTabs.length - 1} onSelect={() => void closeTabs(openTabs.slice(index + 1), tab)}>{t("tabs.closeAfter")}</ContextMenu.Item>
+                  <ContextMenu.Item className="flex min-h-[30px] cursor-default items-center rounded-[5px] px-2 py-1.5 text-xs outline-none data-[highlighted]:bg-accent-soft data-[highlighted]:text-accent" onSelect={() => void closeTabs(openTabs)}>{t("tabs.closeAll")}</ContextMenu.Item>
+                  {tab.kind === "task" ? <>
+                    <ContextMenu.Separator className="m-1 h-px bg-line" />
+                    <ContextMenu.Label className="px-2 pt-1 pb-0.5 text-[11px] font-bold tracking-[.06em] text-muted uppercase">{t("editor.moreActions")}</ContextMenu.Label>
+                    <ContextMenu.Item className="flex min-h-[30px] cursor-default items-center gap-1.5 rounded-[5px] px-2 py-1.5 text-xs outline-none data-[highlighted]:bg-accent-soft data-[highlighted]:text-accent" onSelect={() => void archiveTabTask(tab)}>
+                      {tab.archived ? <ArchiveRestore size={15} /> : <Archive size={15} />}
+                      {tab.archived ? t("tasks.restore") : t("tasks.archiveAction")}
+                    </ContextMenu.Item>
+                    <ContextMenu.Item className="flex min-h-[30px] cursor-default items-center gap-1.5 rounded-[5px] px-2 py-1.5 text-xs outline-none data-[highlighted]:bg-accent-soft data-[highlighted]:text-accent" onSelect={() => void copyText(tab.title)}>
+                      <Copy size={15} />
+                      {t("editor.copyTitle")}
+                    </ContextMenu.Item>
+                    <ContextMenu.Item className="flex min-h-[30px] cursor-default items-center gap-1.5 rounded-[5px] px-2 py-1.5 text-xs outline-none data-[highlighted]:bg-accent-soft data-[highlighted]:text-accent" onSelect={() => void copyTaskFilePath(tab)}>
+                      <FileText size={15} />
+                      {t("editor.copyFilePath")}
+                    </ContextMenu.Item>
+                  </> : null}
+                </ContextMenu.Content>
+              </ContextMenu.Portal>
+            </ContextMenu.Root>
           ))}
         </div>
       </header>
