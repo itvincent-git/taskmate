@@ -1,4 +1,8 @@
 {
+  "0.9.1": {
+    "en": "- fix(updater): avoid reporting unpublished versions\n- test: fix role query type error",
+    "zh": "- fix(updater): avoid reporting unpublished versions\n- test: fix role query type error"
+  },
   "0.9.0": {
     "en": "- feat(tabs): add context menu actions\n- fix(ui): prevent tab text selection\n- fix(ui): preserve top border on task card hover\n- fix(ui): prevent horizontal task list overflow",
     "zh": "- feat(tabs): add context menu actions\n- fix(ui): prevent tab text selection\n- fix(ui): preserve top border on task card hover\n- fix(ui): prevent horizontal task list overflow"
