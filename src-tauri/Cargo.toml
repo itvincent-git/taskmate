@@ -20,7 +20,6 @@ chrono = { version = "0.4.45", features = ["serde"] }
 hex = "0.4.3"
 log = "0.4"
 notify = "8.2.0"
-reqwest = { version = "0.12", features = ["blocking", "json", "socks"] }
 # Tauri Updater uses reqwest 0.13 with default features disabled. Enable its
 # native system-proxy discovery so update artifacts follow macOS/Windows proxy settings too.
 reqwest-system-proxy = { package = "reqwest", version = "0.13", default-features = false, features = ["system-proxy"] }
