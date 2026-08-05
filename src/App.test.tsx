@@ -452,7 +452,7 @@ describe("Taskmate application", () => {
 
     let tabs = screen.getAllByRole("tab");
     fireEvent.contextMenu(tabs[0]);
-    await user.click(await screen.findByRole("menuitem", { name: "Close", exact: true }));
+    await user.click(await screen.findByRole("menuitem", { name: "Close" }));
     expect(screen.getAllByRole("tab")).toHaveLength(3);
 
     tabs = screen.getAllByRole("tab");
