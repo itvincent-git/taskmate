@@ -85,7 +85,16 @@ pub fn status(root: &Path) -> Result<GitStatus, String> {
             last_sync: None,
         });
     }
-    let porcelain = run(root, &["status", "--porcelain=v1", "--branch"])?;
+    let porcelain = run(
+        root,
+        &[
+            "-c",
+            "core.quotePath=false",
+            "status",
+            "--porcelain=v1",
+            "--branch",
+        ],
+    )?;
     let mut lines = porcelain.lines();
     let branch_line = lines.next().unwrap_or_default();
     let branch = branch_line
@@ -193,6 +202,20 @@ mod tests {
             .iter()
             .any(|change| change.contains("task.md")));
         assert!(status.conflicts.is_empty());
+    }
+
+    #[test]
+    fn status_preserves_unicode_file_names() {
+        let temporary = tempfile::tempdir().unwrap();
+        initialize(temporary.path()).unwrap();
+        std::fs::write(temporary.path().join("今日任务.md"), "# Task").unwrap();
+
+        let status = status(temporary.path()).unwrap();
+
+        assert!(status
+            .changes
+            .iter()
+            .any(|change| change.contains("今日任务.md")));
     }
 
     #[test]
