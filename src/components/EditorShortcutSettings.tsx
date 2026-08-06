@@ -1,4 +1,4 @@
-import { useState, useSyncExternalStore, type KeyboardEvent as ReactKeyboardEvent } from "react";
+import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
 import {
   EDITOR_SHORTCUT_ACTIONS,
   captureShortcut,
@@ -21,10 +21,10 @@ export function EditorShortcutSettings() {
   const [error, setError] = useState<string | null>(null);
   const platform = getShortcutPlatform();
 
-  const recordShortcut = (action: MarkdownAction, event: ReactKeyboardEvent<HTMLButtonElement>) => {
+  const recordShortcut = useCallback((action: MarkdownAction, event: KeyboardEvent) => {
     event.preventDefault();
     event.stopPropagation();
-    const captured = captureShortcut(event.nativeEvent, platform);
+    const captured = captureShortcut(event, platform);
     if (captured.type === "pending") return;
     if (captured.type === "cancel") {
       setRecording(null);
@@ -43,7 +43,14 @@ export function EditorShortcutSettings() {
     setEditorShortcut(action, captured.shortcut);
     setRecording(null);
     setError(null);
-  };
+  }, [platform, shortcuts, t]);
+
+  useEffect(() => {
+    if (!recording) return;
+    const onKeyDown = (event: KeyboardEvent) => recordShortcut(recording, event);
+    window.addEventListener("keydown", onKeyDown, true);
+    return () => window.removeEventListener("keydown", onKeyDown, true);
+  }, [recordShortcut, recording]);
 
   return (
     <section className="rounded-xl border border-line bg-surface p-4 transition-shadow hover:shadow-panel">
@@ -70,16 +77,10 @@ export function EditorShortcutSettings() {
                   variant="outline"
                   className="min-w-32 font-mono"
                   aria-label={t("settings.shortcuts.change", { action: actionLabel })}
+                  aria-pressed={recording === action}
                   onClick={() => {
                     setRecording(action);
                     setError(null);
-                  }}
-                  onBlur={() => {
-                    setRecording((current) => current === action ? null : current);
-                    setError(null);
-                  }}
-                  onKeyDown={(event) => {
-                    if (recording === action) recordShortcut(action, event);
                   }}
                 >
                   {recording === action

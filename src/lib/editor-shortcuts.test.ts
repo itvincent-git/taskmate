@@ -59,6 +59,7 @@ describe("editor shortcuts", () => {
     expect(captureShortcut(keyEvent("K", { ctrlKey: true, shiftKey: true }), "other")).toEqual({ type: "shortcut", shortcut: "Mod+Shift+K" });
     expect(captureShortcut(keyEvent("œ", { code: "KeyQ", altKey: true }), "mac")).toEqual({ type: "shortcut", shortcut: "Alt+Q" });
     expect(captureShortcut(keyEvent("¡", { code: "Digit1", altKey: true }), "mac")).toEqual({ type: "shortcut", shortcut: "Alt+1" });
+    expect(captureShortcut(keyEvent("Process", { code: "KeyB", metaKey: true }), "mac")).toEqual({ type: "shortcut", shortcut: "Mod+B" });
     expect(captureShortcut(keyEvent("Shift", { shiftKey: true }), "other")).toEqual({ type: "pending" });
     expect(captureShortcut(keyEvent("b"), "other")).toEqual({ type: "invalid" });
     expect(captureShortcut(keyEvent("Escape"), "other")).toEqual({ type: "cancel" });

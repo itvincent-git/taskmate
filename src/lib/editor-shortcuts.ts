@@ -113,7 +113,7 @@ export function captureShortcut(
   if (event.shiftKey) modifiers.push("Shift");
   if (!modifiers.some((modifier) => modifier !== "Shift")) return { type: "invalid" };
 
-  const key = normalizeKey(event.key) ?? normalizeKeyCode(event.code);
+  const key = normalizeKeyCode(event.code) ?? normalizeKey(event.key);
   if (!key) return { type: "invalid" };
   return { type: "shortcut", shortcut: [...modifiers, key].join("+") };
 }

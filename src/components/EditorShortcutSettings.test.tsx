@@ -54,6 +54,19 @@ describe("EditorShortcutSettings", () => {
     expect(recorder).toHaveTextContent("Ctrl+B");
   });
 
+  it("keeps recording when the WebView moves focus away from the button", async () => {
+    const user = userEvent.setup();
+    renderSettings();
+    const recorder = screen.getByRole("button", { name: "Change Heading 1 shortcut" });
+    await user.click(recorder);
+
+    fireEvent.blur(recorder);
+    fireEvent.keyDown(window, { key: "q", code: "KeyQ", altKey: true });
+
+    expect(getEditorShortcuts().h1).toBe("Alt+Q");
+    expect(recorder).toHaveTextContent("Alt+Q");
+  });
+
   it("clears an action and restores all defaults", async () => {
     const user = userEvent.setup();
     renderSettings();
