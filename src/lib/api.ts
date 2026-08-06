@@ -122,6 +122,10 @@ export const api = {
     });
     return typeof selected === "string" ? selected : null;
   },
+  async pickSystemFont(currentFont: string | null, title: string, prompt: string): Promise<string | null> {
+    if (!isTauri) return null;
+    return invoke("pick_system_font", { currentFont, title, prompt });
+  },
   async copyText(text: string): Promise<void> {
     if (isTauri) return writeText(text);
     return navigator.clipboard.writeText(text);

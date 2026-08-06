@@ -94,7 +94,7 @@ export const MarkdownEditor = memo(function MarkdownEditor({ value, onChange }: 
           }),
           EditorView.theme({
             "&": { height: "100%", fontSize: "14px" },
-            ".cm-scroller": { overflow: "auto", fontFamily: "inherit" },
+            ".cm-scroller": { overflow: "auto", fontFamily: "var(--font-editor)" },
             ".cm-content": { minHeight: "300px", padding: "16px 20px 48px", caretColor: "var(--accent)" },
             ".cm-line": { lineHeight: "1.72" },
             ".cm-gutters": { display: "none" },

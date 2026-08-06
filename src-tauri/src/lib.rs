@@ -12,6 +12,7 @@ use model::{
 use notify::{RecommendedWatcher, RecursiveMode, Watcher};
 use serde::Serialize;
 use std::path::PathBuf;
+use std::process::Command;
 use std::sync::{
     atomic::{AtomicU64, Ordering},
     Arc, Mutex,
@@ -286,6 +287,113 @@ fn restart_app(app: tauri::AppHandle) {
     app.request_restart();
 }
 
+#[tauri::command]
+async fn pick_system_font(
+    current_font: Option<String>,
+    title: String,
+    prompt: String,
+) -> Result<Option<String>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        pick_system_font_blocking(current_font.as_deref(), &title, &prompt)
+    })
+    .await
+    .map_err(|error| format!("Unable to open the system font picker: {error}"))?
+}
+
+#[cfg(target_os = "macos")]
+fn pick_system_font_blocking(
+    current_font: Option<&str>,
+    title: &str,
+    prompt: &str,
+) -> Result<Option<String>, String> {
+    const SCRIPT: &str = r#"
+function run(argv) {
+  ObjC.import('AppKit');
+  const app = Application.currentApplication();
+  app.includeStandardAdditions = true;
+  const fonts = ObjC.deepUnwrap($.NSFontManager.sharedFontManager.availableFontFamilies)
+    .map(String).sort((left, right) => left.localeCompare(right));
+  const options = {
+    withTitle: argv[1],
+    withPrompt: argv[2],
+    multipleSelectionsAllowed: false,
+    emptySelectionAllowed: false
+  };
+  if (argv[0] && fonts.includes(argv[0])) options.defaultItems = [argv[0]];
+  const selected = app.chooseFromList(fonts, options);
+  return selected === false ? '' : selected[0];
+}
+"#;
+    command_font_picker(Command::new("/usr/bin/osascript").args([
+        "-l",
+        "JavaScript",
+        "-e",
+        SCRIPT,
+        "--",
+        current_font.unwrap_or(""),
+        title,
+        prompt,
+    ]))
+}
+
+#[cfg(target_os = "windows")]
+fn pick_system_font_blocking(
+    current_font: Option<&str>,
+    _title: &str,
+    _prompt: &str,
+) -> Result<Option<String>, String> {
+    const SCRIPT: &str = r#"
+[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new()
+Add-Type -AssemblyName System.Windows.Forms
+Add-Type -AssemblyName System.Drawing
+$dialog = New-Object System.Windows.Forms.FontDialog
+$dialog.ShowEffects = $false
+if ($args[0]) {
+  try { $dialog.Font = New-Object System.Drawing.Font($args[0], 12) } catch {}
+}
+if ($dialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
+  [Console]::Write($dialog.Font.FontFamily.Name)
+}
+$dialog.Dispose()
+"#;
+    command_font_picker(Command::new("powershell.exe").args([
+        "-NoProfile",
+        "-STA",
+        "-Command",
+        SCRIPT,
+        current_font.unwrap_or(""),
+    ]))
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+fn pick_system_font_blocking(
+    _current_font: Option<&str>,
+    _title: &str,
+    _prompt: &str,
+) -> Result<Option<String>, String> {
+    Err("The system font picker is not supported on this platform.".into())
+}
+
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+fn command_font_picker(command: &mut Command) -> Result<Option<String>, String> {
+    let output = command
+        .output()
+        .map_err(|error| format!("Unable to start the system font picker: {error}"))?;
+    if !output.status.success() {
+        let message = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        return Err(if message.is_empty() {
+            "The system font picker closed unexpectedly.".into()
+        } else {
+            message
+        });
+    }
+    let font = String::from_utf8(output.stdout)
+        .map_err(|_| "The system font picker returned an invalid font name.".to_string())?
+        .trim()
+        .to_string();
+    Ok((!font.is_empty()).then_some(font))
+}
+
 fn show_main_window(app: &tauri::AppHandle) {
     if let Some(window) = app.get_webview_window("main") {
         let _ = window.show();
@@ -334,7 +442,8 @@ pub fn run() {
             git_history,
             check_for_updates,
             download_and_install_update,
-            restart_app
+            restart_app,
+            pick_system_font
         ])
         .setup(|app| {
             let show = MenuItem::with_id(app, "show", "Show Taskmate", true, None::<&str>)?;

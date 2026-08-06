@@ -382,14 +382,21 @@ describe("Taskmate application", () => {
     await user.click(screen.getByRole("link", { name: "Settings" }));
 
     const language = screen.getByRole("button", { name: "Language" });
+    const fonts = screen.getByRole("button", { name: "Fonts" });
     const shortcuts = screen.getByRole("button", { name: "Keyboard shortcuts" });
     const updates = screen.getByRole("button", { name: "Software updates" });
     expect(language).toHaveAttribute("aria-pressed", "true");
+    expect(fonts).toHaveAttribute("aria-pressed", "false");
     expect(shortcuts).toHaveAttribute("aria-pressed", "false");
     expect(updates).toHaveAttribute("aria-pressed", "false");
     expect(screen.getByLabelText("Language")).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "Keyboard shortcuts" })).not.toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "Software updates" })).not.toBeInTheDocument();
+
+    await user.click(fonts);
+    expect(fonts).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("heading", { name: "Fonts" })).toBeInTheDocument();
+    expect(screen.queryByLabelText("Language")).not.toBeInTheDocument();
 
     await user.click(shortcuts);
     expect(shortcuts).toHaveAttribute("aria-pressed", "true");

@@ -54,6 +54,7 @@ import { TaskSearchPanel } from "./components/TaskSearchPanel";
 import { TaskProperties } from "./components/TaskProperties";
 import { DynamicFilter } from "./components/DynamicFilter";
 import { EditorShortcutSettings } from "./components/EditorShortcutSettings";
+import { FontSettings } from "./components/FontSettings";
 import { Button, buttonVariants } from "./components/ui/Button";
 import { Dialog } from "./components/ui/Dialog";
 import { Input } from "./components/ui/Input";
@@ -313,10 +314,11 @@ function UpdateContents({ body }: { body: string | null | undefined }) {
 
 function SettingsView({ updater }: { updater: ReturnType<typeof useUpdater> }) {
   const { locale, setLocale, t } = useTaskmateI18n();
-  const [section, setSection] = useState<"language" | "shortcuts" | "updates">("language");
+  const [section, setSection] = useState<"language" | "fonts" | "shortcuts" | "updates">("language");
   const message = updateMessage(updater.phase, updater.info?.version, t);
   const sections = [
     { id: "language", label: t("nav.language") },
+    { id: "fonts", label: t("settings.fonts.title") },
     { id: "shortcuts", label: t("settings.shortcuts.title") },
     { id: "updates", label: t("updates.title") },
   ] as const;
@@ -347,6 +349,7 @@ function SettingsView({ updater }: { updater: ReturnType<typeof useUpdater> }) {
             </section>
           ) : null}
           {section === "shortcuts" ? <EditorShortcutSettings /> : null}
+          {section === "fonts" ? <FontSettings /> : null}
           {section === "updates" ? (
             <section className="rounded-xl border border-line bg-surface p-4 transition-shadow hover:shadow-panel">
               <h2 className="m-0 mb-3 font-heading text-base">{t("updates.title")}</h2>
