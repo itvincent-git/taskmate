@@ -43,7 +43,23 @@ pub fn set_remote(root: &Path, url: &str) -> Result<GitStatus, String> {
 
 pub fn commit(root: &Path, message: &str) -> Result<GitStatus, String> {
     run(root, &["add", "-A"])?;
-    run(root, &["commit", "-m", message])?;
+    let changed_files = run(
+        root,
+        &[
+            "-c",
+            "core.quotePath=false",
+            "diff",
+            "--cached",
+            "--name-only",
+        ],
+    )?;
+    let details = changed_files
+        .lines()
+        .map(|path| format!("- {path}"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    let commit_message = format!("{message}\n\nChanged files:\n{details}");
+    run(root, &["commit", "-m", &commit_message])?;
     status(root)
 }
 
@@ -216,6 +232,28 @@ mod tests {
             .changes
             .iter()
             .any(|change| change.contains("今日任务.md")));
+    }
+
+    #[test]
+    fn commit_message_lists_changed_files() {
+        let temporary = tempfile::tempdir().unwrap();
+        initialize(temporary.path()).unwrap();
+        run(
+            temporary.path(),
+            &["config", "user.email", "test@example.com"],
+        )
+        .unwrap();
+        run(temporary.path(), &["config", "user.name", "Taskmate Test"]).unwrap();
+        std::fs::create_dir(temporary.path().join("tasks")).unwrap();
+        std::fs::write(temporary.path().join("tasks/today.md"), "# Today").unwrap();
+        std::fs::write(temporary.path().join("tasks/明日.md"), "# Tomorrow").unwrap();
+
+        commit(temporary.path(), "Taskmate backup").unwrap();
+
+        assert_eq!(
+            run(temporary.path(), &["log", "-1", "--format=%B"]).unwrap(),
+            "Taskmate backup\n\nChanged files:\n- tasks/today.md\n- tasks/明日.md"
+        );
     }
 
     #[test]
