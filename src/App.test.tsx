@@ -353,6 +353,28 @@ describe("Taskmate application", () => {
     expect(screen.getByRole("heading", { name: "Git & GitHub" })).toBeInTheDocument();
   });
 
+  it("lists the files currently modified in Git", async () => {
+    const user = userEvent.setup();
+    vi.spyOn(api, "gitStatus").mockResolvedValue({
+      initialized: true,
+      branch: "main",
+      changes: [" M tasks/today.md", "?? tasks/new.md"],
+      conflicts: [],
+      ahead: 0,
+      behind: 0,
+    });
+    vi.spyOn(api, "gitHistory").mockResolvedValue([]);
+    render(<App />);
+    await user.click(screen.getByRole("button", { name: "Open workspace" }));
+    await user.click(screen.getByRole("link", { name: "Git backup" }));
+
+    const files = await screen.findByRole("list", { name: "Modified files" });
+    expect(within(files).getByText("tasks/today.md")).toBeInTheDocument();
+    expect(within(files).getByText("tasks/new.md")).toBeInTheDocument();
+    expect(within(files).getByText("M")).toBeInTheDocument();
+    expect(within(files).getByText("??")).toBeInTheDocument();
+  });
+
   it("shows one settings section at a time from the settings navigation", async () => {
     const user = userEvent.setup();
     render(<App />);

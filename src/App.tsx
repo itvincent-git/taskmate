@@ -262,6 +262,12 @@ function BackupView() {
           <section className="rounded-xl border border-line bg-surface p-4 transition-shadow hover:shadow-panel [&>h2]:mt-0 [&>h2]:mb-3 [&>h2]:font-heading [&>h2]:text-base">
             <h2>{t("backup.repository")}</h2>
             <dl className="m-0 grid grid-cols-2 gap-3 [&_dd]:mt-1 [&_dd]:mb-0 [&_dd]:font-semibold [&_div]:border-b [&_div]:border-line [&_div]:pb-2 [&_dt]:text-xs [&_dt]:tracking-[.08em] [&_dt]:text-muted [&_dt]:uppercase"><div><dt>{t("backup.branch")}</dt><dd>{status.branch || "—"}</dd></div><div><dt>{t("backup.changes")}</dt><dd>{status.changes.length}</dd></div><div><dt>{t("backup.aheadBehind")}</dt><dd>{status.ahead} / {status.behind}</dd></div><div><dt>{t("backup.lastSync")}</dt><dd>{status.lastSync ? new Date(status.lastSync).toLocaleString() : t("common.never")}</dd></div></dl>
+            <h3 className="mb-2 text-sm font-semibold">{t("backup.modifiedFiles")}</h3>
+            {status.changes.length ? (
+              <ul className="m-0 max-h-48 list-none overflow-auto rounded-lg border border-line p-0" aria-label={t("backup.modifiedFiles")}>
+                {status.changes.map((change) => <li className="flex items-center gap-2 border-b border-line px-3 py-2 last:border-b-0" key={change}><code className="w-5 shrink-0 text-xs font-semibold text-muted">{change.slice(0, 2).trim() || "M"}</code><code className="min-w-0 truncate text-xs" title={change.slice(3)}>{change.slice(3)}</code></li>)}
+              </ul>
+            ) : <p className="text-sm text-muted">{t("backup.noChanges")}</p>}
             {status.conflicts.length > 0 && <div className="my-2.5 rounded-lg border border-[color-mix(in_srgb,var(--danger)_24%,transparent)] bg-[color-mix(in_srgb,var(--danger)_10%,var(--surface))] px-3 py-2 text-danger"><strong>{t("backup.conflicts")}</strong>{status.conflicts.map((conflict) => <code className="my-1 block text-xs" key={conflict}>{conflict}</code>)}</div>}
           </section>
           <section className="rounded-xl border border-line bg-surface p-4 transition-shadow hover:shadow-panel [&>h2]:mt-0 [&>h2]:mb-3 [&>h2]:font-heading [&>h2]:text-base [&>label]:mb-2.5 [&>label]:grid [&>label]:gap-1.5 [&>label]:text-xs [&>label]:font-semibold [&>label]:text-muted">
