@@ -353,6 +353,41 @@ describe("Taskmate application", () => {
     expect(screen.getByRole("heading", { name: "Git & GitHub" })).toBeInTheDocument();
   });
 
+  it("shows one settings section at a time from the settings navigation", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(screen.getByRole("button", { name: "Open workspace" }));
+    await user.click(screen.getByRole("link", { name: "Settings" }));
+
+    const language = screen.getByRole("button", { name: "Language" });
+    const shortcuts = screen.getByRole("button", { name: "Keyboard shortcuts" });
+    const updates = screen.getByRole("button", { name: "Software updates" });
+    expect(language).toHaveAttribute("aria-pressed", "true");
+    expect(shortcuts).toHaveAttribute("aria-pressed", "false");
+    expect(updates).toHaveAttribute("aria-pressed", "false");
+    expect(screen.getByLabelText("Language")).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Keyboard shortcuts" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Software updates" })).not.toBeInTheDocument();
+
+    await user.click(shortcuts);
+    expect(shortcuts).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("heading", { name: "Keyboard shortcuts" })).toBeInTheDocument();
+    expect(screen.queryByLabelText("Language")).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Software updates" })).not.toBeInTheDocument();
+
+    await user.click(updates);
+    expect(updates).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("heading", { name: "Software updates" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Keyboard shortcuts" })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Language")).not.toBeInTheDocument();
+
+    await user.click(language);
+    expect(language).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByLabelText("Language")).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Keyboard shortcuts" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Software updates" })).not.toBeInTheDocument();
+  });
+
   it("switches the complete Taskmate shell to Simplified Chinese from settings", async () => {
     const user = userEvent.setup();
     render(<App />);

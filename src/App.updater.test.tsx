@@ -65,8 +65,11 @@ it("shows an available update in the sidebar without opening a dialog", async ()
   expect(mocks.downloadAndInstall).toHaveBeenCalledTimes(1);
 
   await user.click(screen.getByRole("link", { name: "Settings" }));
+  await user.click(screen.getByRole("button", { name: "Software updates" }));
   expect(screen.getByRole("heading", { name: "What's new" })).toBeInTheDocument();
   expect(screen.getByText("- Added update details")).toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: "Download and install" }));
+  expect(mocks.downloadAndInstall).toHaveBeenCalledTimes(2);
 });
 
 it("shows determinate and indeterminate download progress and prevents repeat clicks", async () => {

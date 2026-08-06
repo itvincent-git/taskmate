@@ -305,30 +305,55 @@ function UpdateContents({ body }: { body: string | null | undefined }) {
 
 function SettingsView({ updater }: { updater: ReturnType<typeof useUpdater> }) {
   const { locale, setLocale, t } = useTaskmateI18n();
+  const [section, setSection] = useState<"language" | "shortcuts" | "updates">("language");
   const message = updateMessage(updater.phase, updater.info?.version, t);
+  const sections = [
+    { id: "language", label: t("nav.language") },
+    { id: "shortcuts", label: t("settings.shortcuts.title") },
+    { id: "updates", label: t("updates.title") },
+  ] as const;
   return (
     <div className="h-full overflow-auto px-8 pt-7 pb-12">
       <div className="mx-auto mb-5 flex max-w-[1160px] items-end justify-between gap-4"><div><p className="m-0 mb-1 text-xs font-bold tracking-[.12em] text-muted uppercase">{t("updates.eyebrow")}</p><h1 className="m-0 mb-1 font-heading text-[28px] tracking-[-.035em]">{t("nav.settings")}</h1><p className="m-0 text-muted">{t("settings.description")}</p></div></div>
-      <div className="mx-auto grid max-w-[1160px] gap-4">
-        <section className="rounded-xl border border-line bg-surface p-4 transition-shadow hover:shadow-panel">
-          <div className="flex items-center justify-between gap-4">
-            <div><h2 className="m-0 mb-1 font-heading text-base">{t("nav.language")}</h2><p className="m-0 text-sm text-muted">{t("settings.languageDescription")}</p></div>
-            <Select className="min-w-36" ariaLabel={t("nav.language")} value={locale} onValueChange={(value) => setLocale(value as typeof locale)} options={[{ value: "en", label: "English" }, { value: "zh-CN", label: "简体中文" }]} />
-          </div>
-        </section>
-        <EditorShortcutSettings />
-        <section className="rounded-xl border border-line bg-surface p-4 transition-shadow hover:shadow-panel">
-          <h2 className="m-0 mb-3 font-heading text-base">{t("updates.title")}</h2>
-          <div className="mb-3 flex items-center gap-2 text-muted"><Download size={20} /><p className="m-0">{message}</p></div>
-          {updater.phase === "available" ? <UpdateContents body={updater.info?.body} /> : null}
-          {updater.phase === "downloading" ? <Progress className="mb-3 w-[min(360px,100%)]" value={updater.progress.percent} /> : null}
-          <div className="mt-3 flex gap-1.5">
-            <Button variant="outline" disabled={updater.phase === "checking" || updater.phase === "disabled"} onClick={() => void updater.checkForUpdate()}>{updater.phase === "error" ? t("updates.retry") : t("updates.check")}</Button>
-            {updater.phase === "available" ? <Button onClick={() => void updater.downloadAndInstall()}>{t("updates.install")}</Button> : null}
-            {updater.phase === "ready" ? <Button onClick={() => void updater.restart()}>{t("updates.restart")}</Button> : null}
-          </div>
-          {updater.error ? <p role="alert" className="my-2.5 rounded-lg border border-[color-mix(in_srgb,var(--danger)_24%,transparent)] bg-[color-mix(in_srgb,var(--danger)_10%,var(--surface))] px-3 py-2 text-danger">{updater.error}</p> : null}
-        </section>
+      <div className="mx-auto grid max-w-[1160px] grid-cols-[192px_minmax(0,1fr)] items-start gap-6">
+        <nav className="sticky top-7 grid gap-1" aria-label={t("nav.settings")}>
+          {sections.map((item) => (
+            <button
+              type="button"
+              className={cn("min-h-10 rounded-lg px-3 text-left text-sm font-semibold text-muted transition-colors hover:bg-surface-soft hover:text-foreground focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-[color-mix(in_srgb,var(--accent)_14%,transparent)]", section === item.id && "bg-accent-soft text-accent")}
+              aria-pressed={section === item.id}
+              onClick={() => setSection(item.id)}
+              key={item.id}
+            >
+              {item.label}
+            </button>
+          ))}
+        </nav>
+        <div className="min-w-0">
+          {section === "language" ? (
+            <section className="rounded-xl border border-line bg-surface p-4 transition-shadow hover:shadow-panel">
+              <div className="flex items-center justify-between gap-4">
+                <div><h2 className="m-0 mb-1 font-heading text-base">{t("nav.language")}</h2><p className="m-0 text-sm text-muted">{t("settings.languageDescription")}</p></div>
+                <Select className="min-w-36" ariaLabel={t("nav.language")} value={locale} onValueChange={(value) => setLocale(value as typeof locale)} options={[{ value: "en", label: "English" }, { value: "zh-CN", label: "简体中文" }]} />
+              </div>
+            </section>
+          ) : null}
+          {section === "shortcuts" ? <EditorShortcutSettings /> : null}
+          {section === "updates" ? (
+            <section className="rounded-xl border border-line bg-surface p-4 transition-shadow hover:shadow-panel">
+              <h2 className="m-0 mb-3 font-heading text-base">{t("updates.title")}</h2>
+              <div className="mb-3 flex items-center gap-2 text-muted"><Download size={20} /><p className="m-0">{message}</p></div>
+              {updater.phase === "available" ? <UpdateContents body={updater.info?.body} /> : null}
+              {updater.phase === "downloading" ? <Progress className="mb-3 w-[min(360px,100%)]" value={updater.progress.percent} /> : null}
+              <div className="mt-3 flex gap-1.5">
+                <Button variant="outline" disabled={updater.phase === "checking" || updater.phase === "disabled"} onClick={() => void updater.checkForUpdate()}>{updater.phase === "error" ? t("updates.retry") : t("updates.check")}</Button>
+                {updater.phase === "available" ? <Button onClick={() => void updater.downloadAndInstall()}>{t("updates.install")}</Button> : null}
+                {updater.phase === "ready" ? <Button onClick={() => void updater.restart()}>{t("updates.restart")}</Button> : null}
+              </div>
+              {updater.error ? <p role="alert" className="my-2.5 rounded-lg border border-[color-mix(in_srgb,var(--danger)_24%,transparent)] bg-[color-mix(in_srgb,var(--danger)_10%,var(--surface))] px-3 py-2 text-danger">{updater.error}</p> : null}
+            </section>
+          ) : null}
+        </div>
       </div>
     </div>
   );
