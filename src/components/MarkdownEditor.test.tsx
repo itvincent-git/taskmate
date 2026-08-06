@@ -2,7 +2,7 @@ import { act, fireEvent, render, screen } from "@testing-library/react";
 import { EditorView } from "@codemirror/view";
 import { StrictMode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { setEditorShortcut } from "../lib/editor-shortcuts";
+import { setEditorShortcut, type MarkdownShortcutAction } from "../lib/editor-shortcuts";
 import { MarkdownEditor } from "./MarkdownEditor";
 
 describe("MarkdownEditor", () => {
@@ -66,6 +66,32 @@ describe("MarkdownEditor", () => {
     expect(view.state.doc.toString()).toBe(expected);
   });
 
+  it.each<[MarkdownShortcutAction, string]>([
+    ["h1", "# text"],
+    ["h2", "## text"],
+    ["bold", "**text**"],
+    ["italic", "*text*"],
+    ["strike", "~~text~~"],
+    ["inlineCode", "`text`"],
+    ["codeBlock", "```\ntext\n```"],
+    ["quote", "> text"],
+    ["bullet", "- text"],
+    ["ordered", "1. text"],
+    ["task", "- [ ] text"],
+    ["link", "[text](https://)"],
+    ["image", "![text](attachments/image.png)"],
+    ["rule", "text\n---\n"],
+  ])("applies a custom shortcut for %s", (action, expected) => {
+    act(() => setEditorShortcut(action, "Alt+Q"));
+    const { container } = render(<MarkdownEditor value="text" onChange={vi.fn()} />);
+    const view = editorView(container);
+    view.dispatch({ selection: { anchor: 0, head: 4 } });
+
+    fireEvent.keyDown(container.querySelector(".cm-content")!, { key: "q", altKey: true });
+
+    expect(view.state.doc.toString()).toBe(expected);
+  });
+
   it("replaces the old shortcut and removes a cleared shortcut", () => {
     act(() => setEditorShortcut("bold", "Alt+B"));
     const { container, unmount } = render(<MarkdownEditor value="text" onChange={vi.fn()} />);
@@ -88,12 +114,19 @@ describe("MarkdownEditor", () => {
   it("keeps toolbar labels and aria shortcuts in sync", () => {
     render(<MarkdownEditor value="text" onChange={vi.fn()} />);
     expect(screen.getByRole("button", { name: "Bold (Ctrl+B)" })).toHaveAttribute("aria-keyshortcuts", "Control+B");
+    expect(screen.getByRole("button", { name: "Heading 1" })).not.toHaveAttribute("aria-keyshortcuts");
 
     act(() => setEditorShortcut("bold", "Alt+B"));
     expect(screen.getByRole("button", { name: "Bold (Alt+B)" })).toHaveAttribute("aria-keyshortcuts", "Alt+B");
 
+    act(() => setEditorShortcut("h1", "Alt+1"));
+    expect(screen.getByRole("button", { name: "Heading 1 (Alt+1)" })).toHaveAttribute("aria-keyshortcuts", "Alt+1");
+
     act(() => setEditorShortcut("bold", null));
     expect(screen.getByRole("button", { name: "Bold" })).not.toHaveAttribute("aria-keyshortcuts");
+
+    act(() => setEditorShortcut("h1", null));
+    expect(screen.getByRole("button", { name: "Heading 1" })).not.toHaveAttribute("aria-keyshortcuts");
   });
 
   it("preserves Tab indentation and undo", () => {

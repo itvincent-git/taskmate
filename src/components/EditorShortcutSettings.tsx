@@ -9,19 +9,19 @@ import {
   setEditorShortcut,
   subscribeEditorShortcuts,
   validateShortcut,
-  type MarkdownShortcutAction,
 } from "../lib/editor-shortcuts";
+import type { MarkdownAction } from "../editor/commands";
 import { useTaskmateI18n } from "../lib/taskmate-i18n";
 import { Button } from "./ui/Button";
 
 export function EditorShortcutSettings() {
   const { t } = useTaskmateI18n();
   const shortcuts = useSyncExternalStore(subscribeEditorShortcuts, getEditorShortcuts, getEditorShortcuts);
-  const [recording, setRecording] = useState<MarkdownShortcutAction | null>(null);
+  const [recording, setRecording] = useState<MarkdownAction | null>(null);
   const [error, setError] = useState<string | null>(null);
   const platform = getShortcutPlatform();
 
-  const recordShortcut = (action: MarkdownShortcutAction, event: ReactKeyboardEvent<HTMLButtonElement>) => {
+  const recordShortcut = (action: MarkdownAction, event: ReactKeyboardEvent<HTMLButtonElement>) => {
     event.preventDefault();
     event.stopPropagation();
     const captured = captureShortcut(event.nativeEvent, platform);

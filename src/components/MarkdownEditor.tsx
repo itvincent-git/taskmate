@@ -21,7 +21,7 @@ import {
   Quote,
   Strikethrough,
 } from "lucide-react";
-import { applyMarkdownAction, type MarkdownAction } from "../editor/commands";
+import { applyMarkdownAction, MARKDOWN_ACTIONS, type MarkdownAction } from "../editor/commands";
 import { livePreview } from "../editor/livePreview";
 import {
   EDITOR_SHORTCUT_ACTIONS,
@@ -32,7 +32,6 @@ import {
   shortcutToCodeMirror,
   subscribeEditorShortcuts,
   type EditorShortcuts,
-  type MarkdownShortcutAction,
 } from "../lib/editor-shortcuts";
 import { useTaskmateI18n } from "../lib/taskmate-i18n";
 import { Button } from "./ui/Button";
@@ -43,22 +42,22 @@ interface Props {
   onChange(value: string): void;
 }
 
-const tools: Array<[MarkdownAction, string, typeof Bold]> = [
-  ["h1", "Heading 1", Heading1],
-  ["h2", "Heading 2", Heading2],
-  ["bold", "Bold", Bold],
-  ["italic", "Italic", Italic],
-  ["strike", "Strikethrough", Strikethrough],
-  ["inlineCode", "Inline code", Code],
-  ["codeBlock", "Code block", Braces],
-  ["quote", "Quote", Quote],
-  ["bullet", "Bullet list", List],
-  ["ordered", "Ordered list", ListOrdered],
-  ["task", "Task list", CheckSquare],
-  ["link", "Link", Link],
-  ["image", "Image", Image],
-  ["rule", "Horizontal rule", Minus],
-];
+const toolDetails: Record<MarkdownAction, [string, typeof Bold]> = {
+  h1: ["Heading 1", Heading1],
+  h2: ["Heading 2", Heading2],
+  bold: ["Bold", Bold],
+  italic: ["Italic", Italic],
+  strike: ["Strikethrough", Strikethrough],
+  inlineCode: ["Inline code", Code],
+  codeBlock: ["Code block", Braces],
+  quote: ["Quote", Quote],
+  bullet: ["Bullet list", List],
+  ordered: ["Ordered list", ListOrdered],
+  task: ["Task list", CheckSquare],
+  link: ["Link", Link],
+  image: ["Image", Image],
+  rule: ["Horizontal rule", Minus],
+};
 
 const syncValue = Annotation.define<boolean>();
 
@@ -128,9 +127,10 @@ export const MarkdownEditor = memo(function MarkdownEditor({ value, onChange }: 
   return (
     <section className="flex h-full min-h-0 flex-col overflow-hidden border-b border-line">
       <div className="flex min-h-[38px] shrink-0 items-center gap-0.5 overflow-x-auto border-b border-line bg-surface px-3.5 py-1 [&_button]:size-7 [&_button]:min-h-0 [&_button]:p-0" role="toolbar" aria-label={t("editor.toolbar")}>
-        {tools.map(([action, label, Icon]) => {
+        {MARKDOWN_ACTIONS.map((action) => {
+          const [label, Icon] = toolDetails[action];
           const actionLabel = locale === "zh-CN" ? toolbarLabel(action) : label;
-          const shortcut = isShortcutAction(action) ? shortcuts[action] : null;
+          const shortcut = shortcuts[action];
           const accessibleLabel = shortcut ? `${actionLabel} (${formatShortcut(shortcut, platform)})` : actionLabel;
           return (
             <Tooltip label={accessibleLabel} key={action}>
@@ -164,10 +164,6 @@ function markdownShortcutKeymap(shortcuts: EditorShortcuts) {
       },
     }] : [];
   })));
-}
-
-function isShortcutAction(action: MarkdownAction): action is MarkdownShortcutAction {
-  return EDITOR_SHORTCUT_ACTIONS.includes(action as MarkdownShortcutAction);
 }
 
 function toolbarLabel(action: MarkdownAction) {

@@ -1,20 +1,11 @@
 import type { EditorView } from "@codemirror/view";
 
-export type MarkdownAction =
-  | "h1"
-  | "h2"
-  | "bold"
-  | "italic"
-  | "strike"
-  | "inlineCode"
-  | "codeBlock"
-  | "quote"
-  | "bullet"
-  | "ordered"
-  | "task"
-  | "link"
-  | "image"
-  | "rule";
+export const MARKDOWN_ACTIONS = [
+  "h1", "h2", "bold", "italic", "strike", "inlineCode", "codeBlock",
+  "quote", "bullet", "ordered", "task", "link", "image", "rule",
+] as const;
+
+export type MarkdownAction = (typeof MARKDOWN_ACTIONS)[number];
 
 const wraps: Partial<Record<MarkdownAction, [string, string, string]>> = {
   bold: ["**", "**", "bold text"],

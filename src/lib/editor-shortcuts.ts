@@ -1,15 +1,26 @@
-export type MarkdownShortcutAction = "bold" | "italic" | "link" | "task";
+import { MARKDOWN_ACTIONS, type MarkdownAction } from "../editor/commands";
 
-export type EditorShortcuts = Record<MarkdownShortcutAction, string | null>;
+export type MarkdownShortcutAction = MarkdownAction;
+export type EditorShortcuts = Record<MarkdownAction, string | null>;
 export type ShortcutPlatform = "mac" | "other";
 export type ShortcutValidationError = "invalid" | "duplicate" | "reserved";
 
-export const EDITOR_SHORTCUT_ACTIONS: MarkdownShortcutAction[] = ["bold", "italic", "link", "task"];
+export const EDITOR_SHORTCUT_ACTIONS = MARKDOWN_ACTIONS;
 export const DEFAULT_EDITOR_SHORTCUTS: EditorShortcuts = {
+  h1: null,
+  h2: null,
   bold: "Mod+B",
   italic: "Mod+I",
-  link: "Mod+K",
+  strike: null,
+  inlineCode: null,
+  codeBlock: null,
+  quote: null,
+  bullet: null,
+  ordered: null,
   task: "Mod+L",
+  link: "Mod+K",
+  image: null,
+  rule: null,
 };
 
 export const EDITOR_SHORTCUTS_STORAGE_KEY = "taskmate-editor-shortcuts.v1";
@@ -61,7 +72,7 @@ export function subscribeEditorShortcuts(listener: () => void) {
   };
 }
 
-export function setEditorShortcut(action: MarkdownShortcutAction, shortcut: string | null) {
+export function setEditorShortcut(action: MarkdownAction, shortcut: string | null) {
   const current = getEditorShortcuts();
   saveEditorShortcuts({ ...current, [action]: shortcut });
 }
@@ -74,7 +85,7 @@ export function resetEditorShortcuts() {
 export function validateShortcut(
   shortcut: string,
   shortcuts: EditorShortcuts,
-  action: MarkdownShortcutAction,
+  action: MarkdownAction,
   platform: ShortcutPlatform = getShortcutPlatform(),
 ): ShortcutValidationError | null {
   const normalized = normalizeShortcut(shortcut);
