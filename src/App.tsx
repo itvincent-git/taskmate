@@ -24,6 +24,8 @@ import {
   Moon,
   PanelLeftClose,
   PanelLeftOpen,
+  PanelRightClose,
+  PanelRightOpen,
   Plus,
   RotateCcw,
   Rows3,
@@ -443,6 +445,7 @@ function WorkspaceSession() {
   const setExternalTask = useWorkspaceState((state) => state.setExternalTask);
   const [filterDialogOpen, setFilterDialogOpen] = useState(false);
   const [detailNarrow, setDetailNarrow] = useState(false);
+  const [propertiesPanelVisible, setPropertiesPanelVisible] = useState(true);
   const [propertiesDrawerOpen, setPropertiesDrawerOpen] = useState(false);
   const fileSignal = useWorkspaceState((state) => state.fileSignal);
   const setFileSignal = useWorkspaceState((state) => state.setFileSignal);
@@ -955,6 +958,22 @@ function WorkspaceSession() {
             </ContextMenu.Root>
           ))}
         </div>
+        {page === "/tasks" && task ? (
+          <Tooltip label={detailNarrow || !propertiesPanelVisible ? t("editor.expandProperties") : t("editor.collapseProperties")}>
+            <Button
+              ref={propertiesButton}
+              variant="ghost"
+              size="icon"
+              className="my-1 shrink-0"
+              aria-label={detailNarrow || !propertiesPanelVisible ? t("editor.expandProperties") : t("editor.collapseProperties")}
+              aria-expanded={detailNarrow ? propertiesDrawerOpen : propertiesPanelVisible}
+              aria-controls={detailNarrow ? undefined : "task-properties-panel"}
+              onClick={() => detailNarrow ? setPropertiesDrawerOpen((open) => !open) : setPropertiesPanelVisible((visible) => !visible)}
+            >
+              {detailNarrow || !propertiesPanelVisible ? <PanelRightOpen size={17} /> : <PanelRightClose size={17} />}
+            </Button>
+          </Tooltip>
+        ) : null}
       </header>
       <div className="flex min-h-0 flex-1">
         <aside className="flex w-12 shrink-0 flex-col items-center border-r border-[var(--line)] bg-[var(--surface)] py-2">
@@ -1112,26 +1131,21 @@ function WorkspaceSession() {
                         </DropdownMenu.Portal>
                       </DropdownMenu.Root>
                       <SaveBadge state={saveState} />
-                      {detailNarrow ? (
-                        <Tooltip label={t("editor.openProperties")}>
-                          <Button ref={propertiesButton} variant="outline" size="icon" className="size-8 shrink-0 [&_svg]:size-[17px]" aria-label={t("editor.openProperties")} onClick={() => setPropertiesDrawerOpen(true)}><Settings2 /></Button>
-                        </Tooltip>
-                      ) : null}
                     </header>
                     <div
                       className="grid min-h-0 flex-1 overflow-hidden"
                       data-testid="detail-split-layout"
-                      style={{ gridTemplateColumns: !detailNarrow ? `minmax(0, 1fr) 5px ${propertiesWidth}px` : "minmax(0, 1fr)" }}
+                      style={{ gridTemplateColumns: !detailNarrow && propertiesPanelVisible ? `minmax(0, 1fr) 5px ${propertiesWidth}px` : "minmax(0, 1fr)" }}
                     >
                       <div className="min-h-0 min-w-0 flex-1 overflow-hidden">
                         <Suspense fallback={<div className="flex min-h-[370px] items-center justify-center gap-2 text-muted"><LoaderCircle className="animate-spin" />{t("editor.loading")}</div>}>
                           <MarkdownEditor value={task.body} onChange={changeTaskBody} />
                         </Suspense>
                       </div>
-                      {!detailNarrow ? (
+                      {!detailNarrow && propertiesPanelVisible ? (
                         <>
                           <div className="relative z-[2] cursor-col-resize bg-line hover:bg-accent" data-testid="properties-splitter" onPointerDown={beginTaskPropertiesResize} />
-                          <aside className="min-h-0 min-w-0 overflow-hidden">
+                          <aside id="task-properties-panel" className="min-h-0 min-w-0 overflow-hidden">
                             <TaskProperties definitions={detailDefinitions} task={task} onChange={changeTaskProperty} onCreateOption={createPropertyOption} />
                           </aside>
                         </>

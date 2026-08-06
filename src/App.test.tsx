@@ -671,15 +671,25 @@ describe("Taskmate application", () => {
     expect(within(toolbar).getByRole("button", { name: "Archive" })).toHaveAttribute("aria-pressed", "false");
   });
 
-  it("shows one fixed property sidebar when the task detail is wide", async () => {
+  it("toggles the wide task property sidebar from the right edge of the tab bar", async () => {
     const user = userEvent.setup();
-    render(<App />);
+    const { container } = render(<App />);
     await user.click(screen.getByRole("button", { name: "Open workspace" }));
     await user.click(await screen.findByRole("button", { name: "New task" }));
 
+    const tablist = screen.getByRole("tablist", { name: "Open Markdown files" });
+    const collapseProperties = screen.getByRole("button", { name: "Collapse task properties" });
     expect(screen.getByRole("heading", { name: "Properties" })).toBeInTheDocument();
     expect(screen.getByLabelText("Priority")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Open task properties" })).not.toBeInTheDocument();
+    expect(collapseProperties).toHaveAttribute("aria-expanded", "true");
+    expect(tablist.compareDocumentPosition(collapseProperties) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+
+    await user.click(collapseProperties);
+    expect(screen.queryByRole("heading", { name: "Properties" })).not.toBeInTheDocument();
+    expect(container.querySelector('[data-testid="detail-split-layout"]')).toHaveStyle({ gridTemplateColumns: "minmax(0, 1fr)" });
+
+    await user.click(screen.getByRole("button", { name: "Expand task properties" }));
+    expect(screen.getByRole("heading", { name: "Properties" })).toBeInTheDocument();
   });
 
   it("opens narrow task properties in a drawer, autosaves edits, and returns focus on Escape", async () => {
@@ -690,7 +700,7 @@ describe("Taskmate application", () => {
     await user.click(screen.getByRole("button", { name: "Open workspace" }));
     await user.click(await screen.findByRole("button", { name: "New task" }));
 
-    const openProperties = await screen.findByRole("button", { name: "Open task properties" });
+    const openProperties = await screen.findByRole("button", { name: "Expand task properties" });
     expect(screen.queryByRole("heading", { name: "Properties" })).not.toBeInTheDocument();
     await user.click(openProperties);
 
@@ -718,14 +728,14 @@ describe("Taskmate application", () => {
     await user.click(screen.getByRole("button", { name: "Open workspace" }));
     await user.click(await screen.findByRole("button", { name: "New task" }));
 
-    await user.click(await screen.findByRole("button", { name: "Open task properties" }));
+    await user.click(await screen.findByRole("button", { name: "Expand task properties" }));
     expect(screen.getByRole("dialog", { name: "Properties" })).toBeInTheDocument();
     resizeDetail(800);
     expect(screen.queryByRole("dialog", { name: "Properties" })).not.toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Properties" })).toBeInTheDocument();
 
     resizeDetail(700);
-    await user.click(await screen.findByRole("button", { name: "Open task properties" }));
+    await user.click(await screen.findByRole("button", { name: "Expand task properties" }));
     fireEvent.click(screen.getByRole("button", { name: "New task", hidden: true }));
     await waitFor(() => expect(screen.queryByRole("dialog", { name: "Properties" })).not.toBeInTheDocument());
   });
@@ -736,14 +746,14 @@ describe("Taskmate application", () => {
     render(<App />);
     await user.click(screen.getByRole("button", { name: "Open workspace" }));
     await user.click(await screen.findByRole("button", { name: "New task" }));
-    expect(await screen.findByRole("button", { name: "Open task properties" })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "Expand task properties" })).toBeInTheDocument();
 
     await user.click(screen.getByRole("link", { name: "Properties" }));
     detailWidth = 800;
     await user.click(screen.getByRole("link", { name: "Tasks" }));
 
     expect(await screen.findByRole("heading", { name: "Properties" })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Open task properties" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Expand task properties" })).not.toBeInTheDocument();
   });
 
   it("persists a new tag option before saving it on the task", async () => {
