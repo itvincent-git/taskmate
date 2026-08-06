@@ -1,4 +1,8 @@
 {
+  "0.10.0": {
+    "en": "- feat(editor): support shortcuts for all markdown actions\n- feat: add sidebar navigation to settings\n- fix(editor): handle macOS Option shortcuts\n- feat: toggle task properties from tab bar\n- feat(git): list modified files\n- fix(settings): capture shortcuts after focus changes\n- fix(git): display unicode file names\n- fix(git): record changed files in commit messages\n- feat(settings): add system font preferences\n- feat(editor): open links with platform modifier",
+    "zh": "- feat(editor): support shortcuts for all markdown actions\n- feat: add sidebar navigation to settings\n- fix(editor): handle macOS Option shortcuts\n- feat: toggle task properties from tab bar\n- feat(git): list modified files\n- fix(settings): capture shortcuts after focus changes\n- fix(git): display unicode file names\n- fix(git): record changed files in commit messages\n- feat(settings): add system font preferences\n- feat(editor): open links with platform modifier"
+  },
   "0.9.1": {
     "en": "- fix(updater): avoid reporting unpublished versions\n- test: fix role query type error",
     "zh": "- fix(updater): avoid reporting unpublished versions\n- test: fix role query type error"
