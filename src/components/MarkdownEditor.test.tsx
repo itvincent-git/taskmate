@@ -92,6 +92,19 @@ describe("MarkdownEditor", () => {
     expect(view.state.doc.toString()).toBe(expected);
   });
 
+  it("applies macOS Option shortcuts using the physical key code", () => {
+    const platform = vi.spyOn(navigator, "platform", "get").mockReturnValue("MacIntel");
+    act(() => setEditorShortcut("h1", "Alt+Q"));
+    const { container } = render(<MarkdownEditor value="text" onChange={vi.fn()} />);
+    const view = editorView(container);
+    view.dispatch({ selection: { anchor: 0, head: 4 } });
+
+    fireEvent.keyDown(container.querySelector(".cm-content")!, { key: "œ", code: "KeyQ", altKey: true });
+
+    expect(view.state.doc.toString()).toBe("# text");
+    platform.mockRestore();
+  });
+
   it("replaces the old shortcut and removes a cleared shortcut", () => {
     act(() => setEditorShortcut("bold", "Alt+B"));
     const { container, unmount } = render(<MarkdownEditor value="text" onChange={vi.fn()} />);

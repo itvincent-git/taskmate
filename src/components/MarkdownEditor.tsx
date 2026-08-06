@@ -25,6 +25,7 @@ import { applyMarkdownAction, MARKDOWN_ACTIONS, type MarkdownAction } from "../e
 import { livePreview } from "../editor/livePreview";
 import {
   EDITOR_SHORTCUT_ACTIONS,
+  captureShortcut,
   formatShortcut,
   getEditorShortcuts,
   getShortcutPlatform,
@@ -83,7 +84,7 @@ export const MarkdownEditor = memo(function MarkdownEditor({ value, onChange }: 
           syntaxHighlighting(defaultHighlightStyle),
           livePreview,
           placeholder(t("editor.placeholder")),
-          shortcutCompartment.current.of(markdownShortcutKeymap(shortcuts)),
+          shortcutCompartment.current.of(markdownShortcutExtensions(shortcuts, platform)),
           keymap.of([indentWithTab, ...defaultKeymap, ...historyKeymap]),
           EditorView.lineWrapping,
           EditorView.updateListener.of((update) => {
@@ -107,13 +108,13 @@ export const MarkdownEditor = memo(function MarkdownEditor({ value, onChange }: 
       view.destroy();
       editor.current = null;
     };
-  }, [t]);
+  }, [platform, t]);
 
   useEffect(() => {
     editor.current?.dispatch({
-      effects: shortcutCompartment.current.reconfigure(markdownShortcutKeymap(shortcuts)),
+      effects: shortcutCompartment.current.reconfigure(markdownShortcutExtensions(shortcuts, platform)),
     });
-  }, [shortcuts]);
+  }, [platform, shortcuts]);
 
   useEffect(() => {
     const view = editor.current;
@@ -164,6 +165,25 @@ function markdownShortcutKeymap(shortcuts: EditorShortcuts) {
       },
     }] : [];
   })));
+}
+
+function markdownShortcutExtensions(shortcuts: EditorShortcuts, platform: ReturnType<typeof getShortcutPlatform>) {
+  const extensions = [markdownShortcutKeymap(shortcuts)];
+  if (platform !== "mac") return extensions;
+  return [
+    Prec.high(EditorView.domEventHandlers({
+      keydown(event, view) {
+        if (!event.altKey || event.ctrlKey || event.metaKey) return false;
+        const captured = captureShortcut(event, platform);
+        if (captured.type !== "shortcut") return false;
+        const action = EDITOR_SHORTCUT_ACTIONS.find((candidate) => shortcuts[candidate] === captured.shortcut);
+        if (!action) return false;
+        applyMarkdownAction(view, action);
+        return true;
+      },
+    })),
+    ...extensions,
+  ];
 }
 
 function toolbarLabel(action: MarkdownAction) {

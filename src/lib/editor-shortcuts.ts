@@ -99,7 +99,7 @@ export function validateShortcut(
 }
 
 export function captureShortcut(
-  event: Pick<KeyboardEvent, "key" | "altKey" | "ctrlKey" | "metaKey" | "shiftKey">,
+  event: Pick<KeyboardEvent, "key" | "altKey" | "ctrlKey" | "metaKey" | "shiftKey"> & Partial<Pick<KeyboardEvent, "code">>,
   platform: ShortcutPlatform,
 ): { type: "cancel" } | { type: "pending" } | { type: "invalid" } | { type: "shortcut"; shortcut: string } {
   if (event.key === "Escape") return { type: "cancel" };
@@ -113,7 +113,7 @@ export function captureShortcut(
   if (event.shiftKey) modifiers.push("Shift");
   if (!modifiers.some((modifier) => modifier !== "Shift")) return { type: "invalid" };
 
-  const key = normalizeKey(event.key);
+  const key = normalizeKey(event.key) ?? normalizeKeyCode(event.code);
   if (!key) return { type: "invalid" };
   return { type: "shortcut", shortcut: [...modifiers, key].join("+") };
 }
@@ -191,10 +191,22 @@ function normalizeShortcut(shortcut: string) {
 function normalizeKey(key: string) {
   if (key === " ") return "Space";
   if (key === "+") return "Plus";
-  if (key.length === 1) return /[a-z]/i.test(key) ? key.toUpperCase() : key;
+  if (/^[`~!@#$%^&*()_\-=[\]{}\\|;:'",.<>/?]$/.test(key)) return key;
+  if (/^[a-z]$/i.test(key)) return key.toUpperCase();
+  if (/^[0-9]$/.test(key)) return key;
   const aliases: Record<string, string> = { Esc: "Escape", Left: "ArrowLeft", Right: "ArrowRight", Up: "ArrowUp", Down: "ArrowDown" };
   const normalized = aliases[key] ?? key;
   return /^[A-Za-z][A-Za-z0-9]*$/.test(normalized) ? normalized : null;
+}
+
+function normalizeKeyCode(code: string | undefined) {
+  if (!code) return null;
+  if (/^Key[A-Z]$/.test(code)) return code.slice(3);
+  if (/^Digit[0-9]$/.test(code)) return code.slice(5);
+  return ({
+    Backquote: "`", Minus: "-", Equal: "=", BracketLeft: "[", BracketRight: "]", Backslash: "\\",
+    Semicolon: ";", Quote: "'", Comma: ",", Period: ".", Slash: "/",
+  } as Record<string, string>)[code] ?? null;
 }
 
 function displayKey(key: string) {
