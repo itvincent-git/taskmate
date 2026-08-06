@@ -3,10 +3,14 @@ import { EditorView } from "@codemirror/view";
 import { StrictMode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { setEditorShortcut, type MarkdownShortcutAction } from "../lib/editor-shortcuts";
+import { api } from "../lib/api";
 import { MarkdownEditor } from "./MarkdownEditor";
 
 describe("MarkdownEditor", () => {
-  beforeEach(() => localStorage.clear());
+  beforeEach(() => {
+    localStorage.clear();
+    vi.restoreAllMocks();
+  });
 
   it("uses a 14px document font size", () => {
     const { container } = render(<MarkdownEditor value="Document body" onChange={vi.fn()} />);
@@ -44,6 +48,33 @@ describe("MarkdownEditor", () => {
     container.querySelector<HTMLButtonElement>('[data-marker-kind="task"]')?.click();
 
     expect(onChange).toHaveBeenCalledWith("plain\n- [x] todo");
+  });
+
+  it.each([
+    ["MacIntel", { metaKey: true }],
+    ["Win32", { ctrlKey: true }],
+  ])("opens links without entering edit mode using the platform modifier on %s", (platform, modifier) => {
+    vi.spyOn(navigator, "platform", "get").mockReturnValue(platform);
+    vi.spyOn(EditorView.prototype, "posAtCoords").mockReturnValue(8);
+    const openExternalUrl = vi.spyOn(api, "openExternalUrl").mockResolvedValue();
+    const { container } = render(<MarkdownEditor value={"plain\n[OpenAI](https://openai.com)"} onChange={vi.fn()} />);
+    const view = editorView(container);
+
+    fireEvent.mouseDown(container.querySelector(".cm-content")!, { ...modifier, clientX: 10, clientY: 10 });
+
+    expect(openExternalUrl).toHaveBeenCalledWith("https://openai.com");
+    expect(view.state.selection.main.head).toBe(0);
+  });
+
+  it("keeps ordinary link clicks in the editor", () => {
+    vi.spyOn(navigator, "platform", "get").mockReturnValue("Win32");
+    vi.spyOn(EditorView.prototype, "posAtCoords").mockReturnValue(8);
+    const openExternalUrl = vi.spyOn(api, "openExternalUrl").mockResolvedValue();
+    const { container } = render(<MarkdownEditor value={"plain\n[OpenAI](https://openai.com)"} onChange={vi.fn()} />);
+
+    fireEvent.mouseDown(container.querySelector(".cm-content")!, { clientX: 10, clientY: 10 });
+
+    expect(openExternalUrl).not.toHaveBeenCalled();
   });
 
   it("renders checked task items without crashing", () => {

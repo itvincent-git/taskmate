@@ -22,7 +22,8 @@ import {
   Strikethrough,
 } from "lucide-react";
 import { applyMarkdownAction, MARKDOWN_ACTIONS, type MarkdownAction } from "../editor/commands";
-import { livePreview } from "../editor/livePreview";
+import { linkUrlAt, livePreview } from "../editor/livePreview";
+import { api } from "../lib/api";
 import {
   EDITOR_SHORTCUT_ACTIONS,
   captureShortcut,
@@ -83,6 +84,18 @@ export const MarkdownEditor = memo(function MarkdownEditor({ value, onChange }: 
           markdown({ extensions: [GFM] }),
           syntaxHighlighting(defaultHighlightStyle),
           livePreview,
+          EditorView.domEventHandlers({
+            mousedown(event, editorView) {
+              const modifierPressed = platform === "mac" ? event.metaKey : event.ctrlKey;
+              if (event.button !== 0 || !modifierPressed) return false;
+              const position = editorView.posAtCoords({ x: event.clientX, y: event.clientY });
+              const url = position === null ? null : linkUrlAt(editorView.state, position);
+              if (!url) return false;
+              event.preventDefault();
+              void api.openExternalUrl(url);
+              return true;
+            },
+          }),
           placeholder(t("editor.placeholder")),
           shortcutCompartment.current.of(markdownShortcutExtensions(shortcuts, platform)),
           keymap.of([indentWithTab, ...defaultKeymap, ...historyKeymap]),

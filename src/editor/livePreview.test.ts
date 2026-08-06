@@ -3,7 +3,7 @@ import { EditorState } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 import { markdown } from "@codemirror/lang-markdown";
 import { GFM } from "@lezer/markdown";
-import { livePreview, rangeIsActive } from "./livePreview";
+import { linkUrlAt, livePreview, rangeIsActive } from "./livePreview";
 
 describe("Live Preview activation", () => {
   it("reveals syntax when the cursor or selection intersects its node", () => {
@@ -55,6 +55,16 @@ describe("Live Preview activation", () => {
 
     view.destroy();
     host.remove();
+  });
+
+  it("resolves formatted, autolink, and bare URL destinations", () => {
+    const doc = "[Example](https://example.com) <https://tauri.app> https://openai.com plain";
+    const state = EditorState.create({ doc, extensions: [markdown({ extensions: [GFM] })] });
+
+    expect(linkUrlAt(state, doc.indexOf("Example"))).toBe("https://example.com");
+    expect(linkUrlAt(state, doc.indexOf("tauri"))).toBe("https://tauri.app");
+    expect(linkUrlAt(state, doc.indexOf("openai"))).toBe("https://openai.com");
+    expect(linkUrlAt(state, doc.indexOf("plain"))).toBeNull();
   });
 
   it("hides heading markers and separator whitespace for h1 through h6", () => {

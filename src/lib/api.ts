@@ -3,6 +3,7 @@ import { listen } from "@tauri-apps/api/event";
 import { resolve } from "@tauri-apps/api/path";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { open } from "@tauri-apps/plugin-dialog";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import type {
   GitStatus,
   PropertyDefinition,
@@ -129,6 +130,10 @@ export const api = {
   async copyText(text: string): Promise<void> {
     if (isTauri) return writeText(text);
     return navigator.clipboard.writeText(text);
+  },
+  async openExternalUrl(url: string): Promise<void> {
+    if (isTauri) return openUrl(url);
+    window.open(url, "_blank", "noopener,noreferrer");
   },
   async resolveTaskFilePath(workspacePath: string, task: Pick<Task, "archived" | "fileName">): Promise<string> {
     if (isTauri) return resolve(workspacePath, task.archived ? "archive" : "tasks", task.fileName);

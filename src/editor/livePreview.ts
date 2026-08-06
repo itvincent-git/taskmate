@@ -63,6 +63,19 @@ export function rangeIsActive(
   return ranges.some((range) => range.from <= to && range.to >= from);
 }
 
+export function linkUrlAt(state: EditorState, position: number): string | null {
+  for (const bias of [1, -1] as const) {
+    let node: SyntaxNode | null = syntaxTree(state).resolveInner(position, bias);
+    while (node && node.name !== "Link" && node.name !== "Autolink" && node.name !== "URL") {
+      node = node.parent;
+    }
+    if (!node) continue;
+    const url = node.name === "URL" ? node : node.getChild("URL");
+    if (url) return state.sliceDoc(url.from, url.to);
+  }
+  return null;
+}
+
 function nodeIsActive(state: EditorState, node: SyntaxNode, composing: boolean) {
   return rangeIsActive(node.from, node.to, state.selection.ranges, composing);
 }
