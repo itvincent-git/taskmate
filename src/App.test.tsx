@@ -356,6 +356,25 @@ describe("Taskmate application", () => {
     expect(screen.getByRole("heading", { name: "Git & GitHub" })).toBeInTheDocument();
   });
 
+  it("restores open tabs and the active tab when reopening the app", async () => {
+    const user = userEvent.setup();
+    const firstRender = render(<App />);
+    await user.click(screen.getByRole("button", { name: "Open workspace" }));
+    await user.click(await screen.findByRole("button", { name: "New task" }));
+    await user.click(screen.getByRole("link", { name: "Properties" }));
+    await user.click(screen.getByRole("link", { name: "Settings" }));
+
+    expect(screen.getAllByRole("tab")).toHaveLength(3);
+    expect(screen.getByRole("tab", { name: /Settings/ })).toHaveAttribute("aria-selected", "true");
+
+    firstRender.unmount();
+    render(<App />);
+
+    await waitFor(() => expect(screen.getAllByRole("tab")).toHaveLength(3));
+    expect(screen.getByRole("tab", { name: /Properties/ })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: /Settings/ })).toHaveAttribute("aria-selected", "true");
+  });
+
   it("lists the files currently modified in Git", async () => {
     const user = userEvent.setup();
     vi.spyOn(api, "gitStatus").mockResolvedValue({

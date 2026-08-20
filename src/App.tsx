@@ -75,11 +75,14 @@ const TASK_PANEL_KEY = "taskmate-task-panel.v1";
 const TASK_SEARCH_KEY = "taskmate-task-search.v1";
 const TASK_LIST_WIDTH_KEY = "taskmate-task-list-width.v1";
 const TASK_PROPERTIES_WIDTH_KEY = "taskmate-task-properties-width.v1";
+const OPEN_TABS_KEY = "taskmate-open-tabs.v1";
 const MarkdownEditor = lazy(() => import("./components/MarkdownEditor").then((module) => ({ default: module.MarkdownEditor })));
 
 type StateUpdate<T> = SetStateAction<T>;
 type WorkspacePage = "/properties" | "/backup" | "/settings";
 type OpenTab = ({ kind: "task" } & Pick<Task, "id" | "title" | "fileName" | "archived">) | { kind: "page"; id: WorkspacePage };
+type StoredOpenTab = { kind: "task"; id: string } | { kind: "page"; id: WorkspacePage };
+type StoredWorkspaceTabs = { tabs: StoredOpenTab[]; activeTabKey: string };
 type WorkspaceData = {
   workspacePath: string;
   recentWorkspaces: string[];
@@ -161,6 +164,56 @@ function loadRecentWorkspaces() {
   } catch {
     const legacy = localStorage.getItem("taskmate-workspace");
     return legacy ? [legacy] : [];
+  }
+}
+
+function tabKey(tab: OpenTab) {
+  return `${tab.kind}:${tab.id}`;
+}
+
+function loadWorkspaceTabs(path: string, tasks: TaskSummary[]): { tabs: OpenTab[]; activeTabKey: string } | null {
+  try {
+    const stored = JSON.parse(localStorage.getItem(OPEN_TABS_KEY) || "{}") as Record<string, StoredWorkspaceTabs>;
+    const preference = stored[path];
+    if (!preference || !Array.isArray(preference.tabs)) return null;
+    const tasksById = new Map(tasks.map((task) => [task.id, task]));
+    const seen = new Set<string>();
+    const tabs: OpenTab[] = [];
+    for (const item of preference.tabs) {
+      let tab: OpenTab | null = null;
+      if (item?.kind === "task" && typeof item.id === "string") {
+        const task = tasksById.get(item.id);
+        if (task) tab = { kind: "task", id: task.id, title: task.title, fileName: task.fileName, archived: task.archived };
+      } else if (item?.kind === "page" && (item.id === "/properties" || item.id === "/backup" || item.id === "/settings")) {
+        tab = { kind: "page", id: item.id };
+      }
+      if (!tab || seen.has(tabKey(tab))) continue;
+      seen.add(tabKey(tab));
+      tabs.push(tab);
+    }
+    const activeTabKey = tabs.some((tab) => tabKey(tab) === preference.activeTabKey) ? preference.activeTabKey : tabs[0] ? tabKey(tabs[0]) : "";
+    return { tabs, activeTabKey };
+  } catch {
+    return null;
+  }
+}
+
+function saveWorkspaceTabs(path: string, tabs: OpenTab[], activeTabKey: string) {
+  let stored: Record<string, StoredWorkspaceTabs> = {};
+  try {
+    const parsed = JSON.parse(localStorage.getItem(OPEN_TABS_KEY) || "{}");
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) stored = parsed as Record<string, StoredWorkspaceTabs>;
+  } catch {
+    // Replace malformed preferences with the current workspace state.
+  }
+  stored[path] = {
+    tabs: tabs.map((tab) => ({ kind: tab.kind, id: tab.id })) as StoredOpenTab[],
+    activeTabKey,
+  };
+  try {
+    localStorage.setItem(OPEN_TABS_KEY, JSON.stringify(stored));
+  } catch {
+    // The app can continue without tab restoration when storage is unavailable.
   }
 }
 
@@ -487,16 +540,29 @@ function WorkspaceSession() {
       setLockedPropertyIds(new Set(snapshot.properties.map((definition) => definition.id)));
       setTasks(snapshot.tasks);
       setQuery({ search: "", archived: false, ...loadFilterSort(path) });
-      setWorkspaceOpen(true);
-      navigate("/tasks", { replace: true });
-      if (snapshot.tasks[0]) {
+      const restored = loadWorkspaceTabs(path, snapshot.tasks);
+      if (restored) {
+        const activeTab = restored.tabs.find((tab) => tabKey(tab) === restored.activeTabKey);
+        setOpenTabs(restored.tabs);
+        if (activeTab?.kind === "task") {
+          setTask(await api.getTask(activeTab.id));
+          navigate("/tasks", { replace: true });
+        } else {
+          setTask(null);
+          navigate(activeTab?.id ?? "/tasks", { replace: true });
+        }
+      } else if (snapshot.tasks[0]) {
         const first = await api.getTask(snapshot.tasks[0].id);
         setTask(first);
         setOpenTabs([{ kind: "task", id: first.id, title: first.title, fileName: first.fileName, archived: first.archived }]);
+        navigate("/tasks", { replace: true });
       } else {
         setTask(null);
         setOpenTabs([]);
+        navigate("/tasks", { replace: true });
       }
+      setSaveState("saved");
+      setWorkspaceOpen(true);
     } catch (cause) {
       setError(errorMessage(cause));
     } finally {
@@ -747,12 +813,14 @@ function WorkspaceSession() {
       setError(errorMessage(cause));
     }
   };
-  const tabKey = (tab: OpenTab) => `${tab.kind}:${tab.id}`;
   const tabTitle = (tab: OpenTab) => tab.kind === "task" ? tab.title : t(tab.id === "/properties" ? "nav.properties" : tab.id === "/backup" ? "nav.backup" : "nav.settings");
   const activeTabKey = page === "/tasks" ? (selectedId ? `task:${selectedId}` : "") : `page:${page}`;
   useEffect(() => {
     activeTab.current?.scrollIntoView({ block: "nearest", inline: "nearest" });
   }, [activeTabKey]);
+  useEffect(() => {
+    if (workspaceOpen) saveWorkspaceTabs(workspacePath, openTabs, activeTabKey);
+  }, [activeTabKey, openTabs, workspaceOpen, workspacePath]);
   const closeTabs = async (closing: OpenTab[], preferred?: OpenTab) => {
     const closingKeys = new Set(closing.map(tabKey));
     if (task && closingKeys.has(`task:${task.id}`) && saveState === "dirty") await save(task);
