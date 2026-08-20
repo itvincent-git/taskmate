@@ -243,6 +243,7 @@ describe("Live Preview activation", () => {
     expect(tableRows[1]?.querySelectorAll('[role="cell"]')).toHaveLength(2);
     expect(tableRows[0]?.textContent).toContain("Item");
     expect(host.textContent).not.toContain("| --- |");
+    expect(getComputedStyle(host.querySelector<HTMLElement>(".cm-line.hidden")!).display).toBe("none");
 
     view.dispatch({ selection: { anchor: source.indexOf("Item") } });
     expect(host.querySelector('[data-preview-kind="table-row"]')).toBeNull();

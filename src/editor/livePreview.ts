@@ -427,7 +427,7 @@ function buildDecorations(view: EditorView): DecorationSet {
             ranges.push({
               from: table.separator.from,
               to: table.separator.from,
-              decoration: Decoration.line({ class: "hidden" }),
+              decoration: Decoration.line({ class: "hidden", attributes: { style: "display: none" } }),
             });
             ranges.push({
               from: table.separator.from,
