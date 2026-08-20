@@ -456,6 +456,8 @@ function WorkspaceSession() {
   const [detailNarrow, setDetailNarrow] = useState(false);
   const [propertiesPanelVisible, setPropertiesPanelVisible] = useState(true);
   const [propertiesDrawerOpen, setPropertiesDrawerOpen] = useState(false);
+  const [titleDraft, setTitleDraft] = useState("");
+  const [titleEditing, setTitleEditing] = useState(false);
   const fileSignal = useWorkspaceState((state) => state.fileSignal);
   const setFileSignal = useWorkspaceState((state) => state.setFileSignal);
   const [detailPanel, setDetailPanel] = useState<HTMLElement | null>(null);
@@ -555,6 +557,10 @@ function WorkspaceSession() {
     setPropertiesDrawerOpen(false);
   }, [detailNarrow, selectedId]);
 
+  useEffect(() => {
+    setTitleDraft(task?.title ?? "");
+  }, [task?.id, task?.title]);
+
   const refresh = useCallback(async (nextQuery = query) => {
     if (!workspaceOpen) return;
     try {
@@ -619,10 +625,10 @@ function WorkspaceSession() {
   }, [refresh]);
 
   useEffect(() => {
-    if (!task || saveState !== "dirty") return;
+    if (!task || saveState !== "dirty" || titleEditing) return;
     const timer = window.setTimeout(() => void save(task), 650);
     return () => window.clearTimeout(timer);
-  }, [task, save, saveState]);
+  }, [task, save, saveState, titleEditing]);
 
   useEffect(() => {
     if (!task) return;
@@ -656,6 +662,14 @@ function WorkspaceSession() {
       setOpenTabs((tabs) => tabs.map((tab) => tab.kind === "task" && tab.id === task.id ? { ...tab, title: patch.title! } : tab));
     }
     setSaveState("dirty");
+  };
+  const commitTaskTitle = () => {
+    setTitleEditing(false);
+    if (!task || titleDraft === task.title) return;
+    const current = { ...task, title: titleDraft };
+    setTask(current);
+    setOpenTabs((tabs) => tabs.map((tab) => tab.kind === "task" && tab.id === current.id ? { ...tab, title: current.title } : tab));
+    void save(current);
   };
   const editProperty = (key: string, value: unknown) => editTask({ properties: { ...task?.properties, [key]: value } });
   const copyText = async (text: string) => {
@@ -1115,7 +1129,7 @@ function WorkspaceSession() {
                 {!task ? <div className="flex h-full flex-col items-center justify-center text-center text-muted [&>h2]:mt-3 [&>h2]:mb-[3px] [&>h2]:font-heading [&>h2]:text-base [&>h2]:text-foreground [&>p]:m-0 [&>p]:text-xs"><div className="grid size-[52px] place-items-center rounded-full bg-accent-soft text-accent"><Check /></div><h2>{t("tasks.select")}</h2><p>{t("tasks.selectHint")}</p></div> : (
                   <div className="flex h-full flex-col overflow-hidden">
                     <header className="z-[5] flex h-10 shrink-0 items-center gap-1 border-b border-line bg-[color-mix(in_srgb,var(--surface)_92%,transparent)] py-1 pr-2 pl-3 backdrop-blur-xl" data-testid="detail-header">
-                      <Input className="min-h-0 min-w-20 flex-1 rounded-none border-0 bg-transparent p-0 font-heading text-lg font-[730] tracking-[-.025em] shadow-none ring-0 focus:ring-0" aria-label={t("tasks.title")} value={task.title} onChange={(event) => editTask({ title: event.target.value })} />
+                      <Input className="min-h-0 min-w-20 flex-1 rounded-none border-0 bg-transparent p-0 font-heading text-lg font-[730] tracking-[-.025em] shadow-none ring-0 focus:ring-0" aria-label={t("tasks.title")} value={titleDraft} onFocus={() => setTitleEditing(true)} onChange={(event) => setTitleDraft(event.target.value)} onBlur={commitTaskTitle} onKeyDown={(event) => { if (event.key === "Enter") event.currentTarget.blur(); }} />
                       <DropdownMenu.Root>
                         <Tooltip label={t("editor.moreActions")}>
                           <DropdownMenu.Trigger asChild>

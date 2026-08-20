@@ -141,6 +141,7 @@ describe("Taskmate application", () => {
     expect(title).toHaveValue("Untitled task");
     await user.clear(title);
     await user.type(title, "Release checklist");
+    await user.tab();
     await waitFor(() => expect(screen.getByText("Saved")).toBeInTheDocument(), { timeout: 2500 });
 
     const stored = localStorage.getItem("taskmate-browser-demo");
@@ -148,6 +149,7 @@ describe("Taskmate application", () => {
     expect(stored).toContain("not-started");
 
     await user.clear(title);
+    await user.tab();
     await waitFor(() => expect(title).toHaveValue("Release checklist"), { timeout: 2500 });
     expect(localStorage.getItem("taskmate-browser-demo")).toContain("Release checklist");
   });
@@ -184,6 +186,7 @@ describe("Taskmate application", () => {
 
     const title = await screen.findByLabelText("Task title");
     fireEvent.change(title, { target: { value: "Latest title" } });
+    fireEvent.blur(title);
     await user.click(trigger);
     expect(screen.getAllByRole("menuitem")).toHaveLength(3);
     expect(screen.getByRole("menuitem", { name: "Archive task" })).toBeInTheDocument();
@@ -432,16 +435,35 @@ describe("Taskmate application", () => {
     expect(localStorage.getItem("taskmate.locale.v1")).toBe("zh-CN");
   });
 
-  it("shows a failed autosave state instead of pretending an edit persisted", async () => {
+  it("shows a failed save state instead of pretending a finished title edit persisted", async () => {
     const user = userEvent.setup();
     render(<App />);
     await user.click(screen.getByRole("button", { name: "Open workspace" }));
     await user.click(await screen.findByRole("button", { name: "New task" }));
     const failure = vi.spyOn(api, "saveTask").mockRejectedValueOnce(new Error("disk full"));
     await user.type(await screen.findByLabelText("Task title"), " changed");
+    await user.tab();
     expect(await screen.findByText("Save failed", {}, { timeout: 2500 })).toBeInTheDocument();
     expect(screen.getByRole("alert")).toHaveTextContent("disk full");
     failure.mockRestore();
+  });
+
+  it("saves a title-derived filename only after title editing finishes", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(screen.getByRole("button", { name: "Open workspace" }));
+    await user.click(await screen.findByRole("button", { name: "New task" }));
+    const saveTask = vi.spyOn(api, "saveTask");
+    const title = await screen.findByLabelText("Task title");
+
+    await user.clear(title);
+    await user.type(title, "Draft filename");
+    await act(() => new Promise((resolve) => window.setTimeout(resolve, 750)));
+
+    expect(saveTask).not.toHaveBeenCalled();
+    await user.tab();
+    await waitFor(() => expect(saveTask).toHaveBeenCalledOnce());
+    expect(saveTask).toHaveBeenCalledWith(expect.objectContaining({ title: "Draft filename" }));
   });
 
   it("remembers workspaces and offers switching without retyping", async () => {
@@ -545,7 +567,9 @@ describe("Taskmate application", () => {
     render(<App />);
     await user.click(screen.getByRole("button", { name: "Open workspace" }));
     await user.click(await screen.findByRole("button", { name: "New task" }));
-    fireEvent.change(await screen.findByLabelText("Task title"), { target: { value: "Background task" } });
+    const title = await screen.findByLabelText("Task title");
+    fireEvent.change(title, { target: { value: "Background task" } });
+    fireEvent.blur(title);
     await user.click(screen.getByRole("button", { name: "New task" }));
 
     const backgroundTab = screen.getAllByRole("tab")[0];
