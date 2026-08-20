@@ -36,6 +36,54 @@ describe("Live Preview activation", () => {
     host.remove();
   });
 
+  it("renders safe inline HTML and reveals its source while editing", () => {
+    const host = document.createElement("div");
+    document.body.append(host);
+    const source = 'plain\nBefore <mark>important</mark> and <a href="https://example.com">linked</a>.';
+    const view = new EditorView({
+      parent: host,
+      state: EditorState.create({
+        doc: source,
+        extensions: [markdown(), livePreview],
+      }),
+    });
+
+    expect(host.querySelector("mark")).toHaveTextContent("important");
+    expect(host.querySelector('a[data-link-url="https://example.com"]')).toHaveTextContent("linked");
+    expect(host.textContent).not.toContain("<mark>");
+
+    view.dispatch({ selection: { anchor: source.indexOf("important") } });
+    expect(host.querySelector("mark")).toBeNull();
+    expect(host.textContent).toContain("<mark>important</mark>");
+
+    view.destroy();
+    host.remove();
+  });
+
+  it("renders block HTML without executing unsafe content", () => {
+    const host = document.createElement("div");
+    document.body.append(host);
+    const source = 'plain\n\n<details open onclick="alert(1)">\n<summary>More</summary>\n<script>unsafe()</script><strong>Safe</strong>\n</details>';
+    const view = new EditorView({
+      parent: host,
+      state: EditorState.create({
+        doc: source,
+        extensions: [markdown(), livePreview],
+      }),
+    });
+
+    const preview = host.querySelector('[data-preview-kind="html"]');
+    expect(preview?.querySelector("details")).toHaveAttribute("open");
+    expect(preview?.querySelector("summary")).toHaveTextContent("More");
+    expect(preview?.querySelector("strong")).toHaveTextContent("Safe");
+    expect(preview?.querySelector("script")).toBeNull();
+    expect(preview?.querySelector("details")).not.toHaveAttribute("onclick");
+    expect(preview).not.toHaveTextContent("unsafe()");
+
+    view.destroy();
+    host.remove();
+  });
+
   it("keeps bare URLs visible while hiding formatted link targets", () => {
     const host = document.createElement("div");
     document.body.append(host);

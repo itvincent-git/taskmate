@@ -54,6 +54,120 @@ const styledNodes: Record<string, string> = {
   Image: "",
 };
 
+const allowedHtmlTags = new Set([
+  "a", "abbr", "b", "blockquote", "br", "code", "del", "details", "div", "em",
+  "h1", "h2", "h3", "h4", "h5", "h6", "hr", "i", "kbd", "li", "mark", "ol",
+  "p", "pre", "q", "s", "small", "span", "strong", "sub", "summary", "sup", "table",
+  "tbody", "td", "tfoot", "th", "thead", "time", "tr", "u", "ul",
+]);
+
+const voidHtmlTags = new Set(["br", "hr"]);
+
+const htmlTagClasses: Partial<Record<string, string>> = {
+  a: "text-accent underline underline-offset-2",
+  blockquote: "my-2 border-l-3 border-line pl-3 text-muted",
+  code: "rounded border border-line bg-surface-soft px-1 py-px font-mono text-[.9em]",
+  details: "my-2 rounded-md border border-line px-3 py-2",
+  h1: "my-2 text-[1.85em] font-[760] leading-[1.45]",
+  h2: "my-2 text-[1.52em] font-[730] leading-[1.5]",
+  h3: "my-2 text-[1.3em] font-bold",
+  h4: "my-2 font-bold",
+  h5: "my-2 font-bold",
+  h6: "my-2 font-bold",
+  hr: "my-3 border-0 border-t border-line",
+  kbd: "rounded border border-line bg-surface-soft px-1.5 py-0.5 font-mono text-[.85em] shadow-sm",
+  mark: "rounded bg-[color-mix(in_srgb,var(--accent)_22%,transparent)] px-0.5 text-inherit",
+  ol: "my-2 list-decimal pl-6",
+  pre: "my-2 overflow-x-auto rounded-md bg-surface-soft p-3 font-mono text-[.9em]",
+  summary: "cursor-pointer font-semibold",
+  table: "my-2 border-collapse",
+  td: "border border-line px-2.5 py-1.5",
+  th: "border border-line bg-surface-soft px-2.5 py-1.5 font-bold",
+  ul: "my-2 list-disc pl-6",
+};
+
+function htmlTag(source: string) {
+  const match = source.match(/^<\s*(\/?)\s*([A-Za-z][\w:-]*)\b[^>]*?(\/?)>$/s);
+  if (!match) return null;
+  return {
+    closing: Boolean(match[1]),
+    name: match[2].toLowerCase(),
+    selfClosing: Boolean(match[3]),
+  };
+}
+
+function safeLinkUrl(value: string) {
+  return /^(?:https?:|mailto:)/i.test(value) ? value : null;
+}
+
+function sanitizedHtmlNode(node: Node): Node | null {
+  if (node.nodeType === Node.TEXT_NODE) return document.createTextNode(node.textContent ?? "");
+  if (!(node instanceof Element)) return null;
+  const tag = node.tagName.toLowerCase();
+  if (tag === "script" || tag === "style") return null;
+
+  const children = document.createDocumentFragment();
+  node.childNodes.forEach((child) => {
+    const sanitized = sanitizedHtmlNode(child);
+    if (sanitized) children.append(sanitized);
+  });
+  if (!allowedHtmlTags.has(tag)) return children;
+
+  const element = document.createElement(tag);
+  const className = htmlTagClasses[tag];
+  if (className) element.className = className;
+  element.append(children);
+  if (tag === "details" && node.hasAttribute("open")) element.setAttribute("open", "");
+  if (tag === "abbr" || tag === "q") {
+    const title = node.getAttribute("title");
+    if (title) element.setAttribute("title", title);
+  }
+  if (tag === "time") {
+    const dateTime = node.getAttribute("datetime");
+    if (dateTime) element.setAttribute("datetime", dateTime);
+  }
+  if (tag === "ol") {
+    const start = node.getAttribute("start");
+    if (start && /^-?\d+$/.test(start)) element.setAttribute("start", start);
+  }
+  if (tag === "td" || tag === "th") {
+    for (const attribute of ["colspan", "rowspan"] as const) {
+      const value = node.getAttribute(attribute);
+      if (value && /^\d+$/.test(value)) element.setAttribute(attribute, value);
+    }
+  }
+  if (tag === "a") {
+    const href = safeLinkUrl(node.getAttribute("href") ?? "");
+    if (href) {
+      element.setAttribute("data-link-url", href);
+    }
+  }
+  return element;
+}
+
+class HtmlWidget extends WidgetType {
+  constructor(readonly source: string, readonly block: boolean) {
+    super();
+  }
+  eq(other: HtmlWidget) {
+    return this.source === other.source && this.block === other.block;
+  }
+  toDOM() {
+    const wrapper = document.createElement("span");
+    wrapper.className = this.block ? "cm-html-preview cm-html-preview-block" : "cm-html-preview";
+    wrapper.dataset.previewKind = "html";
+    const parsed = new DOMParser().parseFromString(this.source, "text/html");
+    parsed.body.childNodes.forEach((child) => {
+      const sanitized = sanitizedHtmlNode(child);
+      if (sanitized) wrapper.append(sanitized);
+    });
+    return wrapper;
+  }
+  ignoreEvent() {
+    return false;
+  }
+}
+
 export function rangeIsActive(
   from: number,
   to: number,
@@ -212,10 +326,50 @@ function tableDecorations(state: EditorState, node: SyntaxNode) {
   };
 }
 
+function inlineHtmlRange(state: EditorState, node: SyntaxNode) {
+  const tag = htmlTag(state.sliceDoc(node.from, node.to));
+  if (!tag || tag.closing || !allowedHtmlTags.has(tag.name)) return null;
+  if (tag.selfClosing || voidHtmlTags.has(tag.name)) return { from: node.from, to: node.to };
+
+  const siblings = node.parent?.getChildren("HTMLTag") ?? [];
+  const index = siblings.findIndex((candidate) => candidate.from === node.from && candidate.to === node.to);
+  let depth = 0;
+  for (const candidate of siblings.slice(index + 1)) {
+    const candidateTag = htmlTag(state.sliceDoc(candidate.from, candidate.to));
+    if (!candidateTag || candidateTag.name !== tag.name) continue;
+    if (!candidateTag.closing && !candidateTag.selfClosing) {
+      depth += 1;
+    } else if (candidateTag.closing && depth > 0) {
+      depth -= 1;
+    } else if (candidateTag.closing) {
+      return { from: node.from, to: candidate.to };
+    }
+  }
+  return null;
+}
+
+function htmlBlockDecorations(state: EditorState, node: SyntaxNode) {
+  const firstLine = state.doc.lineAt(node.from);
+  const decorations: Array<{ from: number; to: number; decoration: Decoration }> = [{
+    from: node.from,
+    to: Math.min(firstLine.to, node.to),
+    decoration: Decoration.replace({ widget: new HtmlWidget(state.sliceDoc(node.from, node.to), true) }),
+  }];
+  for (let number = firstLine.number + 1; number <= state.doc.lineAt(node.to).number; number += 1) {
+    const line = state.doc.line(number);
+    decorations.push({ from: line.from, to: line.from, decoration: Decoration.line({ class: "hidden" }) });
+    if (line.to > line.from) {
+      decorations.push({ from: line.from, to: line.to, decoration: Decoration.replace({}) });
+    }
+  }
+  return decorations;
+}
+
 function buildDecorations(view: EditorView): DecorationSet {
   const builder = new RangeSetBuilder<Decoration>();
   const ranges: Array<{ from: number; to: number; decoration: Decoration }> = [];
   for (const viewport of view.visibleRanges) {
+    let htmlPreviewTo = -1;
     syntaxTree(view.state).iterate({
       from: viewport.from,
       to: viewport.to,
@@ -224,6 +378,23 @@ function buildDecorations(view: EditorView): DecorationSet {
           ? node.node
           : node.node.parent ?? node.node;
         const active = nodeIsActive(view.state, activeNode, view.composing);
+        if (!active && node.name === "HTMLBlock") {
+          ranges.push(...htmlBlockDecorations(view.state, node.node));
+          return false;
+        }
+        if (node.name === "HTMLTag" && node.from >= htmlPreviewTo) {
+          const range = inlineHtmlRange(view.state, node.node);
+          if (range) {
+            htmlPreviewTo = range.to;
+            if (!rangeIsActive(range.from, range.to, view.state.selection.ranges, view.composing)) {
+              ranges.push({
+                ...range,
+                decoration: Decoration.replace({ widget: new HtmlWidget(view.state.sliceDoc(range.from, range.to), false) }),
+              });
+            }
+          }
+          return false;
+        }
         if (!active && node.name === "Table") {
           const table = tableDecorations(view.state, node.node);
           ranges.push(...table.rows);
