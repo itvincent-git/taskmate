@@ -76,10 +76,11 @@ export function applyMarkdownAction(view: EditorView, action: MarkdownAction) {
   const changes = [];
   for (let number = startLine.number; number <= endLine.number; number += 1) {
     const line = view.state.doc.line(number);
-    const existingPrefix = view.state.sliceDoc(line.from, Math.min(line.to, line.from + prefix.length));
-    changes.push(existingPrefix === prefix
-      ? { from: line.from, to: line.from + prefix.length, insert: "" }
-      : { from: line.from, insert: prefix });
+    const linePrefix = action === "ordered" ? `${number - startLine.number + 1}. ` : prefix;
+    const existingPrefix = view.state.sliceDoc(line.from, Math.min(line.to, line.from + linePrefix.length));
+    changes.push(existingPrefix === linePrefix
+      ? { from: line.from, to: line.from + linePrefix.length, insert: "" }
+      : { from: line.from, insert: linePrefix });
   }
   view.dispatch({ changes, userEvent: "input" });
   view.focus();

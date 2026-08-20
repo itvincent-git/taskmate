@@ -25,4 +25,16 @@ describe("Markdown toolbar commands", () => {
     applyMarkdownAction(view, "task");
     expect(view.state.doc.toString()).toBe("- [ ] one\n- [ ] two");
   });
+
+  it("increments ordered list markers across a multiline selection", () => {
+    view = new EditorView({
+      parent: document.body,
+      state: EditorState.create({ doc: "one\ntwo\nthree", selection: { anchor: 0, head: 13 } }),
+    });
+    applyMarkdownAction(view, "ordered");
+    expect(view.state.doc.toString()).toBe("1. one\n2. two\n3. three");
+
+    applyMarkdownAction(view, "ordered");
+    expect(view.state.doc.toString()).toBe("one\ntwo\nthree");
+  });
 });
