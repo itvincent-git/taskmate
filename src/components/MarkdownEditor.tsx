@@ -42,6 +42,7 @@ import { Tooltip } from "./ui/Tooltip";
 interface Props {
   value: string;
   onChange(value: string): void;
+  onError?(cause: unknown): void;
 }
 
 const toolDetails: Record<MarkdownAction, [string, typeof Bold]> = {
@@ -63,7 +64,7 @@ const toolDetails: Record<MarkdownAction, [string, typeof Bold]> = {
 
 const syncValue = Annotation.define<boolean>();
 
-export const MarkdownEditor = memo(function MarkdownEditor({ value, onChange }: Props) {
+export const MarkdownEditor = memo(function MarkdownEditor({ value, onChange, onError }: Props) {
   const { locale, t } = useTaskmateI18n();
   const shortcuts = useSyncExternalStore(subscribeEditorShortcuts, getEditorShortcuts, getEditorShortcuts);
   const platform = getShortcutPlatform();
@@ -71,7 +72,9 @@ export const MarkdownEditor = memo(function MarkdownEditor({ value, onChange }: 
   const editor = useRef<EditorView | null>(null);
   const shortcutCompartment = useRef(new Compartment());
   const changeHandler = useRef(onChange);
+  const errorHandler = useRef(onError);
   changeHandler.current = onChange;
+  errorHandler.current = onError;
 
   useEffect(() => {
     if (!host.current) return;
@@ -96,7 +99,7 @@ export const MarkdownEditor = memo(function MarkdownEditor({ value, onChange }: 
                 ?? (position === null ? null : linkUrlAt(editorView.state, position));
               if (!url) return false;
               event.preventDefault();
-              void api.openExternalUrl(url);
+              void api.openExternalUrl(url).catch((cause) => errorHandler.current?.(cause));
               return true;
             },
           }),
@@ -111,6 +114,7 @@ export const MarkdownEditor = memo(function MarkdownEditor({ value, onChange }: 
           }),
           EditorView.theme({
             "&": { height: "100%", fontSize: "14px" },
+            "&.cm-modifier-links [data-link-url]": { cursor: "pointer" },
             ".cm-scroller": { overflow: "auto", fontFamily: "var(--font-editor)" },
             ".cm-content": { minHeight: "300px", padding: "16px 20px 48px", caretColor: "var(--accent)" },
             ".cm-line": { lineHeight: "1.72" },
@@ -121,7 +125,25 @@ export const MarkdownEditor = memo(function MarkdownEditor({ value, onChange }: 
       }),
     });
     editor.current = view;
+    let modifierLinks = false;
+    const setModifierLinks = (pressed: boolean) => {
+      if (modifierLinks === pressed) return;
+      modifierLinks = pressed;
+      view.dom.classList.toggle("cm-modifier-links", pressed);
+    };
+    const updateModifierLinks = (event: KeyboardEvent | MouseEvent) => {
+      setModifierLinks(platform === "mac" ? event.metaKey : event.ctrlKey);
+    };
+    const clearModifierLinks = () => setModifierLinks(false);
+    window.addEventListener("keydown", updateModifierLinks);
+    window.addEventListener("keyup", updateModifierLinks);
+    window.addEventListener("mousemove", updateModifierLinks);
+    window.addEventListener("blur", clearModifierLinks);
     return () => {
+      window.removeEventListener("keydown", updateModifierLinks);
+      window.removeEventListener("keyup", updateModifierLinks);
+      window.removeEventListener("mousemove", updateModifierLinks);
+      window.removeEventListener("blur", clearModifierLinks);
       view.destroy();
       editor.current = null;
     };
@@ -166,7 +188,22 @@ export const MarkdownEditor = memo(function MarkdownEditor({ value, onChange }: 
           );
         })}
       </div>
-      <div className="min-h-0 flex-1 overflow-hidden [&_.cm-content]:min-h-full [&_.cm-editor]:h-full [&_.cm-editor]:min-h-0 [&_.cm-editor]:bg-surface [&_.cm-editor]:text-foreground [&_.cm-scroller]:h-full [&_.cm-scroller]:overscroll-contain [&_.cm-scroller]:overflow-y-auto!" ref={host} />
+      <div
+        className="min-h-0 flex-1 overflow-hidden [&_.cm-content]:min-h-full [&_.cm-editor]:h-full [&_.cm-editor]:min-h-0 [&_.cm-editor]:bg-surface [&_.cm-editor]:text-foreground [&_.cm-scroller]:h-full [&_.cm-scroller]:overscroll-contain [&_.cm-scroller]:overflow-y-auto!"
+        ref={host}
+        onMouseDownCapture={(event) => {
+          const modifierPressed = platform === "mac" ? event.metaKey : event.ctrlKey;
+          if (event.button !== 0 || !modifierPressed) return;
+          const link = event.target instanceof Element
+            ? event.target.closest<HTMLElement>("[data-link-url]")
+            : null;
+          const url = link?.dataset.linkUrl;
+          if (!url) return;
+          event.preventDefault();
+          event.stopPropagation();
+          void api.openExternalUrl(url).catch((cause) => errorHandler.current?.(cause));
+        }}
+      />
     </section>
   );
 });

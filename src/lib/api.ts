@@ -3,7 +3,6 @@ import { listen } from "@tauri-apps/api/event";
 import { resolve } from "@tauri-apps/api/path";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { open } from "@tauri-apps/plugin-dialog";
-import { openUrl } from "@tauri-apps/plugin-opener";
 import type {
   GitHistoryEntry,
   GitStatus,
@@ -133,7 +132,7 @@ export const api = {
     return navigator.clipboard.writeText(text);
   },
   async openExternalUrl(url: string): Promise<void> {
-    if (isTauri) return openUrl(url);
+    if (isTauri) return invoke("open_external_url", { url });
     window.open(url, "_blank", "noopener,noreferrer");
   },
   async resolveTaskFilePath(workspacePath: string, task: Pick<Task, "archived" | "fileName">): Promise<string> {

@@ -21,6 +21,7 @@ use tauri::menu::{Menu, MenuItem};
 use tauri::tray::{MouseButton, TrayIconBuilder, TrayIconEvent};
 use tauri::{Emitter, Manager, RunEvent, State, WindowEvent};
 use tauri_plugin_autostart::MacosLauncher;
+use tauri_plugin_opener::OpenerExt;
 use tauri_plugin_updater::UpdaterExt;
 use workspace::Workspace;
 
@@ -194,6 +195,30 @@ fn check_external_change(
 #[tauri::command]
 fn read_attachment(path: String, state: State<'_, AppState>) -> Result<String, String> {
     with_workspace(state, |workspace| workspace.read_attachment(&path))
+}
+
+fn allowed_external_url(url: &str) -> bool {
+    let Some((scheme, remainder)) = url.split_once(':') else {
+        return false;
+    };
+    if remainder.is_empty() {
+        return false;
+    }
+    match scheme.to_ascii_lowercase().as_str() {
+        "http" | "https" => remainder.starts_with("//"),
+        "mailto" | "tel" => true,
+        _ => false,
+    }
+}
+
+#[tauri::command]
+fn open_external_url(url: String, app: tauri::AppHandle) -> Result<(), String> {
+    if !allowed_external_url(&url) {
+        return Err("Only HTTP, HTTPS, mailto, and tel links can be opened.".into());
+    }
+    app.opener()
+        .open_url(url, None::<&str>)
+        .map_err(|error| format!("Unable to open link: {error}"))
 }
 
 #[tauri::command]
@@ -449,6 +474,7 @@ pub fn run() {
             create_property_option,
             check_external_change,
             read_attachment,
+            open_external_url,
             git_status,
             git_initialize,
             git_set_remote,
@@ -514,4 +540,20 @@ pub fn run() {
         RunEvent::Reopen { .. } => show_main_window(app),
         _ => {}
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::allowed_external_url;
+
+    #[test]
+    fn restricts_external_urls_to_supported_schemes() {
+        assert!(allowed_external_url("https://example.com/path?query=1"));
+        assert!(allowed_external_url("HTTP://example.com"));
+        assert!(allowed_external_url("mailto:user@example.com"));
+        assert!(allowed_external_url("tel:+123456789"));
+        assert!(!allowed_external_url("example.com"));
+        assert!(!allowed_external_url("javascript:alert(1)"));
+        assert!(!allowed_external_url("file:///tmp/example"));
+    }
 }

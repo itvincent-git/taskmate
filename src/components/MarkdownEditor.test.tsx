@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { EditorView } from "@codemirror/view";
 import { StrictMode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -55,6 +55,7 @@ describe("MarkdownEditor", () => {
     ["Win32", { ctrlKey: true }],
   ])("opens links without entering edit mode using the platform modifier on %s", (platform, modifier) => {
     vi.spyOn(navigator, "platform", "get").mockReturnValue(platform);
+    const posAtCoords = vi.spyOn(EditorView.prototype, "posAtCoords");
     const openExternalUrl = vi.spyOn(api, "openExternalUrl").mockResolvedValue();
     const { container } = render(<MarkdownEditor value={"plain\n[OpenAI](https://openai.com)"} onChange={vi.fn()} />);
     const view = editorView(container);
@@ -62,6 +63,7 @@ describe("MarkdownEditor", () => {
     fireEvent.mouseDown(container.querySelector('[data-link-url="https://openai.com"]')!, modifier);
 
     expect(openExternalUrl).toHaveBeenCalledWith("https://openai.com");
+    expect(posAtCoords).not.toHaveBeenCalled();
     expect(view.state.selection.main.head).toBe(0);
   });
 
@@ -73,6 +75,39 @@ describe("MarkdownEditor", () => {
     fireEvent.mouseDown(container.querySelector('[data-link-url="https://openai.com"]')!);
 
     expect(openExternalUrl).not.toHaveBeenCalled();
+  });
+
+  it("shows a link cursor only while the platform modifier is pressed", () => {
+    vi.spyOn(navigator, "platform", "get").mockReturnValue("MacIntel");
+    const { container } = render(
+      <MarkdownEditor value="[OpenAI](https://openai.com) plain" onChange={vi.fn()} />,
+    );
+    const editor = container.querySelector<HTMLElement>(".cm-editor")!;
+    const link = container.querySelector<HTMLElement>('[data-link-url="https://openai.com"]')!;
+
+    expect(getComputedStyle(link)).not.toHaveProperty("cursor", "pointer");
+
+    fireEvent.keyDown(window, { key: "Meta", metaKey: true });
+    expect(editor).toHaveClass("cm-modifier-links");
+    expect(getComputedStyle(link)).toHaveProperty("cursor", "pointer");
+
+    fireEvent.keyUp(window, { key: "Meta" });
+    expect(editor).not.toHaveClass("cm-modifier-links");
+    expect(getComputedStyle(link)).not.toHaveProperty("cursor", "pointer");
+  });
+
+  it("reports failures to open external links", async () => {
+    vi.spyOn(navigator, "platform", "get").mockReturnValue("MacIntel");
+    const failure = new Error("Unable to open link");
+    const onError = vi.fn();
+    vi.spyOn(api, "openExternalUrl").mockRejectedValue(failure);
+    const { container } = render(
+      <MarkdownEditor value="[OpenAI](https://openai.com)" onChange={vi.fn()} onError={onError} />,
+    );
+
+    fireEvent.mouseDown(container.querySelector('[data-link-url="https://openai.com"]')!, { metaKey: true });
+
+    await waitFor(() => expect(onError).toHaveBeenCalledWith(failure));
   });
 
   it("renders checked task items without crashing", () => {

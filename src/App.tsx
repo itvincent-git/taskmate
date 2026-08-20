@@ -1252,7 +1252,11 @@ function WorkspaceSession() {
                     >
                       <div className="min-h-0 min-w-0 flex-1 overflow-hidden">
                         <Suspense fallback={<div className="flex min-h-[370px] items-center justify-center gap-2 text-muted"><LoaderCircle className="animate-spin" />{t("editor.loading")}</div>}>
-                          <MarkdownEditor value={task.body} onChange={changeTaskBody} />
+                          <MarkdownEditor
+                            value={task.body}
+                            onChange={changeTaskBody}
+                            onError={(cause) => setError(errorMessage(cause))}
+                          />
                         </Suspense>
                       </div>
                       {!detailNarrow && propertiesPanelVisible ? (
