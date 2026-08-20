@@ -2,6 +2,8 @@ import { syntaxTree } from "@codemirror/language";
 import type { SyntaxNode } from "@lezer/common";
 import { RangeSetBuilder, type EditorState } from "@codemirror/state";
 import { Decoration, type DecorationSet, EditorView, ViewPlugin, type ViewUpdate, WidgetType } from "@codemirror/view";
+import katex from "katex";
+import "katex/dist/katex.min.css";
 import { api } from "../lib/api";
 
 let taskCheckIcon: SVGSVGElement | null = null;
@@ -164,6 +166,75 @@ class HtmlWidget extends WidgetType {
   }
   ignoreEvent() {
     return false;
+  }
+}
+
+class MathWidget extends WidgetType {
+  constructor(readonly source: string, readonly block: boolean) {
+    super();
+  }
+  eq(other: MathWidget) {
+    return this.source === other.source && this.block === other.block;
+  }
+  toDOM() {
+    const wrapper = document.createElement("span");
+    wrapper.className = this.block
+      ? "cm-math-preview cm-math-preview-block my-2 block overflow-x-auto py-1 text-center"
+      : "cm-math-preview inline-block align-middle";
+    wrapper.dataset.previewKind = "math";
+    katex.render(this.source, wrapper, {
+      displayMode: this.block,
+      throwOnError: false,
+      trust: false,
+    });
+    return wrapper;
+  }
+  ignoreEvent() {
+    return false;
+  }
+}
+
+let mermaidId = 0;
+
+class MermaidWidget extends WidgetType {
+  constructor(readonly source: string) {
+    super();
+  }
+  eq(other: MermaidWidget) {
+    return this.source === other.source;
+  }
+  toDOM(view: EditorView) {
+    const wrapper = document.createElement("span");
+    wrapper.className = "cm-mermaid-preview my-3 block overflow-x-auto rounded-lg border border-line bg-surface-soft p-4 text-center";
+    wrapper.dataset.previewKind = "mermaid";
+    wrapper.setAttribute("aria-label", "Mermaid diagram");
+    wrapper.textContent = "Rendering diagram…";
+    void renderMermaid(wrapper, this.source, view);
+    return wrapper;
+  }
+  ignoreEvent() {
+    return false;
+  }
+}
+
+async function renderMermaid(wrapper: HTMLElement, source: string, view: EditorView) {
+  try {
+    const { default: mermaid } = await import("mermaid");
+    mermaid.initialize({
+      startOnLoad: false,
+      securityLevel: "strict",
+      theme: document.documentElement.dataset.theme === "dark" ? "dark" : "default",
+    });
+    const { svg, bindFunctions } = await mermaid.render(`taskmate-mermaid-${mermaidId += 1}`, source);
+    if (!wrapper.isConnected) return;
+    wrapper.innerHTML = svg;
+    bindFunctions?.(wrapper);
+    view.requestMeasure();
+  } catch (cause) {
+    if (!wrapper.isConnected) return;
+    wrapper.classList.add("text-danger");
+    wrapper.textContent = cause instanceof Error ? `Mermaid: ${cause.message}` : "Unable to render Mermaid diagram";
+    view.requestMeasure();
   }
 }
 
@@ -387,15 +458,128 @@ function codeBlockLineDecorations(state: EditorState, node: SyntaxNode) {
   return decorations;
 }
 
+type RichPreviewRange = {
+  from: number;
+  to: number;
+  source: string;
+  kind: "math" | "mermaid";
+  block: boolean;
+};
+
+function overlaps(from: number, to: number, range: { from: number; to: number }) {
+  return from < range.to && to > range.from;
+}
+
+function richPreviewRanges(state: EditorState) {
+  const excluded: Array<{ from: number; to: number }> = [];
+  const ranges: RichPreviewRange[] = [];
+  syntaxTree(state).iterate({
+    enter(node) {
+      if (node.name === "InlineCode" || node.name === "FencedCode" || node.name === "CodeBlock") {
+        excluded.push({ from: node.from, to: node.to });
+      }
+      if (node.name !== "FencedCode") return;
+      const firstLine = state.doc.lineAt(node.from);
+      const fence = firstLine.text.match(/^\s*(```|~~~)\s*mermaid\s*$/i)?.[1];
+      if (!fence) return;
+      const lastLine = state.doc.lineAt(node.to);
+      if (lastLine.text.trim() !== fence) return;
+      const contentFrom = Math.min(firstLine.to + 1, node.to);
+      const contentTo = Math.max(contentFrom, lastLine.from - 1);
+      ranges.push({
+        from: firstLine.from,
+        to: lastLine.to,
+        source: state.sliceDoc(contentFrom, contentTo),
+        kind: "mermaid",
+        block: true,
+      });
+    },
+  });
+
+  const unavailable = (from: number, to: number) =>
+    excluded.some((range) => overlaps(from, to, range)) || ranges.some((range) => overlaps(from, to, range));
+
+  for (let lineNumber = 1; lineNumber <= state.doc.lines; lineNumber += 1) {
+    const line = state.doc.line(lineNumber);
+    if (line.text.trim() !== "$$" || unavailable(line.from, line.to)) continue;
+    for (let closingNumber = lineNumber + 1; closingNumber <= state.doc.lines; closingNumber += 1) {
+      const closingLine = state.doc.line(closingNumber);
+      if (closingLine.text.trim() !== "$$") continue;
+      if (unavailable(line.from, closingLine.to)) break;
+      ranges.push({
+        from: line.from,
+        to: closingLine.to,
+        source: state.sliceDoc(line.to + 1, closingLine.from - 1),
+        kind: "math",
+        block: true,
+      });
+      lineNumber = closingNumber;
+      break;
+    }
+  }
+
+  const text = state.doc.toString();
+  for (const match of text.matchAll(/\$\$([^$\n]+?)\$\$|\$([^$\n]+?)\$/g)) {
+    const from = match.index ?? 0;
+    const to = from + match[0].length;
+    if (isEscaped(text, from) || unavailable(from, to)) continue;
+    ranges.push({
+      from,
+      to,
+      source: match[1] ?? match[2],
+      kind: "math",
+      block: match[1] !== undefined,
+    });
+  }
+  return ranges.sort((left, right) => left.from - right.from || left.to - right.to);
+}
+
+function isEscaped(text: string, position: number) {
+  let slashes = 0;
+  for (let index = position - 1; index >= 0 && text[index] === "\\"; index -= 1) slashes += 1;
+  return slashes % 2 === 1;
+}
+
+function richPreviewDecorations(state: EditorState, range: RichPreviewRange) {
+  if (!range.block) {
+    return [{
+      from: range.from,
+      to: range.to,
+      decoration: Decoration.replace({ widget: new MathWidget(range.source, false) }),
+    }];
+  }
+  const firstLine = state.doc.lineAt(range.from);
+  const lastLine = state.doc.lineAt(range.to);
+  const widget = range.kind === "mermaid"
+    ? new MermaidWidget(range.source)
+    : new MathWidget(range.source, true);
+  const decorations: Array<{ from: number; to: number; decoration: Decoration }> = [{
+    from: range.from,
+    to: Math.min(firstLine.to, range.to),
+    decoration: Decoration.replace({ widget }),
+  }];
+  for (let number = firstLine.number + 1; number <= lastLine.number; number += 1) {
+    const line = state.doc.line(number);
+    decorations.push({ from: line.from, to: line.from, decoration: Decoration.line({ class: "hidden" }) });
+    if (line.to > line.from) decorations.push({ from: line.from, to: line.to, decoration: Decoration.replace({}) });
+  }
+  return decorations;
+}
+
 function buildDecorations(view: EditorView): DecorationSet {
   const builder = new RangeSetBuilder<Decoration>();
   const ranges: Array<{ from: number; to: number; decoration: Decoration }> = [];
+  const richRanges = richPreviewRanges(view.state);
+  const inactiveRichRanges = richRanges.filter((range) =>
+    !rangeIsActive(range.from, range.to, view.state.selection.ranges, view.composing));
+  inactiveRichRanges.forEach((range) => ranges.push(...richPreviewDecorations(view.state, range)));
   for (const viewport of view.visibleRanges) {
     let htmlPreviewTo = -1;
     syntaxTree(view.state).iterate({
       from: viewport.from,
       to: viewport.to,
       enter(node) {
+        if (inactiveRichRanges.some((range) => node.from >= range.from && node.to <= range.to)) return false;
         const activeNode = node.node.parent?.name === "Document"
           ? node.node
           : node.node.parent ?? node.node;

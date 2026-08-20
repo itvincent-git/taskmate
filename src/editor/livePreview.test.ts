@@ -1,9 +1,18 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { EditorState } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 import { markdown } from "@codemirror/lang-markdown";
 import { GFM } from "@lezer/markdown";
 import { linkUrlAt, livePreview, rangeIsActive } from "./livePreview";
+
+vi.mock("mermaid", () => ({
+  default: {
+    initialize: vi.fn(),
+    render: vi.fn(async (_id: string, source: string) => ({
+      svg: `<svg aria-label="diagram"><text>${source}</text></svg>`,
+    })),
+  },
+}));
 
 describe("Live Preview activation", () => {
   it("reveals syntax when the cursor or selection intersects its node", () => {
@@ -220,6 +229,89 @@ describe("Live Preview activation", () => {
     expect(host.textContent).toContain("const value = 1;");
     view.dispatch({ selection: { anchor: 12 } });
     expect(host.textContent).toContain("```ts");
+
+    view.destroy();
+    host.remove();
+  });
+
+  it("renders inline and block math and restores the source while editing", () => {
+    const host = document.createElement("div");
+    document.body.append(host);
+    const source = "plain with $x^2$\n\n$$\n\\frac{a}{b}\n$$";
+    const view = new EditorView({
+      parent: host,
+      state: EditorState.create({
+        doc: source,
+        extensions: [markdown(), livePreview],
+      }),
+    });
+
+    expect(host.querySelectorAll('[data-preview-kind="math"]')).toHaveLength(2);
+    expect(host.querySelectorAll(".katex")).toHaveLength(2);
+    expect(host.textContent).not.toContain("$x^2$");
+
+    view.dispatch({ selection: { anchor: source.indexOf("x^2") } });
+    expect(host.textContent).toContain("$x^2$");
+    expect(host.querySelectorAll('[data-preview-kind="math"]')).toHaveLength(1);
+
+    view.destroy();
+    host.remove();
+  });
+
+  it("renders Mermaid fences and restores their source while editing", async () => {
+    const host = document.createElement("div");
+    document.body.append(host);
+    const source = "plain\n\n```mermaid\ngraph TD\n  A --> B\n```";
+    const view = new EditorView({
+      parent: host,
+      state: EditorState.create({
+        doc: source,
+        extensions: [markdown(), livePreview],
+      }),
+    });
+
+    await vi.waitFor(() => expect(host.querySelector('[data-preview-kind="mermaid"] svg')).not.toBeNull());
+    expect(host.textContent).toContain("graph TD");
+    expect(host.textContent).not.toContain("```mermaid");
+
+    view.dispatch({ selection: { anchor: source.indexOf("graph TD") } });
+    expect(host.querySelector('[data-preview-kind="mermaid"]')).toBeNull();
+    expect(host.textContent).toContain("```mermaid");
+
+    view.destroy();
+    host.remove();
+  });
+
+  it("keeps unfinished Mermaid fences editable", () => {
+    const host = document.createElement("div");
+    document.body.append(host);
+    const view = new EditorView({
+      parent: host,
+      state: EditorState.create({
+        doc: "plain\n\n```mermaid\ngraph TD\n  A --> B",
+        extensions: [markdown(), livePreview],
+      }),
+    });
+
+    expect(host.querySelector('[data-preview-kind="mermaid"]')).toBeNull();
+    expect(host.textContent).toContain("graph TD");
+
+    view.destroy();
+    host.remove();
+  });
+
+  it("does not render math syntax inside code", () => {
+    const host = document.createElement("div");
+    document.body.append(host);
+    const view = new EditorView({
+      parent: host,
+      state: EditorState.create({
+        doc: "plain `price $5$`\n\n```txt\n$x$\n```",
+        extensions: [markdown(), livePreview],
+      }),
+    });
+
+    expect(host.querySelector('[data-preview-kind="math"]')).toBeNull();
 
     view.destroy();
     host.remove();
