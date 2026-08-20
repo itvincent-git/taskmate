@@ -59,6 +59,21 @@ fn with_workspace<T>(
     operation(Workspace::new(root))
 }
 
+async fn run_git<T: Send + 'static>(
+    state: State<'_, AppState>,
+    operation: impl FnOnce(PathBuf) -> Result<T, String> + Send + 'static,
+) -> Result<T, String> {
+    let root = state
+        .workspace
+        .lock()
+        .map_err(|_| "Workspace state is unavailable.".to_string())?
+        .clone()
+        .ok_or_else(|| "Open a workspace first.".to_string())?;
+    tauri::async_runtime::spawn_blocking(move || operation(root))
+        .await
+        .map_err(|error| format!("Git task failed: {error}"))?
+}
+
 #[tauri::command]
 fn open_workspace(
     path: String,
@@ -182,38 +197,38 @@ fn read_attachment(path: String, state: State<'_, AppState>) -> Result<String, S
 }
 
 #[tauri::command]
-fn git_status(state: State<'_, AppState>) -> Result<GitStatus, String> {
-    with_workspace(state, |workspace| git::status(&workspace.root))
+async fn git_status(state: State<'_, AppState>) -> Result<GitStatus, String> {
+    run_git(state, |root| git::status(&root)).await
 }
 
 #[tauri::command]
-fn git_initialize(state: State<'_, AppState>) -> Result<GitStatus, String> {
-    with_workspace(state, |workspace| git::initialize(&workspace.root))
+async fn git_initialize(state: State<'_, AppState>) -> Result<GitStatus, String> {
+    run_git(state, |root| git::initialize(&root)).await
 }
 
 #[tauri::command]
-fn git_set_remote(url: String, state: State<'_, AppState>) -> Result<GitStatus, String> {
-    with_workspace(state, |workspace| git::set_remote(&workspace.root, &url))
+async fn git_set_remote(url: String, state: State<'_, AppState>) -> Result<GitStatus, String> {
+    run_git(state, move |root| git::set_remote(&root, &url)).await
 }
 
 #[tauri::command]
-fn git_commit(message: String, state: State<'_, AppState>) -> Result<GitStatus, String> {
-    with_workspace(state, |workspace| git::commit(&workspace.root, &message))
+async fn git_commit(message: String, state: State<'_, AppState>) -> Result<GitStatus, String> {
+    run_git(state, move |root| git::commit(&root, &message)).await
 }
 
 #[tauri::command]
-fn git_push(state: State<'_, AppState>) -> Result<GitStatus, String> {
-    with_workspace(state, |workspace| git::push(&workspace.root))
+async fn git_push(state: State<'_, AppState>) -> Result<GitStatus, String> {
+    run_git(state, |root| git::push(&root)).await
 }
 
 #[tauri::command]
-fn git_pull(state: State<'_, AppState>) -> Result<GitStatus, String> {
-    with_workspace(state, |workspace| git::pull(&workspace.root))
+async fn git_pull(state: State<'_, AppState>) -> Result<GitStatus, String> {
+    run_git(state, |root| git::pull(&root)).await
 }
 
 #[tauri::command]
-fn git_history(state: State<'_, AppState>) -> Result<Vec<GitHistoryEntry>, String> {
-    with_workspace(state, |workspace| git::history(&workspace.root))
+async fn git_history(state: State<'_, AppState>) -> Result<Vec<GitHistoryEntry>, String> {
+    run_git(state, |root| git::history(&root)).await
 }
 
 #[tauri::command]

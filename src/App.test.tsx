@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "./App";
 import { api } from "./lib/api";
-import type { TaskSearchResult } from "./types";
+import type { GitStatus, TaskSearchResult } from "./types";
 
 let detailWidth = 1000;
 let resizeCallbacks: ResizeObserverCallback[] = [];
@@ -421,6 +421,45 @@ describe("Taskmate application", () => {
     expect(within(history).getByText("feat: update tasks")).toBeInTheDocument();
     expect(within(history).getByText("tasks/today.md")).toBeInTheDocument();
     expect(within(history).getByText("tasks/明日.md")).toBeInTheDocument();
+  });
+
+  it.each([
+    { label: "Commit", progressLabel: "Committing…", command: "git_commit" },
+    { label: "Pull", progressLabel: "Pulling…", command: "git_pull" },
+    { label: "Push", progressLabel: "Pushing…", command: "git_push" },
+  ])("shows progress and prevents repeated $label actions", async ({ label, progressLabel, command }) => {
+    const user = userEvent.setup();
+    const status: GitStatus = {
+      initialized: true,
+      branch: "main",
+      changes: [" M tasks/today.md"],
+      conflicts: [],
+      ahead: 0,
+      behind: 0,
+    };
+    let finishAction: ((value: GitStatus) => void) | undefined;
+    const pendingAction = new Promise<GitStatus>((resolve) => { finishAction = resolve; });
+    vi.spyOn(api, "gitStatus").mockResolvedValue(status);
+    vi.spyOn(api, "gitHistory").mockResolvedValue([]);
+    const gitAction = vi.spyOn(api, "gitAction").mockReturnValue(pendingAction);
+    render(<App />);
+    await user.click(screen.getByRole("button", { name: "Open workspace" }));
+    await user.click(screen.getByRole("link", { name: "Git backup" }));
+
+    await user.click(await screen.findByRole("button", { name: label }));
+
+    const progressButton = screen.getByRole("button", { name: progressLabel });
+    expect(progressButton).toBeDisabled();
+    expect(progressButton).toHaveAttribute("aria-busy", "true");
+    for (const buttonLabel of ["Commit", "Pull", "Push"]) {
+      expect(screen.getByRole("button", { name: buttonLabel === label ? progressLabel : buttonLabel })).toBeDisabled();
+    }
+    await user.click(progressButton);
+    expect(gitAction).toHaveBeenCalledTimes(1);
+    expect(gitAction).toHaveBeenCalledWith(command, expect.any(Object));
+
+    act(() => finishAction?.(status));
+    await waitFor(() => expect(screen.getByRole("button", { name: label })).toBeEnabled());
   });
 
   it("shows one settings section at a time from the settings navigation", async () => {

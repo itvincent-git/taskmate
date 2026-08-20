@@ -281,6 +281,7 @@ function BackupView() {
   const [message, setMessage] = useState("Taskmate backup");
   const [history, setHistory] = useState<GitHistoryEntry[]>([]);
   const [busy, setBusy] = useState("");
+  const busyRef = useRef(false);
   const [error, setError] = useState("");
   const refresh = useCallback(async () => {
     try {
@@ -294,6 +295,8 @@ function BackupView() {
   }, []);
   useEffect(() => { void refresh(); }, [refresh]);
   const action = async (command: string, args: Record<string, string> = {}) => {
+    if (busyRef.current) return;
+    busyRef.current = true;
     setBusy(command);
     setError("");
     try {
@@ -303,6 +306,7 @@ function BackupView() {
       setError(errorMessage(cause));
       await refresh();
     } finally {
+      busyRef.current = false;
       setBusy("");
     }
   };
@@ -328,13 +332,17 @@ function BackupView() {
           <section className="rounded-xl border border-line bg-surface p-4 transition-shadow hover:shadow-panel [&>h2]:mt-0 [&>h2]:mb-3 [&>h2]:font-heading [&>h2]:text-base [&>label]:mb-2.5 [&>label]:grid [&>label]:gap-1.5 [&>label]:text-xs [&>label]:font-semibold [&>label]:text-muted">
             <h2>{t("backup.remote")}</h2>
             <label>{t("backup.remoteUrl")}<Input value={remote} onChange={(event) => setRemote(event.target.value)} placeholder="https://github.com/owner/tasks.git" /></label>
-            <Button variant="outline" onClick={() => action("git_set_remote", { url: remote })}>{t("backup.saveRemote")}</Button>
+            <Button variant="outline" onClick={() => action("git_set_remote", { url: remote })} disabled={Boolean(busy)}>{t("backup.saveRemote")}</Button>
             <p className="text-xs leading-normal text-muted">{t("backup.credentialHelp")}</p>
           </section>
           <section className="rounded-xl border border-line bg-surface p-4 transition-shadow hover:shadow-panel [&>h2]:mt-0 [&>h2]:mb-3 [&>h2]:font-heading [&>h2]:text-base [&>label]:mb-2.5 [&>label]:grid [&>label]:gap-1.5 [&>label]:text-xs [&>label]:font-semibold [&>label]:text-muted">
             <h2>{t("backup.sync")}</h2>
             <label>{t("backup.commitMessage")}<Input value={message} onChange={(event) => setMessage(event.target.value)} /></label>
-            <div className="flex gap-1.5"><Button onClick={() => action("git_commit", { message })}>{t("backup.commit")}</Button><Button variant="outline" onClick={() => action("git_pull")}>{t("backup.pull")}</Button><Button variant="outline" onClick={() => action("git_push")}>{t("backup.push")}</Button></div>
+            <div className="flex gap-1.5">
+              <Button onClick={() => action("git_commit", { message })} disabled={Boolean(busy)} aria-busy={busy === "git_commit"}>{busy === "git_commit" && <LoaderCircle className="animate-spin" size={14} />}{busy === "git_commit" ? t("backup.committing") : t("backup.commit")}</Button>
+              <Button variant="outline" onClick={() => action("git_pull")} disabled={Boolean(busy)} aria-busy={busy === "git_pull"}>{busy === "git_pull" && <LoaderCircle className="animate-spin" size={14} />}{busy === "git_pull" ? t("backup.pulling") : t("backup.pull")}</Button>
+              <Button variant="outline" onClick={() => action("git_push")} disabled={Boolean(busy)} aria-busy={busy === "git_push"}>{busy === "git_push" && <LoaderCircle className="animate-spin" size={14} />}{busy === "git_push" ? t("backup.pushing") : t("backup.push")}</Button>
+            </div>
           </section>
           <section className="rounded-xl border border-line bg-surface p-4 transition-shadow hover:shadow-panel [&>h2]:mt-0 [&>h2]:mb-3 [&>h2]:font-heading [&>h2]:text-base">
             <h2>{t("backup.history")}</h2>
