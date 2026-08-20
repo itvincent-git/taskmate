@@ -189,6 +189,7 @@ describe("Taskmate application", () => {
     fireEvent.blur(title);
     await user.click(trigger);
     expect(screen.getAllByRole("menuitem")).toHaveLength(7);
+    expect(screen.getByRole("menuitemcheckbox", { name: "Source mode" })).toHaveAttribute("aria-checked", "false");
     expect(screen.getByRole("menuitem", { name: "Reveal in Finder" })).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: "Reveal in Navigator" })).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: "Open in default app" })).toBeInTheDocument();
@@ -202,6 +203,21 @@ describe("Taskmate application", () => {
 
     expect(copyText).toHaveBeenLastCalledWith("Latest title");
     expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+  });
+
+  it("toggles source mode from the task actions menu", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(screen.getByRole("button", { name: "Open workspace" }));
+    await user.click(await screen.findByRole("button", { name: "New task" }));
+
+    await user.click(screen.getByRole("button", { name: "Task actions" }));
+    const sourceMode = screen.getByRole("menuitemcheckbox", { name: "Source mode" });
+    expect(sourceMode).toHaveAttribute("aria-checked", "false");
+    await user.click(sourceMode);
+
+    await user.click(screen.getByRole("button", { name: "Task actions" }));
+    expect(screen.getByRole("menuitemcheckbox", { name: "Source mode" })).toHaveAttribute("aria-checked", "true");
   });
 
   it("shows copy failures through the existing error toast", async () => {
@@ -278,6 +294,7 @@ describe("Taskmate application", () => {
     await user.click(screen.getByRole("button", { name: "任务操作" }));
 
     expect(screen.getByRole("menuitem", { name: "归档任务" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitemcheckbox", { name: "源码模式" })).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: "在访达中显示" })).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: "在导航器中显示" })).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: "在默认应用中打开" })).toBeInTheDocument();

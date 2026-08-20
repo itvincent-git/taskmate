@@ -14,6 +14,7 @@ import {
   Download,
   Database,
   ExternalLink,
+  FileCode2,
   FileText,
   FolderOpen,
   FolderSearch,
@@ -533,6 +534,7 @@ function WorkspaceSession() {
   const [filterDialogOpen, setFilterDialogOpen] = useState(false);
   const [detailNarrow, setDetailNarrow] = useState(false);
   const [propertiesPanelVisible, setPropertiesPanelVisible] = useState(true);
+  const [sourceMode, setSourceMode] = useState(false);
   const [propertiesDrawerOpen, setPropertiesDrawerOpen] = useState(false);
   const [titleDraft, setTitleDraft] = useState("");
   const [titleEditing, setTitleEditing] = useState(false);
@@ -1262,6 +1264,16 @@ function WorkspaceSession() {
                               titleInput.current?.select();
                             }}
                           >
+                            <DropdownMenu.CheckboxItem
+                              checked={sourceMode}
+                              className="flex min-h-[30px] cursor-default items-center gap-1.5 rounded-[5px] px-2 py-1.5 text-xs outline-none data-[highlighted]:bg-accent-soft data-[highlighted]:text-accent"
+                              onCheckedChange={(checked) => setSourceMode(checked === true)}
+                            >
+                              <FileCode2 size={15} />
+                              {t("editor.sourceMode")}
+                              <DropdownMenu.ItemIndicator className="ml-auto"><Check size={14} /></DropdownMenu.ItemIndicator>
+                            </DropdownMenu.CheckboxItem>
+                            <DropdownMenu.Separator className="m-1 h-px bg-line" />
                             <DropdownMenu.Item className="flex min-h-[30px] cursor-default items-center gap-1.5 rounded-[5px] px-2 py-1.5 text-xs outline-none data-[highlighted]:bg-accent-soft data-[highlighted]:text-accent" onSelect={() => void runTaskFileAction("reveal", task.id)}>
                               <FolderSearch size={15} />
                               {t("editor.revealInFinder")}
@@ -1305,6 +1317,7 @@ function WorkspaceSession() {
                         <Suspense fallback={<div className="flex min-h-[370px] items-center justify-center gap-2 text-muted"><LoaderCircle className="animate-spin" />{t("editor.loading")}</div>}>
                           <MarkdownEditor
                             value={task.body}
+                            sourceMode={sourceMode}
                             onChange={changeTaskBody}
                             onError={(cause) => setError(errorMessage(cause))}
                           />

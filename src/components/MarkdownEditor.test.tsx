@@ -73,6 +73,19 @@ describe("MarkdownEditor", () => {
     expect(onChange).toHaveBeenCalledWith("plain\n- [x] todo");
   });
 
+  it("shows raw Markdown when source mode is enabled", () => {
+    const { container, rerender } = render(
+      <MarkdownEditor value={"plain\n- [ ] todo"} onChange={vi.fn()} />,
+    );
+
+    expect(container.querySelector('[data-marker-kind="task"]')).not.toBeNull();
+
+    rerender(<MarkdownEditor value={"plain\n- [ ] todo"} onChange={vi.fn()} sourceMode />);
+
+    expect(container.querySelector('[data-marker-kind="task"]')).toBeNull();
+    expect(container.querySelector(".cm-content")).toHaveTextContent("- [ ] todo");
+  });
+
   it.each([
     ["MacIntel", { metaKey: true }],
     ["Win32", { ctrlKey: true }],

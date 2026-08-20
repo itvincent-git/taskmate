@@ -45,6 +45,7 @@ interface Props {
   value: string;
   onChange(value: string): void;
   onError?(cause: unknown): void;
+  sourceMode?: boolean;
 }
 
 const toolDetails: Record<MarkdownAction, [string, typeof Bold]> = {
@@ -78,12 +79,13 @@ const githubHighlightStyle = HighlightStyle.define([
   { tag: tags.invalid, color: "var(--danger)" },
 ]);
 
-export const MarkdownEditor = memo(function MarkdownEditor({ value, onChange, onError }: Props) {
+export const MarkdownEditor = memo(function MarkdownEditor({ value, onChange, onError, sourceMode = false }: Props) {
   const { locale, t } = useTaskmateI18n();
   const shortcuts = useSyncExternalStore(subscribeEditorShortcuts, getEditorShortcuts, getEditorShortcuts);
   const platform = getShortcutPlatform();
   const host = useRef<HTMLDivElement>(null);
   const editor = useRef<EditorView | null>(null);
+  const previewCompartment = useRef(new Compartment());
   const shortcutCompartment = useRef(new Compartment());
   const changeHandler = useRef(onChange);
   const errorHandler = useRef(onError);
@@ -100,7 +102,7 @@ export const MarkdownEditor = memo(function MarkdownEditor({ value, onChange, on
           history(),
           markdown({ extensions: [GFM], codeLanguages }),
           syntaxHighlighting(githubHighlightStyle),
-          livePreview,
+          previewCompartment.current.of(sourceMode ? [] : livePreview),
           EditorView.domEventHandlers({
             mousedown(event, editorView) {
               const modifierPressed = platform === "mac" ? event.metaKey : event.ctrlKey;
@@ -185,6 +187,12 @@ export const MarkdownEditor = memo(function MarkdownEditor({ value, onChange, on
       editor.current = null;
     };
   }, [platform, t]);
+
+  useEffect(() => {
+    editor.current?.dispatch({
+      effects: previewCompartment.current.reconfigure(sourceMode ? [] : livePreview),
+    });
+  }, [sourceMode]);
 
   useEffect(() => {
     editor.current?.dispatch({
