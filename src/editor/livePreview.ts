@@ -253,10 +253,20 @@ function buildDecorations(view: EditorView): DecorationSet {
         const isLinkTarget = node.name === "URL" && node.node.parent?.name === "Link";
         const style = isLinkTarget ? undefined : styledNodes[node.name];
         if (style) {
+          const linkUrl = node.name === "Link"
+            ? node.node.getChild("URL")
+            : node.name === "URL"
+              ? node.node
+              : null;
           ranges.push({
             from: node.from,
             to: node.to,
-            decoration: Decoration.mark({ class: style }),
+            decoration: Decoration.mark({
+              class: style,
+              attributes: linkUrl
+                ? { "data-link-url": view.state.sliceDoc(linkUrl.from, linkUrl.to) }
+                : undefined,
+            }),
           });
         }
         if (!active && node.name === "ListMark") {

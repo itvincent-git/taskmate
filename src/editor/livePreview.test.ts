@@ -52,6 +52,8 @@ describe("Live Preview activation", () => {
     expect(host.querySelector(".text-accent")).toHaveTextContent(bareUrl);
     expect(host.textContent).toContain("Example");
     expect(host.textContent).not.toContain("https://example.com/hidden");
+    expect(host.querySelector('[data-link-url="https://example.com/live?id=123"]')).not.toBeNull();
+    expect(host.querySelector('[data-link-url="https://example.com/hidden"]')).not.toBeNull();
 
     view.destroy();
     host.remove();

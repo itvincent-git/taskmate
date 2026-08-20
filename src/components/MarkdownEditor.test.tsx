@@ -55,12 +55,11 @@ describe("MarkdownEditor", () => {
     ["Win32", { ctrlKey: true }],
   ])("opens links without entering edit mode using the platform modifier on %s", (platform, modifier) => {
     vi.spyOn(navigator, "platform", "get").mockReturnValue(platform);
-    vi.spyOn(EditorView.prototype, "posAtCoords").mockReturnValue(8);
     const openExternalUrl = vi.spyOn(api, "openExternalUrl").mockResolvedValue();
     const { container } = render(<MarkdownEditor value={"plain\n[OpenAI](https://openai.com)"} onChange={vi.fn()} />);
     const view = editorView(container);
 
-    fireEvent.mouseDown(container.querySelector(".cm-content")!, { ...modifier, clientX: 10, clientY: 10 });
+    fireEvent.mouseDown(container.querySelector('[data-link-url="https://openai.com"]')!, modifier);
 
     expect(openExternalUrl).toHaveBeenCalledWith("https://openai.com");
     expect(view.state.selection.main.head).toBe(0);
@@ -68,11 +67,10 @@ describe("MarkdownEditor", () => {
 
   it("keeps ordinary link clicks in the editor", () => {
     vi.spyOn(navigator, "platform", "get").mockReturnValue("Win32");
-    vi.spyOn(EditorView.prototype, "posAtCoords").mockReturnValue(8);
     const openExternalUrl = vi.spyOn(api, "openExternalUrl").mockResolvedValue();
     const { container } = render(<MarkdownEditor value={"plain\n[OpenAI](https://openai.com)"} onChange={vi.fn()} />);
 
-    fireEvent.mouseDown(container.querySelector(".cm-content")!, { clientX: 10, clientY: 10 });
+    fireEvent.mouseDown(container.querySelector('[data-link-url="https://openai.com"]')!);
 
     expect(openExternalUrl).not.toHaveBeenCalled();
   });

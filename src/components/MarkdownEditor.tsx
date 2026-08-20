@@ -88,8 +88,12 @@ export const MarkdownEditor = memo(function MarkdownEditor({ value, onChange }: 
             mousedown(event, editorView) {
               const modifierPressed = platform === "mac" ? event.metaKey : event.ctrlKey;
               if (event.button !== 0 || !modifierPressed) return false;
-              const position = editorView.posAtCoords({ x: event.clientX, y: event.clientY });
-              const url = position === null ? null : linkUrlAt(editorView.state, position);
+              const link = event.target instanceof Element
+                ? event.target.closest<HTMLElement>("[data-link-url]")
+                : null;
+              const position = link ? null : editorView.posAtCoords({ x: event.clientX, y: event.clientY });
+              const url = link?.dataset.linkUrl
+                ?? (position === null ? null : linkUrlAt(editorView.state, position));
               if (!url) return false;
               event.preventDefault();
               void api.openExternalUrl(url);
