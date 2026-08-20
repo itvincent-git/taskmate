@@ -47,7 +47,6 @@ const styledNodes: Record<string, string> = {
   Emphasis: "italic",
   Strikethrough: "text-muted line-through",
   InlineCode: "rounded border border-line bg-surface-soft px-1 py-px font-mono text-[.9em]",
-  FencedCode: "bg-surface-soft font-mono",
   Blockquote: "text-muted",
   Link: "text-accent underline underline-offset-2",
   URL: "text-accent underline underline-offset-2",
@@ -365,6 +364,29 @@ function htmlBlockDecorations(state: EditorState, node: SyntaxNode) {
   return decorations;
 }
 
+function codeBlockLineDecorations(state: EditorState, node: SyntaxNode) {
+  const firstLine = state.doc.lineAt(node.from);
+  const lastLine = state.doc.lineAt(node.to);
+  const decorations: Array<{ from: number; to: number; decoration: Decoration }> = [];
+  for (let number = firstLine.number; number <= lastLine.number; number += 1) {
+    const line = state.doc.line(number);
+    const edgeClass = number === firstLine.number
+      ? " cm-codeblock-first"
+      : number === lastLine.number
+        ? " cm-codeblock-last"
+        : "";
+    decorations.push({
+      from: line.from,
+      to: line.from,
+      decoration: Decoration.line({
+        class: `cm-codeblock-line${edgeClass}`,
+        attributes: { "data-code-block-line": "" },
+      }),
+    });
+  }
+  return decorations;
+}
+
 function buildDecorations(view: EditorView): DecorationSet {
   const builder = new RangeSetBuilder<Decoration>();
   const ranges: Array<{ from: number; to: number; decoration: Decoration }> = [];
@@ -378,6 +400,9 @@ function buildDecorations(view: EditorView): DecorationSet {
           ? node.node
           : node.node.parent ?? node.node;
         const active = nodeIsActive(view.state, activeNode, view.composing);
+        if (node.name === "FencedCode") {
+          ranges.push(...codeBlockLineDecorations(view.state, node.node));
+        }
         if (!active && node.name === "HTMLBlock") {
           ranges.push(...htmlBlockDecorations(view.state, node.node));
           return false;

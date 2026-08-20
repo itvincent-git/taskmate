@@ -19,6 +19,29 @@ describe("MarkdownEditor", () => {
     expect(getComputedStyle(container.querySelector(".cm-scroller")!)).toHaveProperty("fontFamily", "var(--font-editor)");
   });
 
+  it("styles fenced code as a GitHub-like code block", () => {
+    const { container } = render(
+      <MarkdownEditor value={"```js\nconst answer = 42;\n```"} onChange={vi.fn()} />,
+    );
+
+    const lines = container.querySelectorAll("[data-code-block-line]");
+    expect(lines).toHaveLength(3);
+    expect(lines[0]).toHaveClass("cm-codeblock-first");
+    expect(lines[1]).toHaveClass("cm-codeblock-line");
+    expect(lines[2]).toHaveClass("cm-codeblock-last");
+    expect(getComputedStyle(lines[1]!)).toHaveProperty("backgroundColor", "var(--code-bg)");
+  });
+
+  it("loads syntax highlighting inside fenced code", async () => {
+    const { container } = render(
+      <MarkdownEditor value={"```js\nconst value = 1;\n```"} onChange={vi.fn()} />,
+    );
+
+    await waitFor(() => {
+      expect(container.querySelector("[data-code-block-line] span[class]")).not.toBeNull();
+    });
+  });
+
   it("syncs a changed value without reporting a user edit", () => {
     const onChange = vi.fn();
     const { container, rerender } = render(<MarkdownEditor value="First body" onChange={onChange} />);

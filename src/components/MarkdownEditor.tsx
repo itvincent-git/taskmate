@@ -2,9 +2,10 @@ import { memo, useEffect, useRef, useSyncExternalStore } from "react";
 import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
 import { markdown } from "@codemirror/lang-markdown";
 import { GFM } from "@lezer/markdown";
-import { syntaxHighlighting, defaultHighlightStyle } from "@codemirror/language";
+import { HighlightStyle, syntaxHighlighting } from "@codemirror/language";
 import { Annotation, Compartment, EditorState, Prec } from "@codemirror/state";
 import { keymap, EditorView, placeholder } from "@codemirror/view";
+import { tags } from "@lezer/highlight";
 import {
   Bold,
   Braces,
@@ -22,6 +23,7 @@ import {
   Strikethrough,
 } from "lucide-react";
 import { applyMarkdownAction, MARKDOWN_ACTIONS, type MarkdownAction } from "../editor/commands";
+import { codeLanguages } from "../editor/codeLanguages";
 import { linkUrlAt, livePreview } from "../editor/livePreview";
 import { api } from "../lib/api";
 import {
@@ -64,6 +66,18 @@ const toolDetails: Record<MarkdownAction, [string, typeof Bold]> = {
 
 const syncValue = Annotation.define<boolean>();
 
+const githubHighlightStyle = HighlightStyle.define([
+  { tag: tags.comment, color: "var(--syntax-comment)" },
+  { tag: [tags.keyword, tags.modifier, tags.operatorKeyword], color: "var(--syntax-keyword)" },
+  { tag: [tags.string, tags.special(tags.string), tags.regexp], color: "var(--syntax-string)" },
+  { tag: [tags.number, tags.bool, tags.null], color: "var(--syntax-constant)" },
+  { tag: [tags.function(tags.variableName), tags.labelName], color: "var(--syntax-function)" },
+  { tag: [tags.typeName, tags.className, tags.namespace], color: "var(--syntax-type)" },
+  { tag: [tags.propertyName, tags.attributeName], color: "var(--syntax-property)" },
+  { tag: [tags.meta, tags.annotation], color: "var(--syntax-meta)" },
+  { tag: tags.invalid, color: "var(--danger)" },
+]);
+
 export const MarkdownEditor = memo(function MarkdownEditor({ value, onChange, onError }: Props) {
   const { locale, t } = useTaskmateI18n();
   const shortcuts = useSyncExternalStore(subscribeEditorShortcuts, getEditorShortcuts, getEditorShortcuts);
@@ -84,8 +98,8 @@ export const MarkdownEditor = memo(function MarkdownEditor({ value, onChange, on
         doc: value,
         extensions: [
           history(),
-          markdown({ extensions: [GFM] }),
-          syntaxHighlighting(defaultHighlightStyle),
+          markdown({ extensions: [GFM], codeLanguages }),
+          syntaxHighlighting(githubHighlightStyle),
           livePreview,
           EditorView.domEventHandlers({
             mousedown(event, editorView) {
@@ -118,6 +132,29 @@ export const MarkdownEditor = memo(function MarkdownEditor({ value, onChange, on
             ".cm-scroller": { overflow: "auto", fontFamily: "var(--font-editor)" },
             ".cm-content": { minHeight: "300px", padding: "16px 20px 48px", caretColor: "var(--accent)" },
             ".cm-line": { lineHeight: "1.72" },
+            ".cm-codeblock-line": {
+              boxSizing: "border-box",
+              borderLeft: "1px solid var(--code-border)",
+              borderRight: "1px solid var(--code-border)",
+              backgroundColor: "var(--code-bg)",
+              paddingLeft: "12px",
+              paddingRight: "12px",
+              fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+            },
+            ".cm-codeblock-first": {
+              marginTop: "8px",
+              borderTop: "1px solid var(--code-border)",
+              borderTopLeftRadius: "7px",
+              borderTopRightRadius: "7px",
+              paddingTop: "7px",
+            },
+            ".cm-codeblock-last": {
+              marginBottom: "8px",
+              borderBottom: "1px solid var(--code-border)",
+              borderBottomLeftRadius: "7px",
+              borderBottomRightRadius: "7px",
+              paddingBottom: "7px",
+            },
             ".cm-gutters": { display: "none" },
             "&.cm-focused": { outline: "none" },
           }),
