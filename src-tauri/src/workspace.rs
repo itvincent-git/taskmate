@@ -82,6 +82,10 @@ impl Workspace {
         parse_task(&path, &text)
     }
 
+    pub fn task_file_path(&self, id: &str) -> Result<PathBuf, String> {
+        self.find_task_path(id)
+    }
+
     pub fn save_task(&self, input: SaveTaskInput) -> Result<Task, String> {
         let current_path = self.find_task_path(&input.id)?;
         let current_text = fs::read_to_string(&current_path).map_err(to_string)?;

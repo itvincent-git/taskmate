@@ -135,6 +135,12 @@ export const api = {
     if (isTauri) return invoke("open_external_url", { url });
     window.open(url, "_blank", "noopener,noreferrer");
   },
+  async openTaskFile(id: string): Promise<void> {
+    if (isTauri) return invoke("open_task_file", { id });
+  },
+  async revealTaskFile(id: string): Promise<void> {
+    if (isTauri) return invoke("reveal_task_file", { id });
+  },
   async resolveTaskFilePath(workspacePath: string, task: Pick<Task, "archived" | "fileName">): Promise<string> {
     if (isTauri) return resolve(workspacePath, task.archived ? "archive" : "tasks", task.fileName);
     return taskFilePath(workspacePath, task);

@@ -188,7 +188,11 @@ describe("Taskmate application", () => {
     fireEvent.change(title, { target: { value: "Latest title" } });
     fireEvent.blur(title);
     await user.click(trigger);
-    expect(screen.getAllByRole("menuitem")).toHaveLength(3);
+    expect(screen.getAllByRole("menuitem")).toHaveLength(7);
+    expect(screen.getByRole("menuitem", { name: "Reveal in Finder" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Reveal in Navigator" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Open in default app" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Rename" })).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: "Archive task" })).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: "Copy title" })).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: "Copy file path" })).toBeInTheDocument();
@@ -212,6 +216,47 @@ describe("Taskmate application", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent("clipboard unavailable");
   });
 
+  it("runs task file actions and focuses the title for renaming", async () => {
+    const user = userEvent.setup();
+    const revealTaskFile = vi.spyOn(api, "revealTaskFile").mockResolvedValue();
+    const openTaskFile = vi.spyOn(api, "openTaskFile").mockResolvedValue();
+    render(<App />);
+    await user.click(screen.getByRole("button", { name: "Open workspace" }));
+    await user.click(await screen.findByRole("button", { name: "New task" }));
+    const taskId = JSON.parse(localStorage.getItem("taskmate-browser-demo")!).tasks[0].id;
+    const trigger = screen.getByRole("button", { name: "Task actions" });
+
+    await user.click(trigger);
+    await user.click(screen.getByRole("menuitem", { name: "Reveal in Finder" }));
+    expect(revealTaskFile).toHaveBeenCalledWith(taskId);
+
+    await user.click(trigger);
+    await user.click(screen.getByRole("menuitem", { name: "Open in default app" }));
+    expect(openTaskFile).toHaveBeenCalledWith(taskId);
+
+    await user.click(trigger);
+    await user.click(screen.getByRole("menuitem", { name: "Rename" }));
+    const title = screen.getByLabelText("Task title") as HTMLInputElement;
+    await waitFor(() => expect(title).toHaveFocus());
+    expect(title.selectionStart).toBe(0);
+    expect(title.selectionEnd).toBe(title.value.length);
+  });
+
+  it("reveals the current task in the Files navigator", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(screen.getByRole("button", { name: "Open workspace" }));
+    await user.click(await screen.findByRole("button", { name: "New task" }));
+    await user.click(screen.getByRole("button", { name: "Collapse" }));
+    expect(screen.queryByRole("button", { name: "Files" })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Task actions" }));
+    await user.click(screen.getByRole("menuitem", { name: "Reveal in Navigator" }));
+
+    expect(screen.getByRole("button", { name: "Files" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "Collapse" })).toBeInTheDocument();
+  });
+
   it("archives the current task from the task actions menu", async () => {
     const user = userEvent.setup();
     render(<App />);
@@ -224,7 +269,7 @@ describe("Taskmate application", () => {
     expect(localStorage.getItem("taskmate-browser-demo")).toContain('"archived":true');
   });
 
-  it("localizes the task copy menu in Simplified Chinese", async () => {
+  it("localizes the task actions menu in Simplified Chinese", async () => {
     localStorage.setItem("taskmate.locale.v1", "zh-CN");
     const user = userEvent.setup();
     render(<App />);
@@ -233,6 +278,10 @@ describe("Taskmate application", () => {
     await user.click(screen.getByRole("button", { name: "任务操作" }));
 
     expect(screen.getByRole("menuitem", { name: "归档任务" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "在访达中显示" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "在导航器中显示" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "在默认应用中打开" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "重命名" })).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: "复制标题" })).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: "复制文件路径" })).toBeInTheDocument();
   });

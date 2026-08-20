@@ -7,6 +7,7 @@ interface Props {
   tasks: TaskSummary[];
   definitions: PropertyDefinition[];
   selectedId?: string;
+  revealSignal?: number;
   compact: boolean;
   emptyState: ReactNode;
   onSelect(task: TaskSummary): void;
@@ -14,7 +15,7 @@ interface Props {
   onCreateOption?(definition: PropertyDefinition, label: string): Promise<PropertyOption>;
 }
 
-export const TaskList = memo(function TaskList({ tasks, definitions, selectedId, compact, emptyState, onSelect, onQuickEdit, onCreateOption }: Props) {
+export const TaskList = memo(function TaskList({ tasks, definitions, selectedId, revealSignal = 0, compact, emptyState, onSelect, onQuickEdit, onCreateOption }: Props) {
   const listHost = useRef<HTMLDivElement>(null);
   const virtualizer = useVirtualizer({
     count: tasks.length,
@@ -28,6 +29,12 @@ export const TaskList = memo(function TaskList({ tasks, definitions, selectedId,
   useEffect(() => {
     virtualizer.measure();
   }, [compact, virtualizer]);
+
+  useEffect(() => {
+    if (!revealSignal || !selectedId) return;
+    const index = tasks.findIndex((task) => task.id === selectedId);
+    if (index >= 0) virtualizer.scrollToIndex(index, { align: "auto" });
+  }, [revealSignal, selectedId, tasks, virtualizer]);
 
   return (
     <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto px-2 pb-2" ref={listHost}>

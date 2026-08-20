@@ -222,6 +222,30 @@ fn open_external_url(url: String, app: tauri::AppHandle) -> Result<(), String> {
 }
 
 #[tauri::command]
+fn open_task_file(
+    id: String,
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    let path = with_workspace(state, |workspace| workspace.task_file_path(&id))?;
+    app.opener()
+        .open_path(path.to_string_lossy(), None::<&str>)
+        .map_err(|error| format!("Unable to open task file: {error}"))
+}
+
+#[tauri::command]
+fn reveal_task_file(
+    id: String,
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    let path = with_workspace(state, |workspace| workspace.task_file_path(&id))?;
+    app.opener()
+        .reveal_item_in_dir(path)
+        .map_err(|error| format!("Unable to reveal task file: {error}"))
+}
+
+#[tauri::command]
 async fn git_status(state: State<'_, AppState>) -> Result<GitStatus, String> {
     run_git(state, |root| git::status(&root)).await
 }
@@ -475,6 +499,8 @@ pub fn run() {
             check_external_change,
             read_attachment,
             open_external_url,
+            open_task_file,
+            reveal_task_file,
             git_status,
             git_initialize,
             git_set_remote,

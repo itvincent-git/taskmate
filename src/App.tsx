@@ -13,8 +13,10 @@ import {
   Copy,
   Download,
   Database,
+  ExternalLink,
   FileText,
   FolderOpen,
+  FolderSearch,
   FolderSync,
   GitBranch,
   LayoutList,
@@ -22,6 +24,7 @@ import {
   LoaderCircle,
   MoreHorizontal,
   Moon,
+  Pencil,
   PanelLeftClose,
   PanelLeftOpen,
   PanelRightClose,
@@ -533,10 +536,13 @@ function WorkspaceSession() {
   const [propertiesDrawerOpen, setPropertiesDrawerOpen] = useState(false);
   const [titleDraft, setTitleDraft] = useState("");
   const [titleEditing, setTitleEditing] = useState(false);
+  const [navigatorRevealSignal, setNavigatorRevealSignal] = useState(0);
   const fileSignal = useWorkspaceState((state) => state.fileSignal);
   const setFileSignal = useWorkspaceState((state) => state.setFileSignal);
   const [detailPanel, setDetailPanel] = useState<HTMLElement | null>(null);
   const propertiesButton = useRef<HTMLButtonElement>(null);
+  const titleInput = useRef<HTMLInputElement>(null);
+  const renameRequested = useRef(false);
   const filterButton = useRef<HTMLButtonElement>(null);
   const activeTab = useRef<HTMLDivElement>(null);
   const autoOpened = useRef(false);
@@ -773,6 +779,21 @@ function WorkspaceSession() {
     } catch (cause) {
       setError(errorMessage(cause));
     }
+  };
+  const runTaskFileAction = async (action: "open" | "reveal", id: string) => {
+    try {
+      await (action === "open" ? api.openTaskFile(id) : api.revealTaskFile(id));
+    } catch (cause) {
+      setError(errorMessage(cause));
+    }
+  };
+  const revealInNavigator = () => {
+    setTaskListVisible(true);
+    setTaskPanel("files");
+    setNavigatorRevealSignal((signal) => signal + 1);
+  };
+  const renameTask = () => {
+    renameRequested.current = true;
   };
   const chooseTask = async (id: string) => {
     if (id === selectedId) return;
@@ -1206,6 +1227,7 @@ function WorkspaceSession() {
                   tasks={tasks}
                   definitions={definitions}
                   selectedId={selectedId}
+                  revealSignal={navigatorRevealSignal}
                   compact={compactCards}
                   emptyState={taskListEmptyState}
                   onSelect={selectTask}
@@ -1219,7 +1241,7 @@ function WorkspaceSession() {
                 {!task ? <div className="flex h-full flex-col items-center justify-center text-center text-muted [&>h2]:mt-3 [&>h2]:mb-[3px] [&>h2]:font-heading [&>h2]:text-base [&>h2]:text-foreground [&>p]:m-0 [&>p]:text-xs"><div className="grid size-[52px] place-items-center rounded-full bg-accent-soft text-accent"><Check /></div><h2>{t("tasks.select")}</h2><p>{t("tasks.selectHint")}</p></div> : (
                   <div className="flex h-full flex-col overflow-hidden">
                     <header className="z-[5] flex h-10 shrink-0 items-center gap-1 border-b border-line bg-[color-mix(in_srgb,var(--surface)_92%,transparent)] py-1 pr-2 pl-3 backdrop-blur-xl" data-testid="detail-header">
-                      <Input className="min-h-0 min-w-20 flex-1 rounded-none border-0 bg-transparent p-0 font-heading text-lg font-[730] tracking-[-.025em] shadow-none ring-0 focus:ring-0" aria-label={t("tasks.title")} value={titleDraft} onFocus={() => setTitleEditing(true)} onChange={(event) => setTitleDraft(event.target.value)} onBlur={commitTaskTitle} onKeyDown={(event) => { if (event.key === "Enter") event.currentTarget.blur(); }} />
+                      <Input ref={titleInput} className="min-h-0 min-w-20 flex-1 rounded-none border-0 bg-transparent p-0 font-heading text-lg font-[730] tracking-[-.025em] shadow-none ring-0 focus:ring-0" aria-label={t("tasks.title")} value={titleDraft} onFocus={() => setTitleEditing(true)} onChange={(event) => setTitleDraft(event.target.value)} onBlur={commitTaskTitle} onKeyDown={(event) => { if (event.key === "Enter") event.currentTarget.blur(); }} />
                       <DropdownMenu.Root>
                         <Tooltip label={t("editor.moreActions")}>
                           <DropdownMenu.Trigger asChild>
@@ -1227,7 +1249,36 @@ function WorkspaceSession() {
                           </DropdownMenu.Trigger>
                         </Tooltip>
                         <DropdownMenu.Portal>
-                          <DropdownMenu.Content className="z-[200] w-[180px] rounded-lg border border-line bg-surface p-1 shadow-[0_12px_30px_rgba(0,0,0,.14)]" align="end" sideOffset={5} collisionPadding={8}>
+                          <DropdownMenu.Content
+                            className="z-[200] w-[210px] rounded-lg border border-line bg-surface p-1 shadow-[0_12px_30px_rgba(0,0,0,.14)]"
+                            align="end"
+                            sideOffset={5}
+                            collisionPadding={8}
+                            onCloseAutoFocus={(event) => {
+                              if (!renameRequested.current) return;
+                              event.preventDefault();
+                              renameRequested.current = false;
+                              titleInput.current?.focus();
+                              titleInput.current?.select();
+                            }}
+                          >
+                            <DropdownMenu.Item className="flex min-h-[30px] cursor-default items-center gap-1.5 rounded-[5px] px-2 py-1.5 text-xs outline-none data-[highlighted]:bg-accent-soft data-[highlighted]:text-accent" onSelect={() => void runTaskFileAction("reveal", task.id)}>
+                              <FolderSearch size={15} />
+                              {t("editor.revealInFinder")}
+                            </DropdownMenu.Item>
+                            <DropdownMenu.Item className="flex min-h-[30px] cursor-default items-center gap-1.5 rounded-[5px] px-2 py-1.5 text-xs outline-none data-[highlighted]:bg-accent-soft data-[highlighted]:text-accent" onSelect={revealInNavigator}>
+                              <PanelLeftOpen size={15} />
+                              {t("editor.revealInNavigator")}
+                            </DropdownMenu.Item>
+                            <DropdownMenu.Item className="flex min-h-[30px] cursor-default items-center gap-1.5 rounded-[5px] px-2 py-1.5 text-xs outline-none data-[highlighted]:bg-accent-soft data-[highlighted]:text-accent" onSelect={() => void runTaskFileAction("open", task.id)}>
+                              <ExternalLink size={15} />
+                              {t("editor.openInDefaultApp")}
+                            </DropdownMenu.Item>
+                            <DropdownMenu.Item className="flex min-h-[30px] cursor-default items-center gap-1.5 rounded-[5px] px-2 py-1.5 text-xs outline-none data-[highlighted]:bg-accent-soft data-[highlighted]:text-accent" onSelect={renameTask}>
+                              <Pencil size={15} />
+                              {t("editor.rename")}
+                            </DropdownMenu.Item>
+                            <DropdownMenu.Separator className="m-1 h-px bg-line" />
                             <DropdownMenu.Item className="flex min-h-[30px] cursor-default items-center gap-1.5 rounded-[5px] px-2 py-1.5 text-xs outline-none data-[highlighted]:bg-accent-soft data-[highlighted]:text-accent" onSelect={() => void archive()}>
                               {task.archived ? <ArchiveRestore size={15} /> : <Archive size={15} />}
                               {task.archived ? t("tasks.restore") : t("tasks.archiveAction")}
