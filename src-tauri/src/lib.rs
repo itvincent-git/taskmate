@@ -4,7 +4,7 @@ mod markdown;
 mod model;
 mod workspace;
 
-use git::GitStatus;
+use git::{GitHistoryEntry, GitStatus};
 use model::{
     PropertyDefinition, PropertyOption, SaveTaskInput, Task, TaskQuery, TaskSearchResult,
     TaskSummary, WorkspaceSnapshot,
@@ -212,7 +212,7 @@ fn git_pull(state: State<'_, AppState>) -> Result<GitStatus, String> {
 }
 
 #[tauri::command]
-fn git_history(state: State<'_, AppState>) -> Result<Vec<String>, String> {
+fn git_history(state: State<'_, AppState>) -> Result<Vec<GitHistoryEntry>, String> {
     with_workspace(state, |workspace| git::history(&workspace.root))
 }
 

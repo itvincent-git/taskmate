@@ -17,6 +17,15 @@ pub struct GitStatus {
     pub last_sync: Option<String>,
 }
 
+#[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct GitHistoryEntry {
+    pub hash: String,
+    pub date: String,
+    pub subject: String,
+    pub files: Vec<String>,
+}
+
 pub fn initialize(root: &Path) -> Result<GitStatus, String> {
     run(root, &["init"])?;
     status(root)
@@ -77,14 +86,40 @@ pub fn pull(root: &Path) -> Result<GitStatus, String> {
     status(root)
 }
 
-pub fn history(root: &Path) -> Result<Vec<String>, String> {
-    Ok(run(
+pub fn history(root: &Path) -> Result<Vec<GitHistoryEntry>, String> {
+    let output = run(
         root,
-        &["log", "-n", "20", "--pretty=format:%h%x09%aI%x09%s"],
-    )?
-    .lines()
-    .map(str::to_string)
-    .collect())
+        &[
+            "-c",
+            "core.quotePath=false",
+            "log",
+            "-n",
+            "20",
+            "--pretty=format:%x1e%h%x1f%aI%x1f%s",
+            "--name-only",
+        ],
+    )?;
+    Ok(output
+        .split('\x1e')
+        .filter_map(|record| {
+            let (header, files) = record
+                .trim()
+                .split_once('\n')
+                .unwrap_or((record.trim(), ""));
+            let mut fields = header.splitn(3, '\x1f');
+            Some(GitHistoryEntry {
+                hash: fields.next()?.to_string(),
+                date: fields.next()?.to_string(),
+                subject: fields.next()?.to_string(),
+                files: files
+                    .lines()
+                    .map(str::trim)
+                    .filter(|file| !file.is_empty())
+                    .map(str::to_string)
+                    .collect(),
+            })
+        })
+        .collect())
 }
 
 pub fn status(root: &Path) -> Result<GitStatus, String> {
@@ -254,6 +289,28 @@ mod tests {
             run(temporary.path(), &["log", "-1", "--format=%B"]).unwrap(),
             "Taskmate backup\n\nChanged files:\n- tasks/today.md\n- tasks/明日.md"
         );
+    }
+
+    #[test]
+    fn history_lists_files_in_each_commit() {
+        let temporary = tempfile::tempdir().unwrap();
+        initialize(temporary.path()).unwrap();
+        run(
+            temporary.path(),
+            &["config", "user.email", "test@example.com"],
+        )
+        .unwrap();
+        run(temporary.path(), &["config", "user.name", "Taskmate Test"]).unwrap();
+        std::fs::create_dir(temporary.path().join("tasks")).unwrap();
+        std::fs::write(temporary.path().join("tasks/today.md"), "# Today").unwrap();
+        std::fs::write(temporary.path().join("tasks/明日.md"), "# Tomorrow").unwrap();
+        commit(temporary.path(), "Taskmate backup").unwrap();
+
+        let entries = history(temporary.path()).unwrap();
+
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].subject, "Taskmate backup");
+        assert_eq!(entries[0].files, vec!["tasks/today.md", "tasks/明日.md"]);
     }
 
     #[test]

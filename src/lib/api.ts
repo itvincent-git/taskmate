@@ -5,6 +5,7 @@ import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { open } from "@tauri-apps/plugin-dialog";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import type {
+  GitHistoryEntry,
   GitStatus,
   PropertyDefinition,
   PropertyOption,
@@ -278,7 +279,7 @@ export const api = {
     if (!isTauri) return { initialized: action === "git_initialize", branch: "main", changes: [], conflicts: [], ahead: 0, behind: 0, lastSync: action === "git_pull" || action === "git_push" ? new Date().toISOString() : undefined };
     return invoke(action, args);
   },
-  async gitHistory(): Promise<string[]> {
+  async gitHistory(): Promise<GitHistoryEntry[]> {
     if (isTauri) return invoke("git_history");
     return [];
   },

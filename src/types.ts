@@ -95,6 +95,13 @@ export interface GitStatus {
   lastSync?: string;
 }
 
+export interface GitHistoryEntry {
+  hash: string;
+  date: string;
+  subject: string;
+  files: string[];
+}
+
 export type AppView = "tasks" | "properties" | "backup";
 
 export type Language = "en" | "zh";

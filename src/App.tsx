@@ -37,6 +37,7 @@ import {
 } from "lucide-react";
 import { api } from "./lib/api";
 import type {
+  GitHistoryEntry,
   GitStatus,
   PropertyDefinition,
   PropertyOption,
@@ -278,7 +279,7 @@ function BackupView() {
   const [status, setStatus] = useState<GitStatus | null>(null);
   const [remote, setRemote] = useState("");
   const [message, setMessage] = useState("Taskmate backup");
-  const [history, setHistory] = useState<string[]>([]);
+  const [history, setHistory] = useState<GitHistoryEntry[]>([]);
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
   const refresh = useCallback(async () => {
@@ -335,7 +336,20 @@ function BackupView() {
             <label>{t("backup.commitMessage")}<Input value={message} onChange={(event) => setMessage(event.target.value)} /></label>
             <div className="flex gap-1.5"><Button onClick={() => action("git_commit", { message })}>{t("backup.commit")}</Button><Button variant="outline" onClick={() => action("git_pull")}>{t("backup.pull")}</Button><Button variant="outline" onClick={() => action("git_push")}>{t("backup.push")}</Button></div>
           </section>
-          <section className="rounded-xl border border-line bg-surface p-4 transition-shadow hover:shadow-panel [&>h2]:mt-0 [&>h2]:mb-3 [&>h2]:font-heading [&>h2]:text-base"><h2>{t("backup.history")}</h2>{history.length ? history.map((entry) => <code className="my-1 block text-xs" key={entry}>{entry}</code>) : <p className="text-muted">{t("backup.noCommits")}</p>}</section>
+          <section className="rounded-xl border border-line bg-surface p-4 transition-shadow hover:shadow-panel [&>h2]:mt-0 [&>h2]:mb-3 [&>h2]:font-heading [&>h2]:text-base">
+            <h2>{t("backup.history")}</h2>
+            {history.length ? (
+              <ol className="m-0 grid max-h-72 list-none gap-2 overflow-auto p-0" aria-label={t("backup.history")}>
+                {history.map((entry) => (
+                  <li className="rounded-lg border border-line px-3 py-2" key={entry.hash}>
+                    <div className="flex items-baseline gap-2"><code className="text-xs font-semibold">{entry.hash}</code><span className="min-w-0 truncate text-sm font-medium" title={entry.subject}>{entry.subject}</span></div>
+                    <time className="block text-xs text-muted" dateTime={entry.date}>{new Date(entry.date).toLocaleString()}</time>
+                    {entry.files.length > 0 ? <ul className="mt-2 mb-0 list-none border-t border-line p-0 pt-1.5">{entry.files.map((file) => <li key={file}><code className="block truncate text-xs text-muted" title={file}>{file}</code></li>)}</ul> : null}
+                  </li>
+                ))}
+              </ol>
+            ) : <p className="text-muted">{t("backup.noCommits")}</p>}
+          </section>
         </div>
       )}
     </div>
