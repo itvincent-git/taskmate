@@ -580,7 +580,7 @@ function buildDecorations(view: EditorView): DecorationSet {
       to: viewport.to,
       enter(node) {
         if (inactiveRichRanges.some((range) => node.from >= range.from && node.to <= range.to)) return false;
-        const activeNode = node.node.parent?.name === "Document"
+        const activeNode = node.name === "Escape" || node.node.parent?.name === "Document"
           ? node.node
           : node.node.parent ?? node.node;
         const active = nodeIsActive(view.state, activeNode, view.composing);
@@ -668,6 +668,8 @@ function buildDecorations(view: EditorView): DecorationSet {
           });
         } else if (!active && node.name === "QuoteMark") {
           ranges.push({ from: node.from, to: node.to, decoration: Decoration.replace({ widget: new MarkerWidget("quote") }) });
+        } else if (!active && node.name === "Escape") {
+          ranges.push({ from: node.from, to: node.from + 1, decoration: Decoration.replace({ inclusive: false }) });
         } else if (
           !active &&
           (hiddenMarks.has(node.name) || isLinkTarget) &&

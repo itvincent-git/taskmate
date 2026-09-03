@@ -45,6 +45,28 @@ describe("Live Preview activation", () => {
     host.remove();
   });
 
+  it("renders backslash-escaped Markdown punctuation as literal characters", () => {
+    const host = document.createElement("div");
+    document.body.append(host);
+    const source = "plain\n\\*literal\\* \\# heading \\[label\\] \\`code\\` \\$math$";
+    const view = new EditorView({
+      parent: host,
+      state: EditorState.create({
+        doc: source,
+        extensions: [markdown({ extensions: [GFM] }), livePreview],
+      }),
+    });
+
+    expect(host.querySelectorAll(".cm-line")[1]).toHaveTextContent("*literal* # heading [label] `code` $math$");
+    expect(host.querySelector(".font-\\[750\\], .italic, .text-accent, [data-preview-kind='math']")).toBeNull();
+
+    view.dispatch({ selection: { anchor: source.indexOf("\\*") + 1 } });
+    expect(host.querySelectorAll(".cm-line")[1]).toHaveTextContent("\\*literal* # heading [label] `code` $math$");
+
+    view.destroy();
+    host.remove();
+  });
+
   it("renders safe inline HTML and reveals its source while editing", () => {
     const host = document.createElement("div");
     document.body.append(host);
