@@ -269,16 +269,59 @@ export function rangeIsActive(
 }
 
 export function linkUrlAt(state: EditorState, position: number): string | null {
+  const references = linkReferences(state);
   for (const bias of [1, -1] as const) {
     let node: SyntaxNode | null = syntaxTree(state).resolveInner(position, bias);
     while (node && node.name !== "Link" && node.name !== "Autolink" && node.name !== "URL") {
       node = node.parent;
     }
     if (!node) continue;
-    const url = node.name === "URL" ? node : node.getChild("URL");
+    const url = node.name === "Link" ? linkDestination(state, node, references) : node.getChild("URL") ?? node;
+    if (typeof url === "string") return url;
     if (url) return state.sliceDoc(url.from, url.to);
   }
   return null;
+}
+
+function normalizedLinkLabel(value: string) {
+  return value.slice(1, -1).trim().replace(/\s+/g, " ").toLowerCase();
+}
+
+function normalizedLinkDestination(value: string) {
+  const destination = value.trim();
+  return destination.startsWith("<") && destination.endsWith(">")
+    ? destination.slice(1, -1)
+    : destination;
+}
+
+function linkReferences(state: EditorState) {
+  const references = new Map<string, string>();
+  syntaxTree(state).iterate({
+    enter(node) {
+      if (node.name !== "LinkReference") return;
+      const label = node.node.getChild("LinkLabel");
+      const url = node.node.getChild("URL");
+      if (!label || !url) return;
+      const key = normalizedLinkLabel(state.sliceDoc(label.from, label.to));
+      if (!references.has(key)) {
+        references.set(key, normalizedLinkDestination(state.sliceDoc(url.from, url.to)));
+      }
+    },
+  });
+  return references;
+}
+
+function linkDestination(state: EditorState, link: SyntaxNode, references: ReadonlyMap<string, string>) {
+  const inlineUrl = link.getChild("URL");
+  if (inlineUrl) return state.sliceDoc(inlineUrl.from, inlineUrl.to);
+
+  const label = link.getChild("LinkLabel");
+  const explicitLabel = label ? state.sliceDoc(label.from, label.to) : "";
+  if (label && explicitLabel !== "[]") return references.get(normalizedLinkLabel(explicitLabel));
+
+  const marks = link.getChildren("LinkMark");
+  if (marks.length < 2) return undefined;
+  return references.get(normalizedLinkLabel(`[${state.sliceDoc(marks[0].to, marks[1].from)}]`));
 }
 
 function nodeIsActive(state: EditorState, node: SyntaxNode, composing: boolean) {
@@ -408,25 +451,29 @@ function appendTableCellContent(parent: HTMLElement, parts: TableCellContent[]) 
   });
 }
 
-function tableCellContent(state: EditorState, cell: SyntaxNode): TableCellContent[] {
+function tableCellContent(state: EditorState, cell: SyntaxNode, references: ReadonlyMap<string, string>): TableCellContent[] {
   const parts: TableCellContent[] = [];
   let position = cell.from;
   for (let child = cell.firstChild; child; child = child.nextSibling) {
     if (child.from > position) parts.push({ text: state.sliceDoc(position, child.from) });
     if (child.name === "Escape") {
       parts.push({ text: state.sliceDoc(child.from + 1, child.to) });
-    } else if (!hiddenMarks.has(child.name) && !(child.name === "URL" && cell.name === "Link")) {
+    } else if (
+      !hiddenMarks.has(child.name) &&
+      !(child.name === "URL" && cell.name === "Link") &&
+      !(child.name === "LinkLabel" && cell.name === "Link")
+    ) {
       const className = styledNodes[child.name];
       const url = child.name === "Link"
-        ? child.getChild("URL")
+        ? linkDestination(state, child, references)
         : child.name === "URL"
           ? child
           : null;
       if (className || child.firstChild) {
         parts.push({
           className,
-          linkUrl: url ? state.sliceDoc(url.from, url.to) : undefined,
-          children: tableCellContent(state, child),
+          linkUrl: typeof url === "string" ? url : url ? state.sliceDoc(url.from, url.to) : undefined,
+          children: tableCellContent(state, child, references),
         });
       } else {
         parts.push({ text: state.sliceDoc(child.from, child.to) });
@@ -438,7 +485,7 @@ function tableCellContent(state: EditorState, cell: SyntaxNode): TableCellConten
   return parts;
 }
 
-function tableCells(state: EditorState, row: SyntaxNode) {
+function tableCells(state: EditorState, row: SyntaxNode, references: ReadonlyMap<string, string>) {
   const delimiters = row.getChildren("TableDelimiter");
   const cells = row.getChildren("TableCell");
   const regions: Array<{ from: number; to: number }> = [];
@@ -452,11 +499,11 @@ function tableCells(state: EditorState, row: SyntaxNode) {
   if (delimiters.at(-1)?.to === row.to) regions.pop();
   return regions.map((region) => {
     const cell = cells.find((candidate) => candidate.from >= region.from && candidate.to <= region.to);
-    return cell ? tableCellContent(state, cell) : [];
+    return cell ? tableCellContent(state, cell, references) : [];
   });
 }
 
-function tableDecorations(state: EditorState, node: SyntaxNode) {
+function tableDecorations(state: EditorState, node: SyntaxNode, references: ReadonlyMap<string, string>) {
   const header = node.getChild("TableHeader");
   const rows = node.getChildren("TableRow");
   const separator = node.getChildren("TableDelimiter")[0];
@@ -469,8 +516,8 @@ function tableDecorations(state: EditorState, node: SyntaxNode) {
     })
     : [];
   const tableRows = [
-    ...(header ? [{ node: header, values: tableCells(state, header), header: true }] : []),
-    ...rows.map((row) => ({ node: row, values: tableCells(state, row), header: false })),
+    ...(header ? [{ node: header, values: tableCells(state, header, references), header: true }] : []),
+    ...rows.map((row) => ({ node: row, values: tableCells(state, row, references), header: false })),
   ];
   return {
     separator,
@@ -658,6 +705,7 @@ function buildDecorations(view: EditorView): DecorationSet {
   const builder = new RangeSetBuilder<Decoration>();
   const ranges: Array<{ from: number; to: number; decoration: Decoration }> = [];
   const richRanges = richPreviewRanges(view.state);
+  const references = linkReferences(view.state);
   const inactiveRichRanges = richRanges.filter((range) =>
     !rangeIsActive(range.from, range.to, view.state.selection.ranges, view.composing));
   inactiveRichRanges.forEach((range) => ranges.push(...richPreviewDecorations(view.state, range)));
@@ -699,7 +747,7 @@ function buildDecorations(view: EditorView): DecorationSet {
           return false;
         }
         if (!active && node.name === "Table") {
-          const table = tableDecorations(view.state, node.node);
+          const table = tableDecorations(view.state, node.node, references);
           ranges.push(...table.rows);
           if (table.separator) {
             ranges.push({
@@ -725,10 +773,11 @@ function buildDecorations(view: EditorView): DecorationSet {
           return false;
         }
         const isLinkTarget = node.name === "URL" && node.node.parent?.name === "Link";
+        const isLinkLabel = node.name === "LinkLabel" && node.node.parent?.name === "Link";
         const style = isLinkTarget ? undefined : styledNodes[node.name];
         if (style) {
           const linkUrl = node.name === "Link"
-            ? node.node.getChild("URL")
+            ? linkDestination(view.state, node.node, references)
             : node.name === "URL"
               ? node.node
               : null;
@@ -738,7 +787,7 @@ function buildDecorations(view: EditorView): DecorationSet {
             decoration: Decoration.mark({
               class: style,
               attributes: linkUrl
-                ? { "data-link-url": view.state.sliceDoc(linkUrl.from, linkUrl.to) }
+                ? { "data-link-url": typeof linkUrl === "string" ? linkUrl : view.state.sliceDoc(linkUrl.from, linkUrl.to) }
                 : undefined,
             }),
           });
@@ -766,7 +815,7 @@ function buildDecorations(view: EditorView): DecorationSet {
           ranges.push({ from: node.from, to: node.from + 1, decoration: Decoration.replace({ inclusive: false }) });
         } else if (
           !active &&
-          (hiddenMarks.has(node.name) || isLinkTarget) &&
+          (hiddenMarks.has(node.name) || isLinkTarget || isLinkLabel) &&
           node.to > node.from
         ) {
           let to = node.to;

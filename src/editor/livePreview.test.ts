@@ -222,6 +222,40 @@ describe("Live Preview activation", () => {
     expect(linkUrlAt(state, doc.indexOf("plain"))).toBeNull();
   });
 
+  it("renders full, collapsed, and shortcut reference links", () => {
+    const host = document.createElement("div");
+    document.body.append(host);
+    const source = [
+      "plain",
+      "Read [the guide][docs], [docs][], and [docs].",
+      "",
+      "[DOCS]: <https://example.com/guide>",
+    ].join("\n");
+    const view = new EditorView({
+      parent: host,
+      state: EditorState.create({
+        doc: source,
+        extensions: [markdown({ extensions: [GFM] }), livePreview],
+      }),
+    });
+
+    const links = host.querySelectorAll('[data-link-url="https://example.com/guide"]');
+    expect(links).toHaveLength(3);
+    expect(Array.from(links, (link) => link.textContent)).toEqual(["the guide", "docs", "docs"]);
+    expect(host.querySelectorAll(".cm-line")[1]).toHaveTextContent("Read the guide, docs, and docs.");
+
+    view.destroy();
+    host.remove();
+  });
+
+  it("resolves reference link destinations at the linked text", () => {
+    const doc = "[Reference][guide]\n\n[GUIDE]: https://example.com/reference";
+    const state = EditorState.create({ doc, extensions: [markdown()] });
+
+    expect(linkUrlAt(state, doc.indexOf("Reference"))).toBe("https://example.com/reference");
+    expect(linkUrlAt(state, doc.indexOf("GUIDE"))).toBeNull();
+  });
+
   it("hides heading markers and separator whitespace for h1 through h6", () => {
     const host = document.createElement("div");
     document.body.append(host);
