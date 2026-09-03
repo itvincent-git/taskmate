@@ -1085,7 +1085,9 @@ function WorkspaceSession() {
                   role="tab"
                   aria-selected={tabKey(tab) === activeTabKey}
                 >
-                  <button className="min-w-0 flex-1 cursor-pointer truncate text-left" onClick={() => tab.kind === "task" ? (navigate("/tasks"), void chooseTask(tab.id)) : navigate(tab.id)}>{tabTitle(tab)}</button>
+                  <Tooltip label={tab.kind === "task" ? tab.fileName : tabTitle(tab)} side="bottom">
+                    <button className="min-w-0 flex-1 cursor-pointer truncate text-left" onClick={() => tab.kind === "task" ? (navigate("/tasks"), void chooseTask(tab.id)) : navigate(tab.id)}>{tabTitle(tab)}</button>
+                  </Tooltip>
                   <button className="ml-1.5 grid size-5 shrink-0 cursor-pointer place-items-center rounded opacity-0 hover:bg-line group-hover:opacity-100 focus:opacity-100" aria-label={`${t("tasks.closeTab")}: ${tabTitle(tab)}`} onClick={() => void closeTab(tab)}><X size={12} /></button>
                 </div>
               </ContextMenu.Trigger>
