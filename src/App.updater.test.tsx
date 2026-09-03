@@ -60,6 +60,7 @@ it("shows an available update in the sidebar without opening a dialog", async ()
   expect(screen.queryByRole("heading", { name: "Update available" })).not.toBeInTheDocument();
   const updateButton = screen.getByRole("button", { name: "Download Taskmate 0.7.0" });
   const switchButton = screen.getByRole("button", { name: "Switch workspace" });
+  expect(updateButton).toHaveClass("sidebar-update-available");
   expect(updateButton.compareDocumentPosition(switchButton) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
 
   await user.click(updateButton);

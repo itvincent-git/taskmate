@@ -458,7 +458,11 @@ function SidebarUpdateAction({ updater }: { updater: ReturnType<typeof useUpdate
     const label = t("updates.navAvailable", { version });
     return (
       <Tooltip label={label}>
-        <span><Button className="shadow-[0_4px_12px_color-mix(in_srgb,var(--accent)_35%,transparent)]" size="icon" aria-label={label} onClick={() => void updater.downloadAndInstall()}><Download size={18} /></Button></span>
+        <span>
+          <Button className="sidebar-update-available" size="icon" aria-label={label} onClick={() => void updater.downloadAndInstall()}>
+            <span className="sidebar-update-available-icon" aria-hidden="true"><Download size={18} /></span>
+          </Button>
+        </span>
       </Tooltip>
     );
   }
