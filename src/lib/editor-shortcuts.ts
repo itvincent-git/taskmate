@@ -28,7 +28,7 @@ export const EDITOR_SHORTCUTS_STORAGE_KEY = "taskmate-editor-shortcuts.v1";
 const modifierOrder = ["Mod", "Ctrl", "Alt", "Shift"] as const;
 const modifierKeys = new Set(["Alt", "Control", "Meta", "Shift"]);
 const reservedShortcuts = new Set([
-  "Mod+A", "Mod+C", "Mod+I", "Mod+V", "Mod+X", "Mod+Y", "Mod+Z", "Mod+Shift+Z",
+  "Mod+A", "Mod+C", "Mod+F", "Mod+I", "Mod+V", "Mod+X", "Mod+Y", "Mod+Z", "Mod+Shift+Z",
   "Alt+ArrowUp", "Alt+ArrowDown",
   "Alt+Shift+ArrowUp", "Alt+Shift+ArrowDown", "Mod+Alt+ArrowUp", "Mod+Alt+ArrowDown",
   "Mod+Enter", "Mod+[", "Mod+]", "Mod+Alt+\\", "Mod+Shift+K", "Mod+Shift+\\",

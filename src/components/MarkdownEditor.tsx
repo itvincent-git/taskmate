@@ -3,6 +3,7 @@ import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirro
 import { markdown } from "@codemirror/lang-markdown";
 import { GFM } from "@lezer/markdown";
 import { HighlightStyle, syntaxHighlighting } from "@codemirror/language";
+import { openSearchPanel, search, searchKeymap } from "@codemirror/search";
 import { Annotation, Compartment, EditorState, Prec } from "@codemirror/state";
 import { keymap, EditorView, placeholder } from "@codemirror/view";
 import { tags } from "@lezer/highlight";
@@ -20,6 +21,7 @@ import {
   ListOrdered,
   Minus,
   Quote,
+  Search,
   Strikethrough,
 } from "lucide-react";
 import { applyMarkdownAction, MARKDOWN_ACTIONS, type MarkdownAction } from "../editor/commands";
@@ -102,6 +104,8 @@ export const MarkdownEditor = memo(function MarkdownEditor({ value, onChange, on
           history(),
           markdown({ extensions: [GFM], codeLanguages }),
           syntaxHighlighting(githubHighlightStyle),
+          search({ top: true }),
+          EditorState.phrases.of(locale === "zh-CN" ? chineseSearchPhrases : {}),
           previewCompartment.current.of(sourceMode ? [] : livePreview),
           EditorView.domEventHandlers({
             mousedown(event, editorView) {
@@ -120,8 +124,9 @@ export const MarkdownEditor = memo(function MarkdownEditor({ value, onChange, on
             },
           }),
           placeholder(t("editor.placeholder")),
+          Prec.highest(keymap.of([{ key: "Mod-f", run: openSearchPanel, scope: "editor search-panel" }])),
           shortcutCompartment.current.of(markdownShortcutExtensions(shortcuts, platform)),
-          keymap.of([indentWithTab, ...defaultKeymap, ...historyKeymap]),
+          keymap.of([indentWithTab, ...searchKeymap, ...defaultKeymap, ...historyKeymap]),
           EditorView.lineWrapping,
           EditorView.updateListener.of((update) => {
             if (update.docChanged && !update.transactions.some((transaction) => transaction.annotation(syncValue))) {
@@ -158,6 +163,30 @@ export const MarkdownEditor = memo(function MarkdownEditor({ value, onChange, on
               paddingBottom: "7px",
             },
             ".cm-gutters": { display: "none" },
+            ".cm-panel.cm-search": {
+              borderBottom: "1px solid var(--line)",
+              backgroundColor: "var(--surface-soft)",
+              color: "var(--text)",
+              padding: "6px 36px 6px 12px",
+            },
+            ".cm-panel.cm-search input": {
+              border: "1px solid var(--line)",
+              borderRadius: "6px",
+              backgroundColor: "var(--surface)",
+              color: "var(--text)",
+              padding: "4px 7px",
+            },
+            ".cm-panel.cm-search button": {
+              border: "1px solid var(--line)",
+              borderRadius: "6px",
+              backgroundColor: "var(--surface)",
+              color: "var(--text)",
+              padding: "4px 8px",
+            },
+            ".cm-panel.cm-search button:hover": { borderColor: "var(--accent)", color: "var(--accent)" },
+            ".cm-panel.cm-search [name=close]": { top: "8px", right: "12px", fontSize: "18px" },
+            ".cm-searchMatch": { backgroundColor: "color-mix(in srgb, var(--warning) 28%, transparent)" },
+            ".cm-searchMatch-selected": { backgroundColor: "color-mix(in srgb, var(--accent) 32%, transparent)" },
             "&.cm-focused": { outline: "none" },
           }),
         ],
@@ -232,6 +261,21 @@ export const MarkdownEditor = memo(function MarkdownEditor({ value, onChange, on
             </Tooltip>
           );
         })}
+        <Tooltip label={`${t("editor.find")} (${formatShortcut("Mod+F", platform)})`}>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="ml-1 border-l border-line pl-1"
+            aria-label={`${t("editor.find")} (${formatShortcut("Mod+F", platform)})`}
+            aria-keyshortcuts={shortcutToAria("Mod+F", platform)}
+            onMouseDown={(event) => {
+              event.preventDefault();
+              if (!editor.current) return;
+              openSearchPanel(editor.current);
+              editor.current.dom.querySelector<HTMLInputElement>(".cm-search [main-field]")?.focus();
+            }}
+          ><Search size={16} /></Button>
+        </Tooltip>
       </div>
       <div
         className="min-h-0 flex-1 overflow-hidden [&_.cm-content]:min-h-full [&_.cm-editor]:h-full [&_.cm-editor]:min-h-0 [&_.cm-editor]:bg-surface [&_.cm-editor]:text-foreground [&_.cm-scroller]:h-full [&_.cm-scroller]:overscroll-contain [&_.cm-scroller]:overflow-y-auto!"
@@ -292,3 +336,21 @@ function toolbarLabel(action: MarkdownAction) {
     ordered: "有序列表", task: "任务列表", link: "链接", image: "图片", rule: "分割线",
   }[action];
 }
+
+const chineseSearchPhrases = {
+  Find: "搜索",
+  Replace: "替换为",
+  next: "下一个",
+  previous: "上一个",
+  all: "全部选中",
+  "match case": "区分大小写",
+  regexp: "正则表达式",
+  "by word": "全字匹配",
+  replace: "替换",
+  "replace all": "全部替换",
+  close: "关闭",
+  "current match": "当前匹配项",
+  "on line": "位于第",
+  "replaced match on line $": "已替换第 $ 行的匹配项",
+  "replaced $ matches": "已替换 $ 个匹配项",
+};

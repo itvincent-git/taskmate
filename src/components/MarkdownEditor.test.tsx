@@ -64,6 +64,39 @@ describe("MarkdownEditor", () => {
     expect(onChange).toHaveBeenCalledWith("First body changed");
   });
 
+  it("opens find and replace from the toolbar", () => {
+    render(<MarkdownEditor value="First body" onChange={vi.fn()} />);
+
+    fireEvent.mouseDown(screen.getByRole("button", { name: "Find and replace (Ctrl+F)" }));
+
+    expect(screen.getByRole("textbox", { name: "Find" })).toHaveFocus();
+    expect(screen.getByRole("textbox", { name: "Replace" })).toBeInTheDocument();
+  });
+
+  it("opens find and replace with Mod+F and replaces all matches", () => {
+    const onChange = vi.fn();
+    const { container } = render(<MarkdownEditor value="todo and todo" onChange={onChange} />);
+    const view = editorView(container);
+
+    fireEvent.keyDown(container.querySelector(".cm-content")!, { key: "f", ctrlKey: true });
+    fireEvent.change(screen.getByRole("textbox", { name: "Find" }), { target: { value: "todo" } });
+    fireEvent.change(screen.getByRole("textbox", { name: "Replace" }), { target: { value: "done" } });
+    fireEvent.click(screen.getByRole("button", { name: "replace all" }));
+
+    expect(view.state.doc.toString()).toBe("done and done");
+    expect(onChange).toHaveBeenLastCalledWith("done and done");
+  });
+
+  it("keeps Mod+F reserved for search when stored formatting shortcuts conflict", () => {
+    act(() => setEditorShortcut("h1", "Mod+F"));
+    const { container } = render(<MarkdownEditor value="text" onChange={vi.fn()} />);
+
+    fireEvent.keyDown(container.querySelector(".cm-content")!, { key: "f", ctrlKey: true });
+
+    expect(screen.getByRole("textbox", { name: "Find" })).toBeInTheDocument();
+    expect(editorView(container).state.doc.toString()).toBe("text");
+  });
+
   it("reports task checkbox clicks as document changes", () => {
     const onChange = vi.fn();
     const { container } = render(<MarkdownEditor value={"plain\n- [ ] todo"} onChange={onChange} />);

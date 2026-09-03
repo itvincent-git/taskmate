@@ -77,6 +77,7 @@ describe("editor shortcuts", () => {
     expect(validateShortcut("B", DEFAULT_EDITOR_SHORTCUTS, "bold")).toBe("invalid");
     expect(validateShortcut("Mod+I", DEFAULT_EDITOR_SHORTCUTS, "bold")).toBe("duplicate");
     expect(validateShortcut("Mod+Z", DEFAULT_EDITOR_SHORTCUTS, "bold", "other")).toBe("reserved");
+    expect(validateShortcut("Mod+F", DEFAULT_EDITOR_SHORTCUTS, "bold", "other")).toBe("reserved");
     expect(validateShortcut("Alt+ArrowUp", DEFAULT_EDITOR_SHORTCUTS, "bold", "other")).toBe("reserved");
     expect(validateShortcut("Mod+I", { ...DEFAULT_EDITOR_SHORTCUTS, italic: null }, "bold", "other")).toBe("reserved");
     expect(validateShortcut("Ctrl+B", DEFAULT_EDITOR_SHORTCUTS, "bold", "mac")).toBe("reserved");
