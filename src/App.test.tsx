@@ -711,6 +711,22 @@ describe("Taskmate application", () => {
     expect(screen.getByRole("heading", { name: "Select a task" })).toBeInTheDocument();
   });
 
+  it("closes the active tab with Command+W on macOS", async () => {
+    vi.spyOn(navigator, "platform", "get").mockReturnValue("MacIntel");
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(screen.getByRole("button", { name: "Open workspace" }));
+    await user.click(await screen.findByRole("button", { name: "New task" }));
+    await user.click(screen.getByRole("button", { name: "New task" }));
+
+    const shortcut = new KeyboardEvent("keydown", { key: "w", metaKey: true, cancelable: true });
+    window.dispatchEvent(shortcut);
+
+    expect(shortcut.defaultPrevented).toBe(true);
+    await waitFor(() => expect(screen.getAllByRole("tab")).toHaveLength(1));
+    expect(screen.getByRole("tab")).toHaveAttribute("aria-selected", "true");
+  });
+
   it("offers current task actions for the tab that was right-clicked", async () => {
     const user = userEvent.setup();
     const copyText = vi.spyOn(api, "copyText").mockResolvedValue();

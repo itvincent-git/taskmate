@@ -900,6 +900,22 @@ function WorkspaceSession() {
     }
   };
   const closeTab = (closing: OpenTab) => closeTabs([closing]);
+  const closeActiveTab = useLatestCallback(() => {
+    const active = openTabs.find((tab) => tabKey(tab) === activeTabKey);
+    if (active) void closeTab(active);
+  });
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      const isMac = navigator.platform.includes("Mac");
+      const modifierPressed = isMac ? event.metaKey && !event.ctrlKey : event.ctrlKey && !event.metaKey;
+      if (event.key.toLowerCase() !== "w" || !modifierPressed || event.altKey || event.shiftKey) return;
+      if (!openTabs.some((tab) => tabKey(tab) === activeTabKey)) return;
+      event.preventDefault();
+      closeActiveTab();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [activeTabKey, closeActiveTab, openTabs]);
   const openPage = (nextPage: WorkspacePage) => {
     setOpenTabs((tabs) => tabs.some((tab) => tab.kind === "page" && tab.id === nextPage) ? tabs : [...tabs, { kind: "page", id: nextPage }]);
   };
