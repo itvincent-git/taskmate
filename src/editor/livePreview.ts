@@ -684,10 +684,16 @@ function buildDecorations(view: EditorView): DecorationSet {
           if (range) {
             htmlPreviewTo = range.to;
             if (!rangeIsActive(range.from, range.to, view.state.selection.ranges, view.composing)) {
-              ranges.push({
-                ...range,
-                decoration: Decoration.replace({ widget: new HtmlWidget(view.state.sliceDoc(range.from, range.to), false) }),
-              });
+              const firstLine = view.state.doc.lineAt(range.from);
+              const lastLine = view.state.doc.lineAt(range.to);
+              if (firstLine.number !== lastLine.number) {
+                ranges.push(...htmlBlockDecorations(view.state, node.node));
+              } else {
+                ranges.push({
+                  ...range,
+                  decoration: Decoration.replace({ widget: new HtmlWidget(view.state.sliceDoc(range.from, range.to), false) }),
+                });
+              }
             }
           }
           return false;

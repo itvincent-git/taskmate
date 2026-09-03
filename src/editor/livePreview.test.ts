@@ -118,6 +118,35 @@ describe("Live Preview activation", () => {
     host.remove();
   });
 
+  it("renders multiline HTML images without hiding the following document", async () => {
+    const host = document.createElement("div");
+    document.body.append(host);
+    const source = [
+      "plain",
+      "<img",
+      'src="https://picsum.photos/300/180"',
+      'alt="HTML image"',
+      'width="300"',
+      "/>",
+      "## Following heading",
+      "Following content",
+    ].join("\n");
+    const view = new EditorView({
+      parent: host,
+      state: EditorState.create({
+        doc: source,
+        extensions: [markdown(), livePreview],
+      }),
+    });
+
+    await vi.waitFor(() => expect(host.querySelector('[data-preview-kind="html"] img')).toHaveAttribute("src"));
+    expect(host.textContent).toContain("Following heading");
+    expect(host.textContent).toContain("Following content");
+
+    view.destroy();
+    host.remove();
+  });
+
   it("does not load unsafe HTML image sources", async () => {
     const host = document.createElement("div");
     document.body.append(host);
