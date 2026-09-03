@@ -266,6 +266,13 @@ function nodeIsActive(state: EditorState, node: SyntaxNode, composing: boolean) 
 
 type TableAlignment = "left" | "center" | "right" | undefined;
 
+type TableCellContent = {
+  text?: string;
+  className?: string;
+  linkUrl?: string;
+  children?: TableCellContent[];
+};
+
 class MarkerWidget extends WidgetType {
   constructor(
     readonly kind: "bullet" | "ordered" | "task" | "quote" | "rule" | "image",
@@ -333,7 +340,7 @@ class MarkerWidget extends WidgetType {
 
 class TableRowWidget extends WidgetType {
   constructor(
-    readonly values: string[],
+    readonly values: TableCellContent[][],
     readonly alignments: TableAlignment[],
     readonly header: boolean,
   ) {
@@ -355,7 +362,7 @@ class TableRowWidget extends WidgetType {
     this.values.forEach((value, index) => {
       const cell = document.createElement("span");
       cell.setAttribute("role", this.header ? "columnheader" : "cell");
-      cell.textContent = value;
+      appendTableCellContent(cell, value);
       cell.style.textAlign = this.alignments[index] ?? "left";
       row.append(cell);
     });
@@ -366,12 +373,72 @@ class TableRowWidget extends WidgetType {
   }
 }
 
+function appendTableCellContent(parent: HTMLElement, parts: TableCellContent[]) {
+  parts.forEach((part) => {
+    if (part.text !== undefined) {
+      parent.append(document.createTextNode(part.text));
+      return;
+    }
+    const element = document.createElement("span");
+    if (part.className) element.className = part.className;
+    if (part.linkUrl) element.dataset.linkUrl = part.linkUrl;
+    appendTableCellContent(element, part.children ?? []);
+    parent.append(element);
+  });
+}
+
+function tableCellContent(state: EditorState, cell: SyntaxNode): TableCellContent[] {
+  const parts: TableCellContent[] = [];
+  let position = cell.from;
+  for (let child = cell.firstChild; child; child = child.nextSibling) {
+    if (child.from > position) parts.push({ text: state.sliceDoc(position, child.from) });
+    if (child.name === "Escape") {
+      parts.push({ text: state.sliceDoc(child.from + 1, child.to) });
+    } else if (!hiddenMarks.has(child.name) && !(child.name === "URL" && cell.name === "Link")) {
+      const className = styledNodes[child.name];
+      const url = child.name === "Link"
+        ? child.getChild("URL")
+        : child.name === "URL"
+          ? child
+          : null;
+      if (className || child.firstChild) {
+        parts.push({
+          className,
+          linkUrl: url ? state.sliceDoc(url.from, url.to) : undefined,
+          children: tableCellContent(state, child),
+        });
+      } else {
+        parts.push({ text: state.sliceDoc(child.from, child.to) });
+      }
+    }
+    position = child.to;
+  }
+  if (position < cell.to) parts.push({ text: state.sliceDoc(position, cell.to) });
+  return parts;
+}
+
+function tableCells(state: EditorState, row: SyntaxNode) {
+  const delimiters = row.getChildren("TableDelimiter");
+  const cells = row.getChildren("TableCell");
+  const regions: Array<{ from: number; to: number }> = [];
+  let from = row.from;
+  delimiters.forEach((delimiter) => {
+    regions.push({ from, to: delimiter.from });
+    from = delimiter.to;
+  });
+  regions.push({ from, to: row.to });
+  if (delimiters[0]?.from === row.from) regions.shift();
+  if (delimiters.at(-1)?.to === row.to) regions.pop();
+  return regions.map((region) => {
+    const cell = cells.find((candidate) => candidate.from >= region.from && candidate.to <= region.to);
+    return cell ? tableCellContent(state, cell) : [];
+  });
+}
+
 function tableDecorations(state: EditorState, node: SyntaxNode) {
   const header = node.getChild("TableHeader");
   const rows = node.getChildren("TableRow");
   const separator = node.getChildren("TableDelimiter")[0];
-  const cells = (row: SyntaxNode | null) =>
-    row?.getChildren("TableCell").map((cell) => state.sliceDoc(cell.from, cell.to).trim()) ?? [];
   const alignments = separator
     ? state.sliceDoc(separator.from, separator.to).split("|").filter((part) => part.trim()).map((part): TableAlignment => {
       const value = part.trim();
@@ -381,8 +448,8 @@ function tableDecorations(state: EditorState, node: SyntaxNode) {
     })
     : [];
   const tableRows = [
-    ...(header ? [{ node: header, values: cells(header), header: true }] : []),
-    ...rows.map((row) => ({ node: row, values: cells(row), header: false })),
+    ...(header ? [{ node: header, values: tableCells(state, header), header: true }] : []),
+    ...rows.map((row) => ({ node: row, values: tableCells(state, row), header: false })),
   ];
   return {
     separator,

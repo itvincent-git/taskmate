@@ -366,4 +366,49 @@ describe("Live Preview activation", () => {
     view.destroy();
     host.remove();
   });
+
+  it("preserves empty GFM table cells", () => {
+    const host = document.createElement("div");
+    document.body.append(host);
+    const view = new EditorView({
+      parent: host,
+      state: EditorState.create({
+        doc: "plain\n\n| A | | C |\n| --- | --- | --- |\n| X | | Z |",
+        extensions: [markdown({ extensions: [GFM] }), livePreview],
+      }),
+    });
+
+    const rows = host.querySelectorAll('[data-preview-kind="table-row"]');
+    expect(rows[0]?.querySelectorAll('[role="columnheader"]')).toHaveLength(3);
+    expect(rows[1]?.querySelectorAll('[role="cell"]')).toHaveLength(3);
+    expect(rows[1]?.querySelectorAll('[role="cell"]')[1]).toBeEmptyDOMElement();
+
+    view.destroy();
+    host.remove();
+  });
+
+  it("renders escaped pipes and inline Markdown inside GFM table cells", () => {
+    const host = document.createElement("div");
+    document.body.append(host);
+    const source = "plain\n\n| Value | Notes |\n| --- | --- |\n| A \\| B | **bold** and [link](https://example.com) |";
+    const view = new EditorView({
+      parent: host,
+      state: EditorState.create({
+        doc: source,
+        extensions: [markdown({ extensions: [GFM] }), livePreview],
+      }),
+    });
+
+    const cells = host.querySelectorAll('[data-preview-kind="table-row"] [role="cell"]');
+    expect(cells).toHaveLength(2);
+    expect(cells[0]).toHaveTextContent("A | B");
+    expect(cells[0]).not.toHaveTextContent("\\|");
+    expect(cells[1]?.querySelector(".font-\\[750\\]")).toHaveTextContent("bold");
+    expect(cells[1]?.querySelector('[data-link-url="https://example.com"]')).toHaveTextContent("link");
+    expect(cells[1]).not.toHaveTextContent("**");
+    expect(cells[1]).not.toHaveTextContent("https://example.com");
+
+    view.destroy();
+    host.remove();
+  });
 });
