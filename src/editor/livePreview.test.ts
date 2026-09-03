@@ -91,6 +91,51 @@ describe("Live Preview activation", () => {
     host.remove();
   });
 
+  it("renders HTML images and removes unsafe image attributes", async () => {
+    const host = document.createElement("div");
+    document.body.append(host);
+    const source = 'plain\n<img src="attachments/example.png" alt="Example" title="Preview" onerror="alert(1)">';
+    const view = new EditorView({
+      parent: host,
+      state: EditorState.create({
+        doc: source,
+        extensions: [markdown(), livePreview],
+      }),
+    });
+
+    const image = host.querySelector<HTMLImageElement>('[data-preview-kind="html"] img');
+    expect(image).toHaveAttribute("alt", "Example");
+    expect(image).toHaveAttribute("title", "Preview");
+    expect(image).not.toHaveAttribute("onerror");
+    await vi.waitFor(() => expect(image).toHaveAttribute("src", "attachments/example.png"));
+    expect(host.textContent).not.toContain("<img");
+
+    view.dispatch({ selection: { anchor: source.indexOf("example.png") } });
+    expect(host.querySelector('[data-preview-kind="html"] img')).toBeNull();
+    expect(host.textContent).toContain("<img");
+
+    view.destroy();
+    host.remove();
+  });
+
+  it("does not load unsafe HTML image sources", async () => {
+    const host = document.createElement("div");
+    document.body.append(host);
+    const view = new EditorView({
+      parent: host,
+      state: EditorState.create({
+        doc: 'plain\n<img src="javascript:alert(1)" alt="Unsafe">',
+        extensions: [markdown(), livePreview],
+      }),
+    });
+
+    await Promise.resolve();
+    expect(host.querySelector("img")).not.toHaveAttribute("src");
+
+    view.destroy();
+    host.remove();
+  });
+
   it("renders block HTML without executing unsafe content", () => {
     const host = document.createElement("div");
     document.body.append(host);

@@ -57,12 +57,12 @@ const styledNodes: Record<string, string> = {
 
 const allowedHtmlTags = new Set([
   "a", "abbr", "b", "blockquote", "br", "code", "del", "details", "div", "em",
-  "h1", "h2", "h3", "h4", "h5", "h6", "hr", "i", "kbd", "li", "mark", "ol",
+  "h1", "h2", "h3", "h4", "h5", "h6", "hr", "i", "img", "kbd", "li", "mark", "ol",
   "p", "pre", "q", "s", "small", "span", "strong", "sub", "summary", "sup", "table",
   "tbody", "td", "tfoot", "th", "thead", "time", "tr", "u", "ul",
 ]);
 
-const voidHtmlTags = new Set(["br", "hr"]);
+const voidHtmlTags = new Set(["br", "hr", "img"]);
 
 const htmlTagClasses: Partial<Record<string, string>> = {
   a: "text-accent underline underline-offset-2",
@@ -76,6 +76,7 @@ const htmlTagClasses: Partial<Record<string, string>> = {
   h5: "my-2 font-bold",
   h6: "my-2 font-bold",
   hr: "my-3 border-0 border-t border-line",
+  img: "my-2 block max-h-[360px] max-w-[min(100%,560px)] rounded-lg border border-line object-contain",
   kbd: "rounded border border-line bg-surface-soft px-1.5 py-0.5 font-mono text-[.85em] shadow-sm",
   mark: "rounded bg-[color-mix(in_srgb,var(--accent)_22%,transparent)] px-0.5 text-inherit",
   ol: "my-2 list-decimal pl-6",
@@ -99,6 +100,14 @@ function htmlTag(source: string) {
 
 function safeLinkUrl(value: string) {
   return /^(?:https?:|mailto:)/i.test(value) ? value : null;
+}
+
+function safeImageSource(value: string) {
+  const source = value.trim();
+  if (/^(?:https?:|blob:)/i.test(source)) return source;
+  if (/^data:image\/(?:png|jpe?g|gif|webp|svg\+xml);base64,/i.test(source)) return source;
+  if (!source || source.startsWith("/") || source.startsWith("//") || /^[A-Za-z][\w+.-]*:/.test(source)) return null;
+  return source.split(/[\\/]/).includes("..") ? null : source;
 }
 
 function sanitizedHtmlNode(node: Node): Node | null {
@@ -141,6 +150,18 @@ function sanitizedHtmlNode(node: Node): Node | null {
     const href = safeLinkUrl(node.getAttribute("href") ?? "");
     if (href) {
       element.setAttribute("data-link-url", href);
+    }
+  }
+  if (tag === "img") {
+    const source = safeImageSource(node.getAttribute("src") ?? "");
+    const alt = node.getAttribute("alt");
+    const title = node.getAttribute("title");
+    if (alt !== null) element.setAttribute("alt", alt);
+    if (title !== null) element.setAttribute("title", title);
+    if (source) {
+      void api.resolveAttachment(source)
+        .then((resolved) => { element.setAttribute("src", resolved); })
+        .catch(() => undefined);
     }
   }
   return element;
