@@ -1,6 +1,7 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, expect, it, vi } from "vitest";
+import { version as packageVersion } from "../package.json";
 import { App } from "./App";
 
 const mocks = vi.hoisted(() => ({
@@ -66,6 +67,7 @@ it("shows an available update in the sidebar without opening a dialog", async ()
 
   await user.click(screen.getByRole("link", { name: "Settings" }));
   await user.click(screen.getByRole("button", { name: "Software updates" }));
+  expect(screen.getByText("Current version: 0.6.1")).toBeInTheDocument();
   expect(screen.getByRole("heading", { name: "What's new" })).toBeInTheDocument();
   expect(screen.getByText("- Added update details")).toBeInTheDocument();
   await user.click(screen.getByRole("button", { name: "Download and install" }));
@@ -118,10 +120,26 @@ it("does not show a sidebar update action when a check fails without version inf
   expect(screen.getByRole("button", { name: "Switch workspace" })).toBeInTheDocument();
 });
 
+it("shows the packaged version when no update information is available", async () => {
+  const user = userEvent.setup();
+  mocks.updater.phase = "current";
+  mocks.updater.info = null;
+  render(<App />);
+  await user.click(screen.getByRole("button", { name: "Open workspace" }));
+  await user.click(screen.getByRole("link", { name: "Settings" }));
+  await user.click(screen.getByRole("button", { name: "Software updates" }));
+
+  expect(screen.getByText(`Current version: ${packageVersion}`)).toBeInTheDocument();
+});
+
 it("localizes the sidebar update actions in Chinese", async () => {
+  const user = userEvent.setup();
   localStorage.setItem("taskmate.locale.v1", "zh-CN");
   render(<App />);
-  await userEvent.click(screen.getByRole("button", { name: "打开工作区" }));
+  await user.click(screen.getByRole("button", { name: "打开工作区" }));
 
   expect(screen.getByRole("button", { name: "下载 Taskmate 0.7.0" })).toBeInTheDocument();
+  await user.click(screen.getByRole("link", { name: "设置" }));
+  await user.click(screen.getByRole("button", { name: "软件更新" }));
+  expect(screen.getByText("当前版本：0.6.1")).toBeInTheDocument();
 });

@@ -69,6 +69,7 @@ import { Tooltip } from "./components/ui/Tooltip";
 import { TaskmateI18nProvider, localizedPropertyName, useTaskmateI18n } from "./lib/taskmate-i18n";
 import { useUpdater } from "./hooks/useUpdater";
 import { localizeUpdateNotes } from "./lib/update-notes";
+import { version as packageVersion } from "../package.json";
 import { cn } from "./lib/utils";
 
 const initialPath = localStorage.getItem("taskmate-workspace") || `${navigator.platform.includes("Mac") ? "/Users/Shared" : "."}/Taskmate`;
@@ -432,6 +433,7 @@ function SettingsView({ updater }: { updater: ReturnType<typeof useUpdater> }) {
           {section === "updates" ? (
             <section className="rounded-xl border border-line bg-surface p-4 transition-shadow hover:shadow-panel">
               <h2 className="m-0 mb-3 font-heading text-base">{t("updates.title")}</h2>
+              <p className="m-0 mb-3 text-sm text-muted">{t("updates.currentVersion", { version: updater.info?.currentVersion ?? packageVersion })}</p>
               <div className="mb-3 flex items-center gap-2 text-muted"><Download size={20} /><p className="m-0">{message}</p></div>
               {updater.phase === "available" ? <UpdateContents body={updater.info?.body} /> : null}
               {updater.phase === "downloading" ? <Progress className="mb-3 w-[min(360px,100%)]" value={updater.progress.percent} /> : null}
