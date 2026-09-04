@@ -1,4 +1,8 @@
 {
+  "0.12.1": {
+    "en": "- fix(ci): use package pnpm version",
+    "zh": "- fix(ci): use package pnpm version"
+  },
   "0.12.0": {
     "en": "- feat: show current version in software updates\n- feat(ui): emphasize sidebar update action\n- feat(editor): add find and replace\n- feat(editor): support escaped markdown punctuation\n- fix(editor): render markdown tables correctly\n- feat(editor): render HTML image tags\n- fix(editor): render multiline HTML images safely\n- fix: pnpm set to 11.22.0\n- feat: add shortcut to close active tab\n- feat(tabs): show filenames on hover\n- feat(editor): support reference-style links",
     "zh": "- feat: show current version in software updates\n- feat(ui): emphasize sidebar update action\n- feat(editor): add find and replace\n- feat(editor): support escaped markdown punctuation\n- fix(editor): render markdown tables correctly\n- feat(editor): render HTML image tags\n- fix(editor): render multiline HTML images safely\n- fix: pnpm set to 11.22.0\n- feat: add shortcut to close active tab\n- feat(tabs): show filenames on hover\n- feat(editor): support reference-style links"
