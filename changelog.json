@@ -1,4 +1,8 @@
 {
+  "0.13.0": {
+    "en": "- feat: add recent files panel beside search\n- feat: manage tasks in real workspace folders",
+    "zh": "- feat: add recent files panel beside search\n- feat: manage tasks in real workspace folders"
+  },
   "0.12.1": {
     "en": "- fix(ci): use package pnpm version",
     "zh": "- fix(ci): use package pnpm version"
