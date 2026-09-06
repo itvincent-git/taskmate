@@ -4,6 +4,8 @@ import { resolve } from "@tauri-apps/api/path";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { open } from "@tauri-apps/plugin-dialog";
 import type {
+  TaskFolder,
+  MoveTasksResult,
   GitHistoryEntry,
   GitStatus,
   PropertyDefinition,
@@ -22,6 +24,7 @@ interface DemoState {
   path: string;
   properties: PropertyDefinition[];
   tasks: Task[];
+  folders: TaskFolder[];
 }
 
 const defaultProperties: PropertyDefinition[] = [
@@ -68,8 +71,13 @@ const defaultProperties: PropertyDefinition[] = [
 
 function loadDemo(path = "~/Taskmate"): DemoState {
   const saved = localStorage.getItem(STORAGE_KEY);
-  if (saved) return JSON.parse(saved) as DemoState;
-  return { path, properties: defaultProperties, tasks: [] };
+  if (saved) {
+    const state = JSON.parse(saved) as DemoState;
+    state.folders ??= [];
+    state.tasks.forEach((task) => { task.folderPath ??= ""; });
+    return state;
+  }
+  return { path, properties: defaultProperties, tasks: [], folders: [] };
 }
 
 function storeDemo(state: DemoState) {
@@ -102,12 +110,41 @@ function foldedMatchStart(value: string, search: string): number {
   return -1;
 }
 
-export function taskFilePath(workspacePath: string, task: Pick<Task, "archived" | "fileName">): string {
+export function taskFilePath(workspacePath: string, task: Pick<Task, "archived" | "fileName" | "folderPath">): string {
   const separator = workspacePath.includes("\\") && !workspacePath.includes("/") ? "\\" : "/";
   const trimmedRoot = workspacePath.replace(/[\\/]+$/, "");
   const root = trimmedRoot || separator;
   const directory = task.archived ? "archive" : "tasks";
-  return `${root}${root.endsWith(separator) ? "" : separator}${directory}${separator}${task.fileName}`;
+  return `${root}${root.endsWith(separator) ? "" : separator}${directory}${separator}${task.folderPath ? task.folderPath.split("/").join(separator) + separator : ""}${task.fileName}`;
+}
+
+function inFolder(path: string, folder: string) {
+  return path === folder || path.startsWith(folder + "/");
+}
+
+function validateFolderName(name: string) {
+  if (!name || name === "." || name === ".." || /[\\/:*?"<>|\x00-\x1f\x7f-\x9f]/.test(name) || /[. ]$/.test(name) || /^(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(?:\.|$)/i.test(name)) throw new Error("Invalid cross-platform folder name.");
+}
+
+function requireDemoFolder(state: DemoState, archived: boolean, folder: string) {
+  if (folder) folder.split("/").forEach(validateFolderName);
+  if (folder && !state.folders.some((f) => f.archived === archived && f.path === folder)) throw new Error("Folder does not exist.");
+}
+
+function ensureDemoFolder(state: DemoState, archived: boolean, folder: string) {
+  const parts = folder.split("/").filter(Boolean);
+  parts.forEach((_, index) => {
+    const path = parts.slice(0, index + 1).join("/");
+    if (!state.folders.some((f) => f.archived === archived && f.path === path)) state.folders.push({ path, archived });
+  });
+}
+
+function demoFileName(state: DemoState, task: Task) {
+  const base = task.title.trim().replace(/[\\/:*?"<>|\x00-\x1f]/g, "-").replace(/^[. ]+|[. ]+$/g, "").slice(0, 80) || "untitled";
+  for (let number = -1; ; number += 1) {
+    const name = `${base}${number < 0 ? "" : `-${task.id.slice(0, 8)}${number ? `-${number}` : ""}`}.md`;
+    if (!state.tasks.some((t) => t.id !== task.id && t.archived === task.archived && t.folderPath === task.folderPath && t.fileName === name)) return name;
+  }
 }
 
 export const api = {
@@ -141,8 +178,8 @@ export const api = {
   async revealTaskFile(id: string): Promise<void> {
     if (isTauri) return invoke("reveal_task_file", { id });
   },
-  async resolveTaskFilePath(workspacePath: string, task: Pick<Task, "archived" | "fileName">): Promise<string> {
-    if (isTauri) return resolve(workspacePath, task.archived ? "archive" : "tasks", task.fileName);
+  async resolveTaskFilePath(workspacePath: string, task: Pick<Task, "archived" | "fileName" | "folderPath">): Promise<string> {
+    if (isTauri) return resolve(workspacePath, task.archived ? "archive" : "tasks", task.folderPath || "", task.fileName);
     return taskFilePath(workspacePath, task);
   },
   async openWorkspace(path: string): Promise<WorkspaceSnapshot> {
@@ -150,16 +187,18 @@ export const api = {
     const state = loadDemo(path);
     state.path = path;
     storeDemo(state);
-    return { path, properties: state.properties, tasks: state.tasks.filter((task) => !task.archived).map(summary), indexRebuilt: false };
+    return { path, properties: state.properties, tasks: state.tasks.filter((task) => !task.archived).map(summary), indexRebuilt: false, folders: state.folders };
   },
-  async createTask(title?: string): Promise<Task> {
-    if (isTauri) return invoke("create_task", { title });
+  async createTask(title?: string, folderPath = ""): Promise<Task> {
+    if (isTauri) return invoke("create_task", { title, folderPath });
     const state = loadDemo();
+    requireDemoFolder(state, false, folderPath);
     const now = new Date().toISOString();
     const task: Task = {
       id: uuid(),
       title: title || "Untitled task",
       fileName: `${title || "Untitled task"}.md`,
+      folderPath,
       body: "",
       archived: false,
       createdAt: now,
@@ -167,9 +206,65 @@ export const api = {
       properties: Object.fromEntries(state.properties.filter((property) => property.defaultValue !== undefined).map((property) => [property.key, property.defaultValue])),
       contentHash: uuid(),
     };
+    task.fileName = demoFileName(state, task);
     state.tasks.unshift(task);
     storeDemo(state);
     return task;
+  },
+  async listFolders(): Promise<TaskFolder[]> {
+    if (isTauri) return invoke("list_folders");
+    return loadDemo().folders.sort((a, b) => a.path.localeCompare(b.path));
+  },
+  async createFolder(archived: boolean, parent: string, name: string): Promise<void> {
+    if (isTauri) return invoke("create_folder", { archived, parent, name });
+    const state = loadDemo();
+    requireDemoFolder(state, archived, parent);
+    validateFolderName(name);
+    const path = parent ? `${parent}/${name}` : name;
+    if (state.folders.some((f) => f.archived === archived && f.path === path)) throw new Error("A folder with that name already exists.");
+    state.folders.push({ path, archived });
+    storeDemo(state);
+  },
+  async moveFolder(archived: boolean, source: string, parent: string, name: string): Promise<void> {
+    if (isTauri) return invoke("move_folder", { archived, source, parent, name });
+    const state = loadDemo();
+    requireDemoFolder(state, archived, source);
+    requireDemoFolder(state, archived, parent);
+    validateFolderName(name);
+    if (!source) throw new Error("Cannot move a task region.");
+    const target = parent ? `${parent}/${name}` : name;
+    if (source === target) return;
+    if (target.startsWith(source + "/")) throw new Error("Cannot move a folder into itself or a descendant.");
+    if (state.folders.some((f) => f.archived === archived && f.path === target)) throw new Error("A folder with that name already exists.");
+    for (const folder of state.folders) {
+      if (folder.archived === archived && inFolder(folder.path, source)) folder.path = target + folder.path.slice(source.length);
+    }
+    for (const task of state.tasks) {
+      if (task.archived === archived && inFolder(task.folderPath || "", source)) task.folderPath = target + task.folderPath!.slice(source.length);
+    }
+    storeDemo(state);
+  },
+  async deleteFolder(archived: boolean, folder: string): Promise<void> {
+    if (isTauri) return invoke("delete_folder", { archived, folder });
+    const state = loadDemo();
+    requireDemoFolder(state, archived, folder);
+    if (!folder || state.tasks.some((t) => t.archived === archived && inFolder(t.folderPath || "", folder)) || state.folders.some((f) => f.archived === archived && f.path.startsWith(folder + "/"))) throw new Error("Move the folder contents before deleting it.");
+    state.folders = state.folders.filter((f) => f.archived !== archived || f.path !== folder);
+    storeDemo(state);
+  },
+  async moveTasks(ids: string[], archived: boolean, folder: string): Promise<MoveTasksResult> {
+    if (isTauri) return invoke("move_tasks", { ids, archived, folder });
+    const state = loadDemo();
+    requireDemoFolder(state, archived, folder);
+    if (new Set(ids).size !== ids.length || ids.some((id) => !state.tasks.some((t) => t.id === id && t.archived === archived))) throw new Error("Invalid task selection or region.");
+    for (const id of ids) {
+      const task = state.tasks.find((t) => t.id === id)!;
+      if (task.folderPath === folder) continue;
+      task.folderPath = folder;
+      task.fileName = demoFileName(state, task);
+    }
+    storeDemo(state);
+    return { completed: ids, remaining: [], error: null };
   },
   async getTask(id: string): Promise<Task> {
     if (isTauri) return invoke("get_task", { id });
@@ -190,8 +285,12 @@ export const api = {
     if (isTauri) return invoke("save_task", { input });
     const state = loadDemo();
     const current = state.tasks.find((candidate) => candidate.id === task.id);
+    if (!current) throw new Error("Task not found");
+    if (current.contentHash !== task.contentHash) throw new Error("EXTERNAL_CHANGE: The Markdown file changed outside Taskmate.");
     const title = task.title.trim() ? task.title : current?.title ?? task.title;
-    const saved = { ...task, title, updatedAt: new Date().toISOString(), fileName: `${title.replace(/[\\/:*?"<>|]/g, "-")}.md`, contentHash: uuid() };
+    const saved = { ...task, folderPath: current.folderPath || "", title, updatedAt: new Date().toISOString(), fileName: `${title.replace(/[\\/:*?"<>|]/g, "-")}.md`, contentHash: uuid() };
+    ensureDemoFolder(state, saved.archived, saved.folderPath);
+    saved.fileName = demoFileName(state, saved);
     state.tasks = state.tasks.map((candidate) => candidate.id === task.id ? saved : candidate);
     storeDemo(state);
     return saved;
@@ -200,7 +299,7 @@ export const api = {
     if (isTauri) return invoke("query_tasks", { query });
     const state = loadDemo();
     const search = query.search.toLowerCase();
-    const items = state.tasks.filter((task) => task.archived === query.archived).filter((task) =>
+    const items = state.tasks.filter((task) => task.archived === query.archived && (query.folderPath == null || (task.folderPath || "") === query.folderPath || (query.folderPath !== "" && (task.folderPath || "").startsWith(query.folderPath + "/")))).filter((task) =>
       !search || [task.title, task.fileName, task.body, JSON.stringify(task.properties)].some((value) => value.toLowerCase().includes(search)),
     ).filter((task) => query.filters.every((filter) => {
       const value = task.properties[filter.key];
@@ -233,7 +332,7 @@ export const api = {
         const body = Array.from(task.body);
         const start = bodyIndex < 0 ? 0 : Math.max(0, bodyIndex - 80);
         const snippet = body.slice(start, start + 200).join("");
-        return [{ result: { id: task.id, title: task.title, archived: task.archived, snippet }, titleMatch, updatedAt: task.updatedAt }];
+        return [{ result: { id: task.id, title: task.title, folderPath: task.folderPath || "", archived: task.archived, snippet }, titleMatch, updatedAt: task.updatedAt }];
       })
       .sort((left, right) => Number(right.titleMatch) - Number(left.titleMatch) || right.updatedAt.localeCompare(left.updatedAt))
       .map(({ result }) => result);

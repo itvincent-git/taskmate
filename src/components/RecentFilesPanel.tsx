@@ -22,9 +22,9 @@ export function RecentFilesPanel({ files, selectedId, onSelect }: {
         <ul className="m-0 min-h-0 flex-1 list-none space-y-2 overflow-auto p-2.5">
           {files.map((file) => (
             <li key={file.id}>
-              <button className={cn("flex w-full cursor-pointer items-center gap-2 rounded-lg border border-line p-3 text-left hover:bg-accent-soft", file.id === selectedId ? "border-accent bg-accent-soft" : "bg-surface")} aria-current={file.id === selectedId ? "true" : undefined} onClick={() => onSelect(file.id)} title={file.fileName}>
+              <button className={cn("flex w-full cursor-pointer items-center gap-2 rounded-lg border border-line p-3 text-left hover:bg-accent-soft", file.id === selectedId ? "border-accent bg-accent-soft" : "bg-surface")} aria-current={file.id === selectedId ? "true" : undefined} onClick={() => onSelect(file.id)} title={[file.folderPath, file.fileName].filter(Boolean).join("/")}>
                 <FileText size={16} className="shrink-0 text-muted" />
-                <span className="min-w-0 flex-1"><span className="block truncate text-sm font-semibold">{file.title}</span><span className="mt-1 block truncate text-xs text-muted">{file.fileName}</span></span>
+                <span className="min-w-0 flex-1"><span className="block truncate text-sm font-semibold">{file.title}</span><span className="mt-1 block truncate text-xs text-muted">{[file.folderPath, file.fileName].filter(Boolean).join("/")}</span></span>
                 {file.archived ? <Archive size={14} className="shrink-0 text-muted" aria-label={t("tasks.archived")} /> : null}
               </button>
             </li>

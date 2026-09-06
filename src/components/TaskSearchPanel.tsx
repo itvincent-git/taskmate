@@ -87,6 +87,7 @@ export function TaskSearchPanel({ search, results, loading, onSearchChange, onSe
                       <span className="min-w-0 flex-1 truncate">{matchParts(result.title, search)}</span>
                       {result.archived ? <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-surface-soft px-1.5 py-0.5 font-sans text-[10px] font-medium text-muted"><Archive size={11} />{t("tasks.archived")}</span> : null}
                     </span>
+                    <span className="block truncate text-[10px] text-muted">{result.folderPath || "/"}</span>
                     <span className="mt-1.5 block overflow-hidden text-xs leading-5 text-muted [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2]">{matchParts(result.snippet, search)}</span>
                   </button>
                 </div>

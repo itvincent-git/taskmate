@@ -1,6 +1,6 @@
 import type { Task } from "../types";
 
-export type RecentFile = Pick<Task, "id" | "title" | "fileName" | "archived">;
+export type RecentFile = Pick<Task, "id" | "title" | "fileName" | "archived" | "folderPath">;
 const STORAGE_KEY = "taskmate-recent-files.v1";
 
 function readWorkspaces(): Record<string, RecentFile[]> {

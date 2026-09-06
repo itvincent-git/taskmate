@@ -130,3 +130,45 @@ describe("queryTasks", () => {
     expect(results.map((task) => task.id)).toEqual(["c", "d", "b", "a"]);
   });
 });
+
+describe("real folder API parity", () => {
+  beforeEach(() => localStorage.clear());
+  it("queries descendants with a directory boundary and keeps empty directories", async () => {
+    await api.openWorkspace("/tmp/folders");
+    await api.createFolder(false, "", "a");
+    await api.createFolder(false, "a", "child");
+    await api.createFolder(false, "", "ab");
+    await api.createTask("nested", "a/child");
+    await api.createTask("other", "ab");
+    const query = { search: "", archived: false, filters: [], sorts: [], folderPath: "a" };
+    expect((await api.queryTasks(query)).map((t) => t.title)).toEqual(["nested"]);
+    expect(await api.queryTasks({ ...query, folderPath: "" })).toEqual([]);
+    expect(await api.listFolders()).toHaveLength(3);
+  });
+  it("preserves current location on stale saves, archives and restores relative paths", async () => {
+    await api.openWorkspace("/tmp/folders");
+    const task = await api.createTask("Original");
+    await api.createFolder(false, "", "a");
+    await api.moveTasks([task.id], false, "a");
+    const saved = await api.saveTask({ ...task, title: "Renamed" });
+    expect(saved.folderPath).toBe("a");
+    expect(taskFilePath("/tmp/folders", saved)).toBe("/tmp/folders/tasks/a/Renamed.md");
+    const archived = await api.saveTask({ ...saved, archived: true });
+    await api.moveFolder(false, "a", "", "b");
+    const restored = await api.saveTask({ ...archived, archived: false });
+    expect(restored.folderPath).toBe("a");
+    expect(await api.listFolders()).toEqual(expect.arrayContaining([{ path: "a", archived: true }, { path: "a", archived: false }, { path: "b", archived: false }]));
+  });
+  it("validates the whole selection before moving and rejects folder collisions", async () => {
+    await api.openWorkspace("/tmp/folders");
+    const task = await api.createTask("Original");
+    await api.createFolder(false, "", "a");
+    await expect(api.moveTasks([task.id, "missing"], false, "a")).rejects.toThrow();
+    expect((await api.getTask(task.id)).folderPath).toBe("");
+    await expect(api.createFolder(false, "", "a")).rejects.toThrow();
+    await expect(api.createFolder(false, "", "../escape")).rejects.toThrow();
+    await expect(api.moveFolder(false, "a", "a", "child")).rejects.toThrow();
+    await api.moveTasks([task.id], false, "a");
+    await expect(api.deleteFolder(false, "a")).rejects.toThrow("contents");
+  });
+});

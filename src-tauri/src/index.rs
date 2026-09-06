@@ -32,6 +32,17 @@ impl TaskIndex {
                  CREATE INDEX IF NOT EXISTS idx_tasks_title ON tasks(title);",
             )
             .map_err(to_string)?;
+        if connection
+            .prepare("SELECT folder_path FROM tasks LIMIT 0")
+            .is_err()
+        {
+            connection
+                .execute(
+                    "ALTER TABLE tasks ADD COLUMN folder_path TEXT NOT NULL DEFAULT ''",
+                    [],
+                )
+                .map_err(to_string)?;
+        }
         Ok(Self { connection })
     }
 
@@ -39,11 +50,11 @@ impl TaskIndex {
         let properties = serde_json::to_string(&task.properties).map_err(to_string)?;
         self.connection
             .execute(
-                "INSERT INTO tasks(id,file_path,title,body,archived,created_at,updated_at,properties_json,content_hash,file_mtime)
-                 VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10)
+                "INSERT INTO tasks(id,file_path,title,body,archived,created_at,updated_at,properties_json,content_hash,file_mtime,folder_path)
+                 VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11)
                  ON CONFLICT(id) DO UPDATE SET file_path=excluded.file_path,title=excluded.title,body=excluded.body,
                  archived=excluded.archived,updated_at=excluded.updated_at,properties_json=excluded.properties_json,
-                 content_hash=excluded.content_hash,file_mtime=excluded.file_mtime",
+                 content_hash=excluded.content_hash,file_mtime=excluded.file_mtime,folder_path=excluded.folder_path",
                 params![
                     task.id,
                     path.to_string_lossy(),
@@ -54,7 +65,8 @@ impl TaskIndex {
                     task.updated_at,
                     properties,
                     task.content_hash,
-                    mtime
+                    mtime,
+                    task.folder_path
                 ],
             )
             .map_err(to_string)?;
@@ -64,6 +76,13 @@ impl TaskIndex {
     pub fn remove(&self, id: &str) -> Result<(), String> {
         self.connection
             .execute("DELETE FROM tasks WHERE id=?1", params![id])
+            .map_err(to_string)?;
+        Ok(())
+    }
+
+    pub fn remove_path(&self, path: &str) -> Result<(), String> {
+        self.connection
+            .execute("DELETE FROM tasks WHERE file_path=?1", params![path])
             .map_err(to_string)?;
         Ok(())
     }
@@ -98,7 +117,7 @@ impl TaskIndex {
         let mut statement = self
             .connection
             .prepare(
-                "SELECT id,title,file_path,archived,created_at,updated_at,properties_json,body
+                "SELECT id,title,file_path,archived,created_at,updated_at,properties_json,body,folder_path
                  FROM tasks WHERE archived=?1",
             )
             .map_err(to_string)?;
@@ -115,6 +134,7 @@ impl TaskIndex {
                             .and_then(|name| name.to_str())
                             .unwrap_or_default()
                             .to_string(),
+                        folder_path: row.get(8)?,
                         archived: row.get(3)?,
                         created_at: row.get(4)?,
                         updated_at: row.get(5)?,
@@ -131,7 +151,11 @@ impl TaskIndex {
         let mut tasks = rows
             .into_iter()
             .filter(|(task, body)| {
-                (needle.is_empty()
+                query.folder_path.as_ref().is_none_or(|folder| {
+                    task.folder_path == *folder
+                        || (!folder.is_empty()
+                            && task.folder_path.starts_with(&format!("{folder}/")))
+                }) && (needle.is_empty()
                     || task.title.to_lowercase().contains(&needle)
                     || task.file_name.to_lowercase().contains(&needle)
                     || body.to_lowercase().contains(&needle)
@@ -158,7 +182,7 @@ impl TaskIndex {
         }
         let mut statement = self
             .connection
-            .prepare("SELECT id,title,archived,updated_at,body FROM tasks")
+            .prepare("SELECT id,title,archived,updated_at,body,folder_path FROM tasks")
             .map_err(to_string)?;
         let rows = statement
             .query_map([], |row| {
@@ -168,6 +192,7 @@ impl TaskIndex {
                     row.get::<_, bool>(2)?,
                     row.get::<_, String>(3)?,
                     row.get::<_, String>(4)?,
+                    row.get::<_, String>(5)?,
                 ))
             })
             .map_err(to_string)?
@@ -176,7 +201,7 @@ impl TaskIndex {
 
         let mut matches = rows
             .into_iter()
-            .filter_map(|(id, title, archived, updated_at, body)| {
+            .filter_map(|(id, title, archived, updated_at, body, folder_path)| {
                 let title_match = find_folded(&title, &needle).is_some();
                 let body_match = find_folded(&body, &needle);
                 (title_match || body_match.is_some()).then(|| {
@@ -190,6 +215,7 @@ impl TaskIndex {
                     let snippet = body_chars.into_iter().skip(start).take(200).collect();
                     (
                         TaskSearchResult {
+                            folder_path,
                             id,
                             title,
                             archived,
@@ -387,6 +413,7 @@ mod tests {
         Task {
             id: id.into(),
             title: title.into(),
+            folder_path: String::new(),
             file_name: format!("{id}.md"),
             body: format!("Body for {title}"),
             archived: false,

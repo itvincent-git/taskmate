@@ -6,8 +6,8 @@ mod workspace;
 
 use git::{GitHistoryEntry, GitStatus};
 use model::{
-    PropertyDefinition, PropertyOption, SaveTaskInput, Task, TaskQuery, TaskSearchResult,
-    TaskSummary, WorkspaceSnapshot,
+    Folder, MoveTasksResult, PropertyDefinition, PropertyOption, SaveTaskInput, Task, TaskQuery,
+    TaskSearchResult, TaskSummary, WorkspaceSnapshot,
 };
 use notify::{RecommendedWatcher, RecursiveMode, Watcher};
 use serde::Serialize;
@@ -51,10 +51,11 @@ fn with_workspace<T>(
     state: State<'_, AppState>,
     operation: impl FnOnce(Workspace) -> Result<T, String>,
 ) -> Result<T, String> {
-    let root = state
+    let guard = state
         .workspace
         .lock()
-        .map_err(|_| "Workspace state is unavailable.".to_string())?
+        .map_err(|_| "Workspace state is unavailable.".to_string())?;
+    let root = guard
         .clone()
         .ok_or_else(|| "Open a workspace first.".to_string())?;
     operation(Workspace::new(root))
@@ -96,7 +97,6 @@ fn open_workspace(
             let paths = event
                 .paths
                 .into_iter()
-                .filter(|path| path.extension().and_then(|value| value.to_str()) == Some("md"))
                 .map(|path| path.to_string_lossy().to_string())
                 .collect::<Vec<_>>();
             if !paths.is_empty() {
@@ -108,13 +108,13 @@ fn open_workspace(
     watcher
         .watch(
             &PathBuf::from(&snapshot.path).join("tasks"),
-            RecursiveMode::NonRecursive,
+            RecursiveMode::Recursive,
         )
         .map_err(|error| format!("Unable to watch active tasks: {error}"))?;
     watcher
         .watch(
             &PathBuf::from(&snapshot.path).join("archive"),
-            RecursiveMode::NonRecursive,
+            RecursiveMode::Recursive,
         )
         .map_err(|error| format!("Unable to watch archived tasks: {error}"))?;
     *state
@@ -125,8 +125,51 @@ fn open_workspace(
 }
 
 #[tauri::command]
-fn create_task(title: Option<String>, state: State<'_, AppState>) -> Result<Task, String> {
-    with_workspace(state, |workspace| workspace.create_task(title))
+fn create_task(
+    title: Option<String>,
+    folder_path: Option<String>,
+    state: State<'_, AppState>,
+) -> Result<Task, String> {
+    with_workspace(state, |workspace| {
+        workspace.create_task_in(title, folder_path.as_deref().unwrap_or(""))
+    })
+}
+
+#[tauri::command]
+fn list_folders(state: State<'_, AppState>) -> Result<Vec<Folder>, String> {
+    with_workspace(state, |w| w.list_folders())
+}
+#[tauri::command]
+fn create_folder(
+    archived: bool,
+    parent: String,
+    name: String,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    with_workspace(state, |w| w.create_folder(archived, &parent, &name))
+}
+#[tauri::command]
+fn move_folder(
+    archived: bool,
+    source: String,
+    parent: String,
+    name: String,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    with_workspace(state, |w| w.move_folder(archived, &source, &parent, &name))
+}
+#[tauri::command]
+fn delete_folder(archived: bool, folder: String, state: State<'_, AppState>) -> Result<(), String> {
+    with_workspace(state, |w| w.delete_folder(archived, &folder))
+}
+#[tauri::command]
+fn move_tasks(
+    ids: Vec<String>,
+    archived: bool,
+    folder: String,
+    state: State<'_, AppState>,
+) -> Result<MoveTasksResult, String> {
+    with_workspace(state, |w| w.move_tasks(ids, archived, &folder))
 }
 
 #[tauri::command]
@@ -488,6 +531,11 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             open_workspace,
             create_task,
+            list_folders,
+            create_folder,
+            move_folder,
+            delete_folder,
+            move_tasks,
             get_task,
             save_task,
             query_tasks,

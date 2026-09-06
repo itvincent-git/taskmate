@@ -43,6 +43,7 @@ pub fn parse_task(path: &Path, text: &str) -> Result<Task, String> {
             .and_then(|name| name.to_str())
             .unwrap_or_default()
             .to_string(),
+        folder_path: String::new(),
         body: body.to_string(),
         archived,
         created_at,

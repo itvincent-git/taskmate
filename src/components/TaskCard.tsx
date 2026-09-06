@@ -10,7 +10,7 @@ interface Props {
   selected: boolean;
   definitions: PropertyDefinition[];
   compact?: boolean;
-  onSelect(): void;
+  onSelect(event: MouseEvent): void;
   onQuickEdit(key: string, value: unknown): void;
   onCreateOption?(definition: PropertyDefinition, label: string): Promise<PropertyOption>;
 }
@@ -38,7 +38,8 @@ export function TaskCard({ task, selected, definitions, compact = false, onSelec
   const stop = (event: MouseEvent) => event.stopPropagation();
   return (
     <article className={cn("cursor-pointer rounded-[10px] border border-line bg-surface p-3 shadow-[0_1px_2px_rgba(15,23,42,.035)] transition-[transform,box-shadow,border-color,background-color] duration-200 hover:-translate-y-px hover:border-[color-mix(in_srgb,var(--accent)_32%,var(--line))] hover:shadow-[0_5px_16px_rgba(15,23,42,.07)]", selected && "border-[color-mix(in_srgb,var(--accent)_42%,var(--line))] bg-[color-mix(in_srgb,var(--accent-soft)_42%,var(--surface))] shadow-[inset_3px_0_0_var(--accent),0_4px_14px_rgba(15,23,42,.06)]", compact && "px-3 py-2")} onClick={onSelect}>
-      <div className={cn("mb-2 truncate text-sm leading-[1.35] font-semibold tracking-[-.01em] text-foreground", compact && "mb-0")} title={task.title}>{task.title}</div>
+      <div className={cn("mb-2 truncate pr-5 text-sm leading-[1.35] font-semibold tracking-[-.01em] text-foreground", compact && "mb-0")} title={task.title}>{task.title}</div>
+      <div className="mb-1 truncate text-[10px] text-muted" title={task.folderPath || "/"}>{task.folderPath || "/"}</div>
       {!compact ? (
         <div className="flex min-h-[22px] flex-wrap items-center gap-1.5">
           {visible.map((definition) => (

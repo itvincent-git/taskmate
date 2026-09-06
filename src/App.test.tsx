@@ -376,6 +376,7 @@ describe("Taskmate application", () => {
     const toolbar = await screen.findByRole("toolbar", { name: "Task list" });
     expect(within(toolbar).getByRole("button", { name: "Comfortable cards" })).toHaveAttribute("aria-pressed", "true");
     await waitFor(() => expect(queryTasks).toHaveBeenLastCalledWith({
+      folderPath: null,
       search: "",
       archived: false,
       filters: [{ key: "status", operator: "eq", value: "done" }],

@@ -8,6 +8,8 @@ pub struct Task {
     pub id: String,
     pub title: String,
     pub file_name: String,
+    #[serde(default)]
+    pub folder_path: String,
     pub body: String,
     pub archived: bool,
     pub created_at: String,
@@ -23,6 +25,8 @@ pub struct TaskSummary {
     pub id: String,
     pub title: String,
     pub file_name: String,
+    #[serde(default)]
+    pub folder_path: String,
     pub archived: bool,
     pub created_at: String,
     pub updated_at: String,
@@ -32,6 +36,7 @@ pub struct TaskSummary {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct TaskSearchResult {
+    pub folder_path: String,
     pub id: String,
     pub title: String,
     pub archived: bool,
@@ -84,6 +89,7 @@ pub struct PropertyDefinition {
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct TaskQuery {
+    pub folder_path: Option<String>,
     #[serde(default)]
     pub search: String,
     #[serde(default)]
@@ -122,6 +128,7 @@ pub struct WorkspaceSnapshot {
     pub properties: Vec<PropertyDefinition>,
     pub tasks: Vec<TaskSummary>,
     pub index_rebuilt: bool,
+    pub folders: Vec<Folder>,
 }
 
 pub fn frontmatter_from_task(task: &Task) -> Mapping {
@@ -157,10 +164,26 @@ impl From<&Task> for TaskSummary {
             id: task.id.clone(),
             title: task.title.clone(),
             file_name: task.file_name.clone(),
+            folder_path: task.folder_path.clone(),
             archived: task.archived,
             created_at: task.created_at.clone(),
             updated_at: task.updated_at.clone(),
             properties: task.properties.clone(),
         }
     }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Folder {
+    pub path: String,
+    pub archived: bool,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MoveTasksResult {
+    pub completed: Vec<String>,
+    pub remaining: Vec<String>,
+    pub error: Option<String>,
 }

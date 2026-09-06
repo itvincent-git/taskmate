@@ -1,3 +1,5 @@
+import type { TaskFolder } from "./types";
+import { FolderNavigator, type FolderAction, type DragPayload } from "./components/FolderNavigator";
 import { createContext, lazy, Suspense, useCallback, useContext, useEffect, useMemo, useRef, useState, type Dispatch, type ReactNode, type SetStateAction } from "react";
 import * as ContextMenu from "@radix-ui/react-context-menu";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
@@ -89,7 +91,7 @@ const MarkdownEditor = lazy(() => import("./components/MarkdownEditor").then((mo
 
 type StateUpdate<T> = SetStateAction<T>;
 type WorkspacePage = "/properties" | "/backup" | "/settings";
-type OpenTab = ({ kind: "task" } & Pick<Task, "id" | "title" | "fileName" | "archived">) | { kind: "page"; id: WorkspacePage };
+type OpenTab = ({ kind: "task" } & Pick<Task, "id" | "title" | "fileName" | "archived" | "folderPath">) | { kind: "page"; id: WorkspacePage };
 type StoredOpenTab = { kind: "task"; id: string } | { kind: "page"; id: WorkspacePage };
 type StoredWorkspaceTabs = { tabs: StoredOpenTab[]; activeTabKey: string };
 type WorkspaceData = {
@@ -192,7 +194,7 @@ function loadWorkspaceTabs(path: string, tasks: TaskSummary[]): { tabs: OpenTab[
       let tab: OpenTab | null = null;
       if (item?.kind === "task" && typeof item.id === "string") {
         const task = tasksById.get(item.id);
-        if (task) tab = { kind: "task", id: task.id, title: task.title, fileName: task.fileName, archived: task.archived };
+        if (task) tab = { kind: "task", id: task.id, title: task.title, fileName: task.fileName, folderPath: task.folderPath, archived: task.archived };
       } else if (item?.kind === "page" && (item.id === "/properties" || item.id === "/backup" || item.id === "/settings")) {
         tab = { kind: "page", id: item.id };
       }
@@ -499,6 +501,7 @@ function SidebarUpdateAction({ updater }: { updater: ReturnType<typeof useUpdate
 }
 
 function WorkspaceSession() {
+  const workspaceStore = useContext(WorkspaceStoreContext)!;
   const { locale, t } = useTaskmateI18n();
   const updater = useUpdater();
   const workspacePath = useWorkspaceState((state) => state.workspacePath);
@@ -536,6 +539,16 @@ function WorkspaceSession() {
   const [taskListVisible, setTaskListVisible] = useState(() => localStorage.getItem(TASK_LIST_VISIBLE_KEY) !== "false");
   const [taskPanel, setTaskPanel] = useState(loadTaskPanel);
   const [recentFiles, setRecentFiles] = useState<RecentFile[]>([]);
+  const [folders, setFolders] = useState<TaskFolder[]>([]);
+  const [expandedFolders, setExpandedFolders] = useState<string[]>([]);
+  const [checkedIds, setCheckedIds] = useState<Set<string>>(new Set());
+  const selectionAnchor = useRef<string | null>(null);
+  const [moveIds, setMoveIds] = useState<string[] | null>(null);
+  const [moveTarget, setMoveTarget] = useState("");
+  const [folderBusy, setFolderBusy] = useState(false);
+  const folderBusyRef = useRef(false);
+  const savePromise = useRef<Promise<boolean> | null>(null);
+  const refreshRequest = useRef(0);
   const [searchResults, setSearchResults] = useState<TaskSearchResult[]>([]);
   const [searchLoading, setSearchLoading] = useState(false);
   const [searchEpoch, setSearchEpoch] = useState(0);
@@ -567,8 +580,8 @@ function WorkspaceSession() {
 
   const rememberCurrentFile = useLatestCallback(() => {
     if (!workspaceOpen || page !== "/tasks" || !task) return;
-    const { id, title, fileName, archived } = task;
-    setRecentFiles((files) => [{ id, title, fileName, archived }, ...files.filter((file) => file.id !== id)].slice(0, 50));
+    const { id, title, fileName, archived, folderPath } = task;
+    setRecentFiles((files) => [{ id, title, fileName, archived, folderPath }, ...files.filter((file) => file.id !== id)].slice(0, 50));
   });
   useEffect(() => { rememberCurrentFile(); }, [selectedId, page, workspaceOpen, rememberCurrentFile]);
   const recentFileDetails = useMemo(() => {
@@ -577,7 +590,7 @@ function WorkspaceSession() {
     return recentFiles.map((file) => current.get(file.id) ?? file);
   }, [recentFiles, tasks, task]);
   useEffect(() => {
-    if (workspaceOpen) saveRecentFiles(workspacePath, recentFileDetails.map(({ id, title, fileName, archived }) => ({ id, title, fileName, archived })));
+    if (workspaceOpen) saveRecentFiles(workspacePath, recentFileDetails.map(({ id, title, fileName, archived, folderPath }) => ({ id, title, fileName, archived, folderPath })));
   }, [recentFileDetails, workspaceOpen, workspacePath]);
 
   const openWorkspace = useCallback(async (requestedPath?: string) => {
@@ -595,8 +608,13 @@ function WorkspaceSession() {
       setDefinitions(snapshot.properties);
       setLockedPropertyIds(new Set(snapshot.properties.map((definition) => definition.id)));
       setTasks(snapshot.tasks);
+      setFolders(snapshot.folders || []);
       setRecentFiles(loadRecentFiles(path));
-      setQuery({ search: "", archived: false, ...loadFilterSort(path) });
+      let navigation: { selected?: string | null; expanded?: string[] } = {};
+      try { navigation = JSON.parse(localStorage.getItem(`taskmate-folders.v1:${path}:false`) || "{}"); } catch { /* Use the default navigation. */ }
+      const folderPath = navigation.selected && !snapshot.folders?.some((f) => !f.archived && f.path === navigation.selected) ? null : navigation.selected ?? null;
+      setExpandedFolders(Array.isArray(navigation.expanded) ? navigation.expanded : []);
+      setQuery({ search: "", archived: false, folderPath, ...loadFilterSort(path) });
       const restored = loadWorkspaceTabs(path, snapshot.tasks);
       if (restored) {
         const activeTab = restored.tabs.find((tab) => tabKey(tab) === restored.activeTabKey);
@@ -611,7 +629,7 @@ function WorkspaceSession() {
       } else if (snapshot.tasks[0]) {
         const first = await api.getTask(snapshot.tasks[0].id);
         setTask(first);
-        setOpenTabs([{ kind: "task", id: first.id, title: first.title, fileName: first.fileName, archived: first.archived }]);
+        setOpenTabs([{ kind: "task", id: first.id, title: first.title, fileName: first.fileName, folderPath: first.folderPath, archived: first.archived }]);
         navigate("/tasks", { replace: true });
       } else {
         setTask(null);
@@ -687,7 +705,12 @@ function WorkspaceSession() {
   const refresh = useCallback(async (nextQuery = query) => {
     if (!workspaceOpen) return;
     try {
-      setTasks(await api.queryTasks(nextQuery));
+      const request = ++refreshRequest.current;
+      const [items, directories] = await Promise.all([api.queryTasks(nextQuery), api.listFolders()]);
+      if (request !== refreshRequest.current) return;
+      setTasks(items);
+      setFolders(directories);
+      if (nextQuery.folderPath && !directories.some((f) => f.archived === nextQuery.archived && f.path === nextQuery.folderPath)) setQuery({ ...nextQuery, folderPath: null });
     } catch (cause) {
       setError(errorMessage(cause));
     }
@@ -728,33 +751,131 @@ function WorkspaceSession() {
     return () => window.clearTimeout(timer);
   }, [fileSignal, refresh, workspaceOpen]);
 
-  const save = useCallback(async (current: Task) => {
-    setSaveState("saving");
-    try {
-      const saved = await api.saveTask(current);
-      setTask((open) => open?.id === saved.id ? saved : open);
-      setOpenTabs((tabs) => tabs.map((tab) => tab.kind === "task" && tab.id === saved.id ? { kind: "task", id: saved.id, title: saved.title, fileName: saved.fileName, archived: saved.archived } : tab));
-      setSaveState("saved");
-      await refresh();
-      setSearchEpoch((epoch) => epoch + 1);
-    } catch (cause) {
-      const message = errorMessage(cause);
-      setSaveState(message.includes("EXTERNAL_CHANGE") ? "external" : "failed");
-      setError(message.replace("EXTERNAL_CHANGE:", "").trim());
-      if (message.includes("EXTERNAL_CHANGE")) {
-        try { setExternalTask(await api.getTask(current.id)); } catch { /* file may have moved */ }
-      }
+  const save = useCallback(async (current: Task): Promise<boolean> => {
+    if (savePromise.current) {
+      if (!await savePromise.current) return false;
+      const latest = workspaceStore.getState().task;
+      if (latest?.id === current.id) current = { ...current, contentHash: latest.contentHash, folderPath: latest.folderPath };
     }
+    const operation = (async () => {
+      setSaveState("saving");
+      try {
+        const saved = await api.saveTask(current);
+        let stillDirty = false;
+        setTask((open) => {
+          if (open?.id !== saved.id) return open;
+          stillDirty = open.body !== current.body || JSON.stringify(open.properties) !== JSON.stringify(current.properties) || (open.title !== current.title && open.title !== saved.title);
+          return stillDirty ? { ...saved, body: open.body, title: open.title, properties: open.properties } : saved;
+        });
+        setOpenTabs((tabs) => tabs.map((tab) => tab.kind === "task" && tab.id === saved.id ? { ...tab, title: saved.title, fileName: saved.fileName, folderPath: saved.folderPath, archived: saved.archived } : tab));
+        setSaveState(stillDirty ? "dirty" : "saved");
+        await refresh();
+        setSearchEpoch((epoch) => epoch + 1);
+        return true;
+      } catch (cause) {
+        const message = errorMessage(cause);
+        setSaveState(message.includes("EXTERNAL_CHANGE") ? "external" : "failed");
+        setError(message.replace("EXTERNAL_CHANGE:", "").trim());
+        if (message.includes("EXTERNAL_CHANGE")) {
+          try { setExternalTask(await api.getTask(current.id)); } catch { /* File may be unavailable. */ }
+        }
+        return false;
+      }
+    })();
+    savePromise.current = operation;
+    try { return await operation; } finally { if (savePromise.current === operation) savePromise.current = null; }
   }, [refresh]);
 
   useEffect(() => {
-    if (!task || saveState !== "dirty" || titleEditing) return;
-    const timer = window.setTimeout(() => void save(task), 650);
-    return () => window.clearTimeout(timer);
-  }, [task, save, saveState, titleEditing]);
+    setCheckedIds(new Set());
+    selectionAnchor.current = null;
+  }, [query.folderPath, query.filters, query.search, query.archived, workspacePath]);
 
   useEffect(() => {
-    if (!task) return;
+    if (!workspaceOpen) return;
+    localStorage.setItem(`taskmate-folders.v1:${workspacePath}:${query.archived}`, JSON.stringify({ selected: query.folderPath ?? null, expanded: expandedFolders }));
+  }, [workspaceOpen, workspacePath, query.archived, query.folderPath, expandedFolders]);
+
+  const syncLocations = useLatestCallback(async () => {
+    const all = await Promise.all([api.queryTasks({ search: "", archived: false, filters: [], sorts: [] }), api.queryTasks({ search: "", archived: true, filters: [], sorts: [] })]);
+    const byId = new Map(all.flat().map((item) => [item.id, item]));
+    const location = (id: string) => { const item = byId.get(id); return item ? { fileName: item.fileName, folderPath: item.folderPath || "", archived: item.archived } : {}; };
+    setTask((current) => current ? { ...current, ...location(current.id) } : current);
+    setOpenTabs((tabs) => tabs.map((tab) => tab.kind === "task" ? { ...tab, ...location(tab.id) } : tab));
+    setRecentFiles((files) => files.map((file) => ({ ...file, ...location(file.id) })));
+  });
+  useEffect(() => {
+    if (!workspaceOpen || !fileSignal) return;
+    const timer = window.setTimeout(() => void syncLocations().catch((cause) => setError(errorMessage(cause))), 180);
+    return () => window.clearTimeout(timer);
+  }, [workspaceOpen, fileSignal, syncLocations]);
+
+  const folderOperation = async (operation: () => Promise<void>, affectsCurrent = false): Promise<boolean> => {
+    if (folderBusyRef.current) return false;
+    folderBusyRef.current = true;
+    setFolderBusy(true);
+    try {
+      if (savePromise.current && !await savePromise.current) return false;
+      const state = workspaceStore.getState();
+      if (affectsCurrent && (state.saveState === "external" || state.externalTask)) throw new Error(locale === "zh-CN" ? "请先解决外部文件冲突。" : "Resolve the external file conflict first.");
+      if (affectsCurrent && state.task && (state.saveState !== "saved" || titleDraft !== state.task.title)) {
+        if (!await save({ ...state.task, title: titleDraft })) return false;
+        if (workspaceStore.getState().saveState !== "saved") return false;
+      }
+      await operation();
+      setCheckedIds(new Set());
+      return true;
+    } catch (cause) { setError(errorMessage(cause)); return false; }
+    finally {
+      await refresh();
+      await syncLocations().catch((cause) => setError(errorMessage(cause)));
+      setSearchEpoch((epoch) => epoch + 1);
+      folderBusyRef.current = false;
+      setFolderBusy(false);
+    }
+  };
+  const moveTasksTo = (ids: string[], target: string) => folderOperation(async () => {
+    const result = await api.moveTasks(ids, query.archived, target);
+    if (result.error) throw new Error(`${result.error} (${result.completed.length} completed; ${result.remaining.length} remaining)`);
+  }, !!task && ids.includes(task.id));
+  const manageFolder = (action: FolderAction) => folderOperation(async () => {
+    if (action.kind === "create") await api.createFolder(query.archived, action.parent, action.name);
+    else if (action.kind === "delete") await api.deleteFolder(query.archived, action.source);
+    else await api.moveFolder(query.archived, action.source, action.parent, action.name);
+  }, action.kind === "move" && !!task && task.archived === query.archived && (task.folderPath === action.source || !!task.folderPath?.startsWith(action.source + "/")));
+  const dropOnFolder = (payload: DragPayload, target: string) => {
+    if (payload.archived !== query.archived) return;
+    if (payload.ids) void moveTasksTo(payload.ids, target);
+    else if (payload.folder) void manageFolder({ kind: "move", source: payload.folder, parent: target, name: payload.folder.split("/").at(-1)! });
+  };
+  const switchTaskRegion = () => {
+    const archived = !query.archived;
+    let navigation: { selected?: string | null; expanded?: string[] } = {};
+    try { navigation = JSON.parse(localStorage.getItem(`taskmate-folders.v1:${workspacePath}:${archived}`) || "{}"); } catch { /* Use all tasks. */ }
+    const folderPath = navigation.selected && !folders.some((f) => f.archived === archived && f.path === navigation.selected) ? null : navigation.selected ?? null;
+    setQuery({ ...query, archived, folderPath });
+    setExpandedFolders(Array.isArray(navigation.expanded) ? navigation.expanded : []);
+  };
+  const checkTask = (id: string, range: boolean) => {
+    const anchorIndex = tasks.findIndex((item) => item.id === selectionAnchor.current);
+    const end = tasks.findIndex((item) => item.id === id);
+    setCheckedIds((current) => {
+      const next = new Set(current);
+      if (range && anchorIndex >= 0 && end >= 0) tasks.slice(Math.min(anchorIndex, end), Math.max(anchorIndex, end) + 1).forEach((item) => next.add(item.id));
+      else if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+    if (!range || anchorIndex < 0) selectionAnchor.current = id;
+  };
+
+  useEffect(() => {
+    if (!task || saveState !== "dirty" || titleEditing || folderBusy) return;
+    const timer = window.setTimeout(() => void save(task), 650);
+    return () => window.clearTimeout(timer);
+  }, [task, save, saveState, titleEditing, folderBusy]);
+
+  useEffect(() => {
+    if (!task || folderBusy || saveState === "saving") return;
     const detect = async () => {
       try {
         const changed = await api.checkExternalChange(task.id, task.contentHash);
@@ -777,7 +898,7 @@ function WorkspaceSession() {
       window.clearTimeout(debounce);
       window.clearInterval(timer);
     };
-  }, [fileSignal, refresh, saveState, task?.contentHash, task?.id]);
+  }, [fileSignal, refresh, saveState, task?.contentHash, task?.id, folderBusy]);
 
   const editTask = (patch: Partial<Task>) => {
     setTask((current) => current ? { ...current, ...patch } : current);
@@ -788,6 +909,7 @@ function WorkspaceSession() {
   };
   const commitTaskTitle = () => {
     setTitleEditing(false);
+    if (folderBusyRef.current) return;
     if (!task || titleDraft === task.title) return;
     const current = { ...task, title: titleDraft };
     setTask(current);
@@ -819,32 +941,41 @@ function WorkspaceSession() {
   const revealInNavigator = () => {
     setTaskListVisible(true);
     setTaskPanel("files");
+    if (task) {
+      const path = task.folderPath || "";
+      setQuery({ search: "", filters: [], sorts: query.sorts, archived: task.archived, folderPath: path });
+      const parts = path.split("/");
+      setExpandedFolders((current) => [...new Set([...current, ...parts.map((_, index) => parts.slice(0, index + 1).join("/"))])]);
+    }
     setNavigatorRevealSignal((signal) => signal + 1);
   };
   const renameTask = () => {
     renameRequested.current = true;
   };
   const chooseTask = async (id: string) => {
-    if (id === selectedId) return;
-    if (task && saveState === "dirty") await save(task);
+    if (id === selectedId || folderBusyRef.current) return;
+    if (task && saveState === "dirty" && !await save(task)) return;
     try {
       const next = await api.getTask(id);
       setTask(next);
-      setOpenTabs((tabs) => tabs.some((tab) => tab.kind === "task" && tab.id === next.id) ? tabs : [...tabs, { kind: "task", id: next.id, title: next.title, fileName: next.fileName, archived: next.archived }]);
+      setOpenTabs((tabs) => tabs.some((tab) => tab.kind === "task" && tab.id === next.id) ? tabs : [...tabs, { kind: "task", id: next.id, title: next.title, fileName: next.fileName, folderPath: next.folderPath, archived: next.archived }]);
       setSaveState("saved");
     } catch (cause) { setError(errorMessage(cause)); }
   };
   const create = async () => {
+    if (query.archived || folderBusyRef.current) return;
     try {
-      const created = await api.createTask(t("tasks.untitled"));
+      const created = await api.createTask(t("tasks.untitled"), query.folderPath || "");
       setTask(created);
-      setOpenTabs((tabs) => [...tabs, { kind: "task", id: created.id, title: created.title, fileName: created.fileName, archived: created.archived }]);
+      setOpenTabs((tabs) => [...tabs, { kind: "task", id: created.id, title: created.title, fileName: created.fileName, folderPath: created.folderPath, archived: created.archived }]);
       setSaveState("saved");
       await refresh();
       setSearchEpoch((epoch) => epoch + 1);
     } catch (cause) { setError(errorMessage(cause)); }
   };
   const quickEdit = async (summary: TaskSummary, key: string, value: unknown) => {
+    if (folderBusyRef.current) return;
+    if (savePromise.current && !await savePromise.current) return;
     try {
       const full = summary.id === task?.id ? task : await api.getTask(summary.id);
       const saved = await api.saveTask({ ...full, properties: { ...full.properties, [key]: value } });
@@ -864,13 +995,14 @@ function WorkspaceSession() {
     }
   }, []);
   const archive = async () => {
-    if (!task) return;
+    if (!task || folderBusyRef.current) return;
     const archivedId = task.id;
-    await save({ ...task, archived: !task.archived });
+    if (!await save({ ...task, archived: !task.archived })) return;
     setTask(null);
     setOpenTabs((tabs) => tabs.filter((tab) => tab.kind !== "task" || tab.id !== archivedId));
   };
   const archiveTabTask = async (tab: Extract<OpenTab, { kind: "task" }>) => {
+    if (folderBusyRef.current) return;
     if (task?.id === tab.id) {
       await archive();
       return;
@@ -942,7 +1074,7 @@ function WorkspaceSession() {
   };
 
   const switchWorkspace = async () => {
-    if (task && saveState === "dirty") await save(task);
+    if (task && saveState === "dirty" && !await save(task)) return;
     setTask(null);
     setOpenTabs([]);
     setWorkspaceOpen(false);
@@ -1253,6 +1385,12 @@ function WorkspaceSession() {
                 </div>
               </div>
             </Dialog>
+            <Dialog open={moveIds !== null} onOpenChange={(open) => { if (!open && !folderBusy) setMoveIds(null); }} title={locale === "zh-CN" ? "移动任务" : "Move tasks"} contentClassName="w-[min(480px,calc(100vw-40px))]">
+              <form className="grid gap-3" onSubmit={(event) => { event.preventDefault(); if (moveIds) void moveTasksTo(moveIds, moveTarget).then((ok) => { if (ok) setMoveIds(null); }); }}>
+                <label>{locale === "zh-CN" ? "目标文件夹" : "Destination folder"}<select className="block w-full rounded border border-line bg-surface p-2" value={moveTarget} onChange={(event) => setMoveTarget(event.target.value)}><option value="">/</option>{folders.filter((f) => f.archived === query.archived).map((f) => <option key={f.path}>{f.path}</option>)}</select></label>
+                <Button type="submit" disabled={folderBusy}>{locale === "zh-CN" ? "移动" : "Move"} ({moveIds?.length})</Button>
+              </form>
+            </Dialog>
             <div className="grid h-full min-h-0" data-testid="split-layout" style={{ gridTemplateColumns: taskListVisible ? `${leftWidth}px 5px minmax(0, 1fr)` : "0 0 minmax(0, 1fr)" }}>
               <section id="task-side-panel" className={cn("flex min-h-0 min-w-0 flex-col bg-background", !taskListVisible && "invisible overflow-hidden")} aria-hidden={!taskListVisible}>
                 {taskPanel === "files" ? <>
@@ -1266,14 +1404,18 @@ function WorkspaceSession() {
                       <Button variant="outline" size="icon" aria-pressed={compactCards} aria-label={compactCards ? t("tasks.comfortable") : t("tasks.compact")} onClick={() => setCompactCards((compact) => !compact)}><Rows3 size={17} /></Button>
                     </Tooltip>
                     <Tooltip label={query.archived ? t("tasks.returnActive") : t("tasks.archive")}>
-                      <Button variant="outline" size="icon" aria-pressed={query.archived} aria-label={query.archived ? t("tasks.returnActive") : t("tasks.archive")} onClick={() => { setTask(null); setQuery({ ...query, archived: !query.archived }); }}>{query.archived ? <ArchiveRestore size={17} /> : <Archive size={17} />}</Button>
+                      <Button variant="outline" size="icon" aria-pressed={query.archived} aria-label={query.archived ? t("tasks.returnActive") : t("tasks.archive")} onClick={switchTaskRegion}>{query.archived ? <ArchiveRestore size={17} /> : <Archive size={17} />}</Button>
                     </Tooltip>
                     <Tooltip label={t("tasks.new")}>
-                      <Button size="icon" aria-label={t("tasks.new")} onClick={create}><Plus size={17} /></Button>
+                      <Button size="icon" aria-label={t("tasks.new")} onClick={create} disabled={query.archived || folderBusy}><Plus size={17} /></Button>
                     </Tooltip>
                   </div>
                 </div>
+                <FolderNavigator revealSignal={navigatorRevealSignal} folders={folders} archived={query.archived} selected={query.folderPath ?? null} expanded={expandedFolders} onSelect={(folderPath) => setQuery({ ...query, folderPath })} onExpand={setExpandedFolders} onAction={manageFolder} onDrop={dropOnFolder} checked={checkedIds.size} onSelectAll={() => setCheckedIds(new Set(tasks.map((item) => item.id)))} onMoveSelected={() => { setMoveTarget(query.folderPath || ""); setMoveIds([...checkedIds]); }} busy={folderBusy} />
                 <TaskList
+                  checkedIds={checkedIds}
+                  onCheck={checkTask}
+                  onMove={(ids) => { setMoveTarget(query.folderPath || ""); setMoveIds(ids); }}
                   tasks={tasks}
                   definitions={definitions}
                   selectedId={selectedId}

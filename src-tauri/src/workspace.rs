@@ -1,15 +1,15 @@
 use crate::index::TaskIndex;
 use crate::markdown::{hash_content, parse_task, serialize_task};
 use crate::model::{
-    PropertyDefinition, PropertyOption, SaveTaskInput, Task, TaskQuery, TaskSearchResult,
-    TaskSummary, WorkspaceSnapshot,
+    Folder, MoveTasksResult, PropertyDefinition, PropertyOption, SaveTaskInput, Task, TaskQuery,
+    TaskSearchResult, TaskSummary, WorkspaceSnapshot,
 };
 use base64::Engine;
 use chrono::Utc;
 use serde_yaml::Value;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fs;
-use std::io::Write;
+use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::time::UNIX_EPOCH;
@@ -43,11 +43,18 @@ impl Workspace {
             properties,
             tasks,
             index_rebuilt,
+            folders: self.list_folders()?,
         })
     }
 
+    #[cfg(test)]
     pub fn create_task(&self, title: Option<String>) -> Result<Task, String> {
+        self.create_task_in(title, "")
+    }
+
+    pub fn create_task_in(&self, title: Option<String>, folder: &str) -> Result<Task, String> {
         self.ensure_initialized()?;
+        let directory = self.folder_directory(false, folder)?;
         let now = Utc::now().to_rfc3339();
         let title = title
             .map(|title| title.trim().to_string())
@@ -60,11 +67,12 @@ impl Workspace {
                 properties.insert(definition.key, value);
             }
         }
-        let file_name = self.available_file_name(&self.root.join("tasks"), &title, &id, None);
+        let file_name = self.available_file_name(&directory, &title, &id, None);
         let mut task = Task {
             id,
             title,
             file_name,
+            folder_path: folder.into(),
             body: String::new(),
             archived: false,
             created_at: now.clone(),
@@ -79,7 +87,7 @@ impl Workspace {
     pub fn get_task(&self, id: &str) -> Result<Task, String> {
         let path = self.find_task_path(id)?;
         let text = fs::read_to_string(&path).map_err(to_string)?;
-        parse_task(&path, &text)
+        self.read_task(&path, &text)
     }
 
     pub fn task_file_path(&self, id: &str) -> Result<PathBuf, String> {
@@ -89,7 +97,7 @@ impl Workspace {
     pub fn save_task(&self, input: SaveTaskInput) -> Result<Task, String> {
         let current_path = self.find_task_path(&input.id)?;
         let current_text = fs::read_to_string(&current_path).map_err(to_string)?;
-        let current = parse_task(&current_path, &current_text)?;
+        let current = self.read_task(&current_path, &current_text)?;
         if let Some(expected) = input.expected_hash.as_ref() {
             if expected != &current.content_hash {
                 return Err("EXTERNAL_CHANGE: The Markdown file changed outside Taskmate.".into());
@@ -99,6 +107,7 @@ impl Workspace {
             id: current.id,
             title: clean_title(&input.title, &current.title),
             file_name: current.file_name,
+            folder_path: current.folder_path,
             body: input.body,
             archived: input.archived,
             created_at: current.created_at,
@@ -106,11 +115,7 @@ impl Workspace {
             properties: input.properties,
             content_hash: current.content_hash,
         };
-        let directory = if task.archived {
-            self.root.join("archive")
-        } else {
-            self.root.join("tasks")
-        };
+        let directory = self.ensure_folder(task.archived, &task.folder_path)?;
         let desired_name =
             self.available_file_name(&directory, &task.title, &task.id, Some(&current_path));
         task.file_name = desired_name;
@@ -140,7 +145,7 @@ impl Workspace {
 
     pub fn delete_task(&self, id: &str) -> Result<(), String> {
         let path = self.find_task_path(id)?;
-        let task = parse_task(&path, &fs::read_to_string(&path).map_err(to_string)?)?;
+        let task = self.read_task(&path, &fs::read_to_string(&path).map_err(to_string)?)?;
         if !task.archived {
             return Err("Only archived tasks can be permanently deleted.".into());
         }
@@ -296,15 +301,20 @@ impl Workspace {
     }
 
     fn write_task(&self, task: &mut Task, previous_path: Option<&Path>) -> Result<(), String> {
-        let directory = if task.archived {
-            self.root.join("archive")
-        } else {
-            self.root.join("tasks")
-        };
+        let directory = self.ensure_folder(task.archived, &task.folder_path)?;
         fs::create_dir_all(&directory).map_err(to_string)?;
         let target = directory.join(&task.file_name);
         let serialized = serialize_task(task)?;
-        atomic_write(&target, serialized.as_bytes())?;
+        if previous_path == Some(target.as_path()) {
+            atomic_write(&target, serialized.as_bytes())?;
+        } else {
+            let mut temporary = tempfile::NamedTempFile::new_in(&directory).map_err(to_string)?;
+            temporary
+                .write_all(serialized.as_bytes())
+                .map_err(to_string)?;
+            temporary.as_file().sync_all().map_err(to_string)?;
+            temporary.persist_noclobber(&target).map_err(to_string)?;
+        }
         task.content_hash = hash_content(serialized.as_bytes());
         if let Some(previous) = previous_path {
             if previous != target && previous.exists() {
@@ -321,10 +331,16 @@ impl Workspace {
             .into_iter()
             .map(|(id, path, mtime, hash)| (path, (id, mtime, hash)))
             .collect::<HashMap<_, _>>();
-        let mut seen = HashSet::new();
-        for path in self.markdown_paths()? {
+        let paths = self.markdown_paths()?;
+        let existing: HashSet<_> = paths
+            .iter()
+            .map(|p| p.to_string_lossy().to_string())
+            .collect();
+        for path in old.keys().filter(|path| !existing.contains(*path)) {
+            index.remove_path(path)?;
+        }
+        for path in paths {
             let path_string = path.to_string_lossy().to_string();
-            seen.insert(path_string.clone());
             let mtime = file_mtime(&path)?;
             if old
                 .get(&path_string)
@@ -333,12 +349,9 @@ impl Workspace {
                 continue;
             }
             let text = fs::read_to_string(&path).map_err(to_string)?;
-            let task = parse_task(&path, &text)?;
+            let task = self.read_task(&path, &text)?;
+            index.remove_path(&path_string)?;
             index.upsert(&task, &path, mtime)?;
-        }
-        for (path, (id, _, _)) in old.iter().filter(|(path, _)| !seen.contains(*path)) {
-            let _ = path;
-            index.remove(id)?;
         }
         Ok(())
     }
@@ -346,7 +359,7 @@ impl Workspace {
     fn scan_all(&self, index: &TaskIndex) -> Result<(), String> {
         for path in self.markdown_paths()? {
             let text = fs::read_to_string(&path).map_err(to_string)?;
-            let task = parse_task(&path, &text)?;
+            let task = self.read_task(&path, &text)?;
             index.upsert(&task, &path, file_mtime(&path)?)?;
         }
         Ok(())
@@ -354,13 +367,8 @@ impl Workspace {
 
     fn markdown_paths(&self) -> Result<Vec<PathBuf>, String> {
         let mut paths = Vec::new();
-        for directory in ["tasks", "archive"] {
-            for entry in fs::read_dir(self.root.join(directory)).map_err(to_string)? {
-                let path = entry.map_err(to_string)?.path();
-                if path.extension().and_then(|extension| extension.to_str()) == Some("md") {
-                    paths.push(path);
-                }
-            }
+        for archived in [false, true] {
+            self.walk_region(archived, "", &mut paths, &mut Vec::new())?;
         }
         Ok(paths)
     }
@@ -386,10 +394,221 @@ impl Workspace {
         let base = safe_file_stem(title);
         let preferred = format!("{base}.md");
         let preferred_path = directory.join(&preferred);
-        if !preferred_path.exists() || current == Some(preferred_path.as_path()) {
+        if fs::symlink_metadata(&preferred_path).is_err()
+            || current == Some(preferred_path.as_path())
+        {
             return preferred;
         }
-        format!("{base}-{}.md", &id[..8.min(id.len())])
+        let suffix = &id[..8.min(id.len())];
+        for number in 0.. {
+            let name = if number == 0 {
+                format!("{base}-{suffix}.md")
+            } else {
+                format!("{base}-{suffix}-{number}.md")
+            };
+            let path = directory.join(&name);
+            if fs::symlink_metadata(&path).is_err() || current == Some(path.as_path()) {
+                return name;
+            }
+        }
+        unreachable!()
+    }
+
+    fn region(&self, archived: bool) -> PathBuf {
+        self.root.join(if archived { "archive" } else { "tasks" })
+    }
+
+    fn checked_folder(&self, archived: bool, folder: &str) -> Result<PathBuf, String> {
+        let mut path = self.region(archived);
+        if fs::symlink_metadata(&path)
+            .map_err(to_string)?
+            .file_type()
+            .is_symlink()
+        {
+            return Err("Task regions cannot be symbolic links.".into());
+        }
+        if !folder.is_empty() {
+            for name in folder.split('/') {
+                validate_folder_name(name)?;
+                path.push(name);
+                if let Ok(metadata) = fs::symlink_metadata(&path) {
+                    if metadata.file_type().is_symlink() || !metadata.is_dir() {
+                        return Err("Folder paths must contain real directories.".into());
+                    }
+                }
+            }
+        }
+        Ok(path)
+    }
+
+    fn folder_directory(&self, archived: bool, folder: &str) -> Result<PathBuf, String> {
+        let path = self.checked_folder(archived, folder)?;
+        if !path.is_dir() {
+            return Err("Folder does not exist.".into());
+        }
+        Ok(path)
+    }
+
+    fn ensure_folder(&self, archived: bool, folder: &str) -> Result<PathBuf, String> {
+        let path = self.checked_folder(archived, folder)?;
+        fs::create_dir_all(&path).map_err(to_string)?;
+        Ok(path)
+    }
+
+    fn read_task(&self, path: &Path, text: &str) -> Result<Task, String> {
+        let mut task = parse_task(path, text)?;
+        for archived in [false, true] {
+            if let Ok(relative) = path.strip_prefix(self.region(archived)) {
+                task.folder_path = relative
+                    .parent()
+                    .unwrap_or(Path::new(""))
+                    .to_string_lossy()
+                    .replace('\\', "/");
+                task.archived = archived;
+                return Ok(task);
+            }
+        }
+        Err("Task is outside its region.".into())
+    }
+
+    fn walk_region(
+        &self,
+        archived: bool,
+        folder: &str,
+        files: &mut Vec<PathBuf>,
+        folders: &mut Vec<Folder>,
+    ) -> Result<(), String> {
+        let directory = self.folder_directory(archived, folder)?;
+        for entry in fs::read_dir(directory).map_err(to_string)? {
+            let entry = entry.map_err(to_string)?;
+            let kind = entry.file_type().map_err(to_string)?;
+            if kind.is_symlink() {
+                continue;
+            }
+            if kind.is_dir() {
+                let name = entry.file_name().to_string_lossy().to_string();
+                let child = if folder.is_empty() {
+                    name
+                } else {
+                    format!("{folder}/{name}")
+                };
+                folders.push(Folder {
+                    path: child.clone(),
+                    archived,
+                });
+                self.walk_region(archived, &child, files, folders)?;
+            } else if kind.is_file()
+                && entry.path().extension().and_then(|s| s.to_str()) == Some("md")
+            {
+                files.push(entry.path());
+            }
+        }
+        Ok(())
+    }
+
+    pub fn list_folders(&self) -> Result<Vec<Folder>, String> {
+        let mut folders = Vec::new();
+        for archived in [false, true] {
+            self.walk_region(archived, "", &mut Vec::new(), &mut folders)?;
+        }
+        folders.sort_by(|a, b| a.path.cmp(&b.path));
+        Ok(folders)
+    }
+
+    pub fn create_folder(&self, archived: bool, parent: &str, name: &str) -> Result<(), String> {
+        validate_folder_name(name)?;
+        let target = self.folder_directory(archived, parent)?.join(name);
+        fs::create_dir(target).map_err(to_string)
+    }
+
+    pub fn move_folder(
+        &self,
+        archived: bool,
+        source: &str,
+        parent: &str,
+        name: &str,
+    ) -> Result<(), String> {
+        if source.is_empty() {
+            return Err("Cannot move a task region.".into());
+        }
+        validate_folder_name(name)?;
+        let from = self.folder_directory(archived, source)?;
+        let target = self.folder_directory(archived, parent)?.join(name);
+        if from == target {
+            return Ok(());
+        }
+        if target.starts_with(&from) {
+            return Err("Cannot move a folder into itself or a descendant.".into());
+        }
+        if fs::symlink_metadata(&target).is_ok() {
+            return Err("A folder with that name already exists.".into());
+        }
+        fs::rename(from, target).map_err(to_string)
+    }
+
+    pub fn delete_folder(&self, archived: bool, folder: &str) -> Result<(), String> {
+        if folder.is_empty() {
+            return Err("Cannot delete a task region.".into());
+        }
+        let path = self.folder_directory(archived, folder)?;
+        if fs::read_dir(&path).map_err(to_string)?.next().is_some() {
+            return Err("Move the folder contents before deleting it.".into());
+        }
+        fs::remove_dir(path).map_err(to_string)
+    }
+
+    pub fn move_tasks(
+        &self,
+        ids: Vec<String>,
+        archived: bool,
+        folder: &str,
+    ) -> Result<MoveTasksResult, String> {
+        self.move_tasks_with(ids, archived, folder, move_task_file)
+    }
+
+    fn move_tasks_with(
+        &self,
+        ids: Vec<String>,
+        archived: bool,
+        folder: &str,
+        mut move_file: impl FnMut(&Path, &Path) -> Result<(), String>,
+    ) -> Result<MoveTasksResult, String> {
+        let directory = self.folder_directory(archived, folder)?;
+        let mut tasks = Vec::new();
+        let mut unique = HashSet::new();
+        for id in &ids {
+            if !unique.insert(id) {
+                return Err("Duplicate task ID.".into());
+            }
+            let task = self.get_task(id)?;
+            if task.archived != archived {
+                return Err("Tasks cannot move across active and archive regions.".into());
+            }
+            tasks.push(task);
+        }
+        let mut result = MoveTasksResult {
+            completed: Vec::new(),
+            remaining: ids,
+            error: None,
+        };
+        for task in tasks {
+            let operation = (|| {
+                if task.folder_path == folder {
+                    return Ok(());
+                }
+                let source = self.find_task_path(&task.id)?;
+                let name = self.available_file_name(&directory, &task.title, &task.id, None);
+                move_file(&source, &directory.join(name))?;
+                Ok::<(), String>(())
+            })();
+            if let Err(error) = operation {
+                result.error = Some(error);
+                break;
+            }
+            result.completed.push(task.id);
+            result.remaining.remove(0);
+        }
+        Ok(result)
     }
 
     fn ensure_gitignore(&self) -> Result<(), String> {
@@ -417,6 +636,42 @@ impl Workspace {
         }
         Ok(())
     }
+}
+
+fn move_task_file(source: &Path, target: &Path) -> Result<(), String> {
+    // create_new prevents overwrites and works on filesystems without hard links.
+    let mut input = fs::File::open(source).map_err(to_string)?;
+    let mut output = fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(target)
+        .map_err(to_string)?;
+    let copied = io::copy(&mut input, &mut output).and_then(|_| output.sync_all());
+    if let Err(error) = copied.and_then(|_| fs::remove_file(source)) {
+        drop(output);
+        let _ = fs::remove_file(target);
+        return Err(error.to_string());
+    }
+    Ok(())
+}
+
+fn validate_folder_name(name: &str) -> Result<(), String> {
+    let stem = name.split('.').next().unwrap_or("").to_ascii_uppercase();
+    if name.is_empty()
+        || name == "."
+        || name == ".."
+        || name.ends_with(['.', ' '])
+        || name
+            .chars()
+            .any(|c| c.is_control() || "/\\:*?\"<>|".contains(c))
+        || matches!(stem.as_str(), "CON" | "PRN" | "AUX" | "NUL")
+        || (stem.len() == 4
+            && (stem.starts_with("COM") || stem.starts_with("LPT"))
+            && matches!(stem.as_bytes()[3], b'1'..=b'9'))
+    {
+        return Err("Invalid cross-platform folder name.".into());
+    }
+    Ok(())
 }
 
 pub fn atomic_write(path: &Path, contents: &[u8]) -> Result<(), String> {
@@ -614,6 +869,182 @@ fn to_string(error: impl ToString) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn save_input(task: Task, archived: bool) -> SaveTaskInput {
+        SaveTaskInput {
+            id: task.id,
+            title: task.title,
+            body: task.body,
+            archived,
+            created_at: task.created_at,
+            properties: task.properties,
+            expected_hash: Some(task.content_hash),
+        }
+    }
+
+    #[test]
+    fn nested_scan_empty_folders_queries_and_rebuild() {
+        let temp = tempfile::tempdir().unwrap();
+        let w = Workspace::new(temp.path().to_path_buf());
+        w.initialize().unwrap();
+        w.create_folder(false, "", "a").unwrap();
+        w.create_folder(false, "a", "nested").unwrap();
+        w.create_folder(false, "", "ab").unwrap();
+        w.create_folder(false, "", "empty").unwrap();
+        w.create_task_in(Some("Nested".into()), "a/nested").unwrap();
+        w.create_task_in(Some("Other".into()), "ab").unwrap();
+        w.create_task(None).unwrap();
+        let query = TaskQuery {
+            folder_path: Some("a".into()),
+            ..Default::default()
+        };
+        assert_eq!(w.query(query.clone()).unwrap().len(), 1);
+        assert_eq!(
+            w.query(TaskQuery {
+                folder_path: Some("".into()),
+                ..Default::default()
+            })
+            .unwrap()
+            .len(),
+            1
+        );
+        assert_eq!(w.list_folders().unwrap().len(), 4);
+        w.rebuild_index().unwrap();
+        assert_eq!(w.query(query).unwrap()[0].folder_path, "a/nested");
+    }
+
+    #[test]
+    fn moves_keep_uuid_content_and_stale_saves_keep_current_location() {
+        let temp = tempfile::tempdir().unwrap();
+        let w = Workspace::new(temp.path().to_path_buf());
+        let task = w.create_task(Some("Task".into())).unwrap();
+        w.create_folder(false, "", "a").unwrap();
+        let result = w.move_tasks(vec![task.id.clone()], false, "a").unwrap();
+        assert!(result.error.is_none());
+        assert_eq!(
+            w.get_task(&task.id).unwrap().content_hash,
+            task.content_hash
+        );
+        let saved = w.save_task(save_input(task, false)).unwrap();
+        assert_eq!(saved.folder_path, "a");
+        let archived = w.save_task(save_input(saved, true)).unwrap();
+        assert!(temp.path().join("archive/a/Task.md").exists());
+        w.move_folder(false, "a", "", "renamed").unwrap();
+        let restored = w.save_task(save_input(archived, false)).unwrap();
+        assert_eq!(restored.folder_path, "a");
+        assert!(temp.path().join("tasks/a/Task.md").exists());
+    }
+
+    #[test]
+    fn external_directory_and_file_moves_survive_incremental_cleanup() {
+        let temp = tempfile::tempdir().unwrap();
+        let w = Workspace::new(temp.path().to_path_buf());
+        let task = w.create_task(Some("Task".into())).unwrap();
+        w.create_folder(false, "", "a").unwrap();
+        fs::rename(
+            temp.path().join("tasks/Task.md"),
+            temp.path().join("tasks/a/Task.md"),
+        )
+        .unwrap();
+        assert_eq!(w.query(Default::default()).unwrap()[0].id, task.id);
+        w.move_folder(false, "a", "", "b").unwrap();
+        assert_eq!(w.query(Default::default()).unwrap()[0].folder_path, "b");
+        assert_eq!(
+            w.get_task(&task.id).unwrap().content_hash,
+            task.content_hash
+        );
+        w.rebuild_index().unwrap();
+        assert_eq!(w.search("Task").unwrap()[0].folder_path, "b");
+    }
+
+    #[test]
+    fn rejects_unsafe_folders_descendants_and_nonempty_delete() {
+        let temp = tempfile::tempdir().unwrap();
+        let w = Workspace::new(temp.path().to_path_buf());
+        w.initialize().unwrap();
+        for name in [
+            "..",
+            "../escape",
+            "a/b",
+            "CON",
+            "LPT1.txt",
+            "trailing.",
+            "trailing ",
+            "a:b",
+        ] {
+            assert!(w.create_folder(false, "", name).is_err(), "{name}");
+        }
+        w.create_folder(false, "", "a").unwrap();
+        w.create_folder(false, "a", "child").unwrap();
+        assert!(w.move_folder(false, "a", "a/child", "a").is_err());
+        assert!(w.create_folder(false, "", "a").is_err());
+        assert!(w.delete_folder(false, "a").is_err());
+        assert!(w.create_task_in(None, "../escape").is_err());
+        w.delete_folder(false, "a/child").unwrap();
+        w.delete_folder(false, "a").unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn skips_symlinks_and_rejects_writes_through_them() {
+        let temp = tempfile::tempdir().unwrap();
+        let outside = tempfile::tempdir().unwrap();
+        let w = Workspace::new(temp.path().to_path_buf());
+        w.initialize().unwrap();
+        std::os::unix::fs::symlink(outside.path(), temp.path().join("tasks/link")).unwrap();
+        assert!(w.list_folders().unwrap().is_empty());
+        assert!(w.create_task_in(None, "link").is_err());
+        assert!(w.create_folder(false, "link", "escape").is_err());
+    }
+
+    #[test]
+    fn move_conflicts_never_overwrite_and_batch_reports_partial_failure() {
+        let temp = tempfile::tempdir().unwrap();
+        let w = Workspace::new(temp.path().to_path_buf());
+        let task = w.create_task(Some("Same".into())).unwrap();
+        w.create_folder(false, "", "target").unwrap();
+        w.create_task_in(Some("Same".into()), "target").unwrap();
+        let suffix_path = temp
+            .path()
+            .join(format!("tasks/target/Same-{}.md", &task.id[..8]));
+        fs::write(&suffix_path, "do not overwrite").unwrap();
+        let result = w
+            .move_tasks(vec![task.id.clone()], false, "target")
+            .unwrap();
+        assert!(result.error.is_none());
+        assert_eq!(fs::read_to_string(suffix_path).unwrap(), "do not overwrite");
+        assert_eq!(
+            w.get_task(&task.id).unwrap().file_name,
+            format!("Same-{}-1.md", &task.id[..8])
+        );
+        // Remove the deliberately non-task fixture before scanning again.
+        fs::remove_file(
+            temp.path()
+                .join(format!("tasks/target/Same-{}.md", &task.id[..8])),
+        )
+        .unwrap();
+        let first = w.create_task(Some("First".into())).unwrap();
+        let second = w.create_task(Some("Second".into())).unwrap();
+        let mut count = 0;
+        let result = w
+            .move_tasks_with(
+                vec![first.id.clone(), second.id.clone()],
+                false,
+                "target",
+                |source, target| {
+                    count += 1;
+                    if count == 2 {
+                        return Err("Injected filesystem failure".into());
+                    }
+                    move_task_file(source, target)
+                },
+            )
+            .unwrap();
+        assert_eq!(result.completed, vec![first.id]);
+        assert_eq!(result.remaining, vec![second.id]);
+        assert!(result.error.is_some());
+        assert_eq!(w.query(Default::default()).unwrap().len(), 4);
+    }
 
     #[test]
     fn default_properties_match_builtin_schema() {

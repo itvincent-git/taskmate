@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import type { PropertyDefinition, TaskSummary } from "../types";
 import { TaskList } from "./TaskList";
@@ -93,4 +93,22 @@ describe("TaskList", () => {
     expect(options.estimateSize()).toBe(44);
     expect(virtualizerMock.virtualizer.measure).toHaveBeenCalledTimes(initialMeasureCalls + 1);
   });
+});
+
+it("keeps selection modifiers separate from opening and drags only the intended group", () => {
+  const onCheck = vi.fn();
+  const onSelect = vi.fn();
+  const props = { tasks: [task], definitions: [], compact: false, emptyState: null, onSelect, onQuickEdit: vi.fn(), onCheck, onMove: vi.fn() };
+  const { rerender } = render(<TaskList {...props} checkedIds={new Set([task.id, "other"])} />);
+  fireEvent.click(screen.getByText(task.title), { metaKey: true });
+  expect(onCheck).toHaveBeenLastCalledWith(task.id, false);
+  fireEvent.click(screen.getByText(task.title), { shiftKey: true });
+  expect(onCheck).toHaveBeenLastCalledWith(task.id, true);
+  expect(onSelect).not.toHaveBeenCalled();
+  const setData = vi.fn();
+  fireEvent.dragStart(screen.getByText(task.title), { dataTransfer: { setData } });
+  expect(JSON.parse(setData.mock.lastCall![1]).ids).toEqual([task.id, "other"]);
+  rerender(<TaskList {...props} checkedIds={new Set(["other"])} />);
+  fireEvent.dragStart(screen.getByText(task.title), { dataTransfer: { setData } });
+  expect(JSON.parse(setData.mock.lastCall![1]).ids).toEqual([task.id]);
 });

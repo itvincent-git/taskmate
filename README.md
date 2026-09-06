@@ -8,8 +8,8 @@ Every task is an independent Markdown file. YAML frontmatter holds task metadata
 
 ```text
 workspace/
-├── tasks/                 # active task Markdown files
-├── archive/               # archived task Markdown files
+├── tasks/                 # active task Markdown files and nested folders
+├── archive/               # archived task Markdown files and independent folders
 ├── attachments/
 ├── .task-app/
 │   ├── properties.json    # workspace property schema
@@ -17,6 +17,12 @@ workspace/
 │   └── backups/
 └── .git/
 ```
+
+Task folders are real directories under `tasks/` and `archive/`. The directory is the only source of membership; Markdown frontmatter has no folder field. Task UUIDs remain stable and the API exposes `folderPath` relative to the region root alongside the basename `fileName`. Existing files and older frontend caches default to the root directory. SQLite is a disposable, rebuildable index.
+
+The folder navigator includes empty folders and supports nested creation, rename, move, and empty-folder deletion. Selecting a parent includes its descendants; “Root tasks” includes only files directly in the region root. New tasks use the selected active folder (or the root from “All tasks”). Archive and restore retain the current relative directory, creating missing parents. Active and archive trees are independent.
+
+Checkboxes, Cmd/Ctrl-click, and Shift-click select tasks independently of the editor. Use “Move to” or drag a task, selected group, or folder to a directory. Moves stay within a region, preserve content and ordering, and stop if saving fails or an external conflict remains unresolved. Batch failures report completed and remaining counts and refresh actual disk state. Folder name collisions are rejected; task filename collisions receive a UUID suffix and, if necessary, a sequence number. Symlinks and traversal paths are rejected for folder operations. Empty folders are local filesystem entries without Git placeholder files.
 
 A task is human-readable outside Taskmate:
 

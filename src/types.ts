@@ -37,6 +37,7 @@ export interface TaskSummary {
   id: string;
   title: string;
   fileName: string;
+  folderPath?: string;
   archived: boolean;
   createdAt: string;
   updatedAt: string;
@@ -44,6 +45,7 @@ export interface TaskSummary {
 }
 
 export interface TaskSearchResult {
+  folderPath?: string;
   id: string;
   title: string;
   archived: boolean;
@@ -68,6 +70,7 @@ export interface TaskSort {
 }
 
 export interface TaskQuery {
+  folderPath?: string | null;
   search: string;
   archived: boolean;
   filters: TaskFilter[];
@@ -79,6 +82,7 @@ export interface WorkspaceSnapshot {
   properties: PropertyDefinition[];
   tasks: TaskSummary[];
   indexRebuilt: boolean;
+  folders?: TaskFolder[];
 }
 
 export type SaveState = "saved" | "dirty" | "saving" | "failed" | "external";
@@ -117,3 +121,6 @@ export interface UpdateProgress {
   total: number | null;
   percent: number | null;
 }
+
+export interface TaskFolder { path: string; archived: boolean }
+export interface MoveTasksResult { completed: string[]; remaining: string[]; error: string | null }
