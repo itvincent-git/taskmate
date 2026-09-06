@@ -20,6 +20,7 @@ import {
   FolderSearch,
   FolderSync,
   GitBranch,
+  History,
   LayoutList,
   ListFilter,
   LoaderCircle,
@@ -55,6 +56,8 @@ import type {
 } from "./types";
 import { PropertySettings } from "./components/PropertySettings";
 import { TaskList } from "./components/TaskList";
+import { RecentFilesPanel } from "./components/RecentFilesPanel";
+import { loadRecentFiles, saveRecentFiles, type RecentFile } from "./lib/recent-files";
 import { TaskSearchPanel } from "./components/TaskSearchPanel";
 import { TaskProperties } from "./components/TaskProperties";
 import { DynamicFilter } from "./components/DynamicFilter";
@@ -239,8 +242,9 @@ function loadTaskPropertiesWidth() {
   return Number.isFinite(width) ? Math.max(240, Math.min(520, width)) : 320;
 }
 
-function loadTaskPanel(): "files" | "search" {
-  return localStorage.getItem(TASK_PANEL_KEY) === "search" ? "search" : "files";
+function loadTaskPanel(): "files" | "search" | "recent" {
+  const stored = localStorage.getItem(TASK_PANEL_KEY);
+  return stored === "search" || stored === "recent" ? stored : "files";
 }
 
 type StoredFilterSort = Pick<TaskQuery, "filters"> & { sorts?: TaskSort[]; sort?: TaskSort };
@@ -530,7 +534,8 @@ function WorkspaceSession() {
   const [propertiesWidth, setPropertiesWidth] = useState(loadTaskPropertiesWidth);
   const [compactCards, setCompactCards] = useState(() => localStorage.getItem(COMPACT_CARDS_KEY) === "true");
   const [taskListVisible, setTaskListVisible] = useState(() => localStorage.getItem(TASK_LIST_VISIBLE_KEY) !== "false");
-  const [taskPanel, setTaskPanel] = useState<"files" | "search">(loadTaskPanel);
+  const [taskPanel, setTaskPanel] = useState(loadTaskPanel);
+  const [recentFiles, setRecentFiles] = useState<RecentFile[]>([]);
   const [searchResults, setSearchResults] = useState<TaskSearchResult[]>([]);
   const [searchLoading, setSearchLoading] = useState(false);
   const [searchEpoch, setSearchEpoch] = useState(0);
@@ -560,6 +565,21 @@ function WorkspaceSession() {
   const navigate = useNavigate();
   const page = location.pathname;
 
+  const rememberCurrentFile = useLatestCallback(() => {
+    if (!workspaceOpen || page !== "/tasks" || !task) return;
+    const { id, title, fileName, archived } = task;
+    setRecentFiles((files) => [{ id, title, fileName, archived }, ...files.filter((file) => file.id !== id)].slice(0, 50));
+  });
+  useEffect(() => { rememberCurrentFile(); }, [selectedId, page, workspaceOpen, rememberCurrentFile]);
+  const recentFileDetails = useMemo(() => {
+    const current = new Map(tasks.map((item) => [item.id, item]));
+    if (task) current.set(task.id, task);
+    return recentFiles.map((file) => current.get(file.id) ?? file);
+  }, [recentFiles, tasks, task]);
+  useEffect(() => {
+    if (workspaceOpen) saveRecentFiles(workspacePath, recentFileDetails.map(({ id, title, fileName, archived }) => ({ id, title, fileName, archived })));
+  }, [recentFileDetails, workspaceOpen, workspacePath]);
+
   const openWorkspace = useCallback(async (requestedPath?: string) => {
     const path = (requestedPath ?? workspacePath).trim();
     if (!path) return;
@@ -575,6 +595,7 @@ function WorkspaceSession() {
       setDefinitions(snapshot.properties);
       setLockedPropertyIds(new Set(snapshot.properties.map((definition) => definition.id)));
       setTasks(snapshot.tasks);
+      setRecentFiles(loadRecentFiles(path));
       setQuery({ search: "", archived: false, ...loadFilterSort(path) });
       const restored = loadWorkspaceTabs(path, snapshot.tasks);
       if (restored) {
@@ -1066,6 +1087,9 @@ function WorkspaceSession() {
                 <Tooltip label={t("tasks.searchPanel")}>
                   <Button variant="ghost" size="icon" className="my-1 shrink-0" aria-label={t("tasks.searchPanel")} aria-pressed={taskPanel === "search"} aria-controls="task-side-panel" onClick={() => setTaskPanel("search")}><Search size={17} /></Button>
                 </Tooltip>
+                <Tooltip label={t("tasks.recentFiles")}>
+                  <Button variant="ghost" size="icon" className="my-1 shrink-0" aria-label={t("tasks.recentFiles")} aria-pressed={taskPanel === "recent"} aria-controls="task-side-panel" onClick={() => setTaskPanel("recent")}><History size={17} /></Button>
+                </Tooltip>
               </>
             ) : null}
             <Tooltip label={taskListVisible ? t("tasks.collapse") : t("tasks.expand")}>
@@ -1260,7 +1284,7 @@ function WorkspaceSession() {
                   onQuickEdit={quickEditTask}
                   onCreateOption={createPropertyOption}
                 />
-                </> : <TaskSearchPanel search={searchDraft} results={searchResults} loading={searchLoading} onSearchChange={setSearchDraft} onSelect={(result) => void chooseTask(result.id)} />}
+                </> : taskPanel === "recent" ? <RecentFilesPanel files={recentFileDetails} selectedId={selectedId} onSelect={(id) => void chooseTask(id)} /> : <TaskSearchPanel search={searchDraft} results={searchResults} loading={searchLoading} onSearchChange={setSearchDraft} onSelect={(result) => void chooseTask(result.id)} />}
               </section>
               <div className={cn("relative z-[2] cursor-col-resize bg-line hover:bg-accent", !taskListVisible && "invisible")} data-testid="splitter" onPointerDown={beginTaskListResize} />
               <section className="min-h-0 min-w-0 bg-surface" ref={setDetailPanel}>

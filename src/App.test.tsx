@@ -753,6 +753,37 @@ describe("Taskmate application", () => {
     expect(screen.getAllByRole("tab")[1]).toHaveAttribute("aria-selected", "true");
   });
 
+  it("remembers opened files in order and reopens closed files after restart", async () => {
+    const user = userEvent.setup();
+    const first = render(<App />);
+    await user.click(screen.getByRole("button", { name: "Open workspace" }));
+    await user.click(screen.getByRole("button", { name: "Recent files" }));
+    expect(screen.getByText("No recently opened files")).toBeInTheDocument();
+    const search = screen.getByRole("button", { name: "Search" });
+    expect(search.nextElementSibling).toBe(screen.getByRole("button", { name: "Recent files" }));
+    await user.click(screen.getByRole("button", { name: "Files" }));
+    await user.click(screen.getByRole("button", { name: "New task" }));
+    const firstId = (await api.queryTasks({ search: "", archived: false, filters: [], sorts: [] }))[0].id;
+    await user.click(screen.getByRole("button", { name: "New task" }));
+    const tabs = screen.getAllByRole("tab");
+    await user.click(within(tabs[0]).getByRole("button", { name: "Untitled task" }));
+    await user.click(screen.getByRole("button", { name: "Recent files" }));
+    const panel = screen.getByRole("region", { name: "Recent files" });
+    expect(within(panel).getAllByRole("button")).toHaveLength(2);
+    expect(within(panel).getAllByRole("button")[0]).toHaveAttribute("aria-current", "true");
+    const history = Object.values(JSON.parse(localStorage.getItem("taskmate-recent-files.v1")!))[0] as { id: string }[];
+    expect(history[0].id).toBe(firstId);
+    fireEvent.contextMenu(screen.getAllByRole("tab")[0]);
+    await user.click(await screen.findByRole("menuitem", { name: "Close all" }));
+    first.unmount();
+    render(<App />);
+    const restored = await screen.findByRole("region", { name: "Recent files" });
+    expect(within(restored).getAllByRole("button")).toHaveLength(2);
+    await user.click(within(restored).getAllByRole("button")[1]);
+    expect(await screen.findByRole("tab")).toHaveAttribute("aria-selected", "true");
+    expect(within(restored).getAllByRole("button")[0]).toHaveAttribute("aria-current", "true");
+  });
+
   it("persists and restores the side panel, search text, and collapsed state", async () => {
     const user = userEvent.setup();
     const first = render(<App />);
