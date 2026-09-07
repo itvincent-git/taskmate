@@ -138,6 +138,10 @@ function sanitizedHtmlNode(node: Node): Node | null {
   if (className) element.className = className;
   element.append(children);
   if (tag === "details" && node.hasAttribute("open")) element.setAttribute("open", "");
+  const align = node.getAttribute("align")?.toLowerCase();
+  if (align && ["left", "center", "right", "justify"].includes(align)) element.setAttribute("align", align);
+  const direction = node.getAttribute("dir")?.toLowerCase();
+  if (direction && ["ltr", "rtl", "auto"].includes(direction)) element.setAttribute("dir", direction);
   if (tag === "abbr" || tag === "q") {
     const title = node.getAttribute("title");
     if (title) element.setAttribute("title", title);
@@ -161,6 +165,8 @@ function sanitizedHtmlNode(node: Node): Node | null {
     if (href) {
       element.setAttribute("data-link-url", href);
     }
+    const title = node.getAttribute("title");
+    if (title !== null) element.setAttribute("title", title);
   }
   if (tag === "img") {
     const source = safeImageSource(node.getAttribute("src") ?? "");
@@ -168,6 +174,8 @@ function sanitizedHtmlNode(node: Node): Node | null {
     const title = node.getAttribute("title");
     if (alt !== null) element.setAttribute("alt", alt);
     if (title !== null) element.setAttribute("title", title);
+    const width = node.getAttribute("width");
+    if (width && /^\d+$/.test(width)) element.setAttribute("width", width);
     if (source) {
       void api.resolveAttachment(source)
         .then((resolved) => { element.setAttribute("src", resolved); })
@@ -202,6 +210,57 @@ class HtmlWidget extends WidgetType {
       const sanitized = sanitizedHtmlNode(child);
       if (sanitized) wrapper.append(sanitized);
     });
+    return wrapper;
+  }
+  ignoreEvent() {
+    return false;
+  }
+}
+
+class HtmlContainerWidget extends WidgetType {
+  constructor(
+    readonly tag: string,
+    readonly openingSource: string,
+    readonly markdownSource: string,
+  ) {
+    super();
+  }
+  eq(other: HtmlContainerWidget) {
+    return this.tag === other.tag
+      && this.openingSource === other.openingSource
+      && this.markdownSource === other.markdownSource;
+  }
+  toDOM() {
+    const wrapper = document.createElement("span");
+    wrapper.className = "cm-html-preview cm-html-preview-block";
+    wrapper.dataset.previewKind = "html-container";
+    const parsed = new DOMParser().parseFromString(`${this.openingSource}</${this.tag}>`, "text/html");
+    const container = Array.from(parsed.body.children)
+      .map((child) => sanitizedHtmlNode(child))
+      .find((child): child is HTMLElement => child instanceof HTMLElement && child.tagName.toLowerCase() === this.tag);
+    if (container) {
+      appendMarkdown(container, this.markdownSource);
+      wrapper.append(container);
+    }
+    return wrapper;
+  }
+  ignoreEvent() {
+    return false;
+  }
+}
+
+class ParagraphWidget extends WidgetType {
+  constructor(readonly source: string, readonly references: readonly string[]) {
+    super();
+  }
+  eq(other: ParagraphWidget) {
+    return this.source === other.source && JSON.stringify(this.references) === JSON.stringify(other.references);
+  }
+  toDOM() {
+    const wrapper = document.createElement("span");
+    wrapper.className = "cm-paragraph-preview block [&>p]:m-0";
+    wrapper.dataset.previewKind = "paragraph";
+    appendMarkdown(wrapper, [this.source, ...this.references].join("\n\n"));
     return wrapper;
   }
   ignoreEvent() {
@@ -313,8 +372,21 @@ function normalizedLinkDestination(value: string) {
     : destination;
 }
 
+type LinkReference = { destination: string; title?: string };
+
+function normalizedLinkTitle(value: string) {
+  const title = value.trim();
+  const unquoted = title.length >= 2 && (
+    (title.startsWith('"') && title.endsWith('"'))
+    || (title.startsWith("'") && title.endsWith("'"))
+    || (title.startsWith("(") && title.endsWith(")"))
+  ) ? title.slice(1, -1) : title;
+  const parsed = new DOMParser().parseFromString(markdownRenderer.renderInline(unquoted), "text/html");
+  return parsed.body.textContent ?? unquoted;
+}
+
 function linkReferences(state: EditorState) {
-  const references = new Map<string, string>();
+  const references = new Map<string, LinkReference>();
   syntaxTree(state).iterate({
     enter(node) {
       if (node.name !== "LinkReference") return;
@@ -323,17 +395,23 @@ function linkReferences(state: EditorState) {
       if (!label || !url) return;
       const key = normalizedLinkLabel(state.sliceDoc(label.from, label.to));
       if (!references.has(key)) {
-        references.set(key, normalizedLinkDestination(state.sliceDoc(url.from, url.to)));
+        const title = node.node.getChild("LinkTitle");
+        references.set(key, {
+          destination: normalizedLinkDestination(state.sliceDoc(url.from, url.to)),
+          title: title ? normalizedLinkTitle(state.sliceDoc(title.from, title.to)) : undefined,
+        });
       }
     },
   });
   return references;
 }
 
-function linkDestination(state: EditorState, link: SyntaxNode, references: ReadonlyMap<string, string>) {
-  const inlineUrl = link.getChild("URL");
-  if (inlineUrl) return state.sliceDoc(inlineUrl.from, inlineUrl.to);
-
+function linkReference(
+  state: EditorState,
+  link: SyntaxNode,
+  references: ReadonlyMap<string, LinkReference>,
+) {
+  if (link.getChild("URL")) return undefined;
   const label = link.getChild("LinkLabel");
   const explicitLabel = label ? state.sliceDoc(label.from, label.to) : "";
   if (label && explicitLabel !== "[]") return references.get(normalizedLinkLabel(explicitLabel));
@@ -341,6 +419,26 @@ function linkDestination(state: EditorState, link: SyntaxNode, references: Reado
   const marks = link.getChildren("LinkMark");
   if (marks.length < 2) return undefined;
   return references.get(normalizedLinkLabel(`[${state.sliceDoc(marks[0].to, marks[1].from)}]`));
+}
+
+function linkDestination(state: EditorState, link: SyntaxNode, references: ReadonlyMap<string, LinkReference>) {
+  const inlineUrl = link.getChild("URL");
+  if (inlineUrl) return state.sliceDoc(inlineUrl.from, inlineUrl.to);
+  return linkReference(state, link, references)?.destination;
+}
+
+function linkTitle(state: EditorState, link: SyntaxNode, references: ReadonlyMap<string, LinkReference>) {
+  const inlineTitle = link.getChild("LinkTitle");
+  if (inlineTitle) return normalizedLinkTitle(state.sliceDoc(inlineTitle.from, inlineTitle.to));
+  return linkReference(state, link, references)?.title;
+}
+
+function imageAlt(state: EditorState, image: SyntaxNode) {
+  const marks = image.getChildren("LinkMark");
+  if (marks.length < 2) return "";
+  const source = state.sliceDoc(marks[0].to, marks[1].from);
+  const parsed = new DOMParser().parseFromString(markdownRenderer.renderInline(source), "text/html");
+  return parsed.body.textContent ?? source;
 }
 
 function nodeIsActive(state: EditorState, node: SyntaxNode, composing: boolean) {
@@ -552,6 +650,31 @@ class EmojiWidget extends WidgetType {
   }
 }
 
+class ImageWidget extends WidgetType {
+  constructor(
+    readonly source: string,
+    readonly alt: string,
+    readonly title?: string,
+  ) {
+    super();
+  }
+  eq(other: ImageWidget) {
+    return this.source === other.source && this.alt === other.alt && this.title === other.title;
+  }
+  toDOM() {
+    const image = document.createElement("img");
+    image.className = "my-2 block max-h-[360px] max-w-[min(100%,560px)] rounded-lg border border-line object-contain";
+    image.dataset.previewKind = "image";
+    image.alt = this.alt;
+    if (this.title) image.title = this.title;
+    void api.resolveAttachment(this.source).then((source) => { image.src = source; }).catch(() => {
+      image.className = "my-2 block min-h-[72px] max-h-[360px] min-w-[180px] max-w-[min(100%,560px)] rounded-lg border border-line bg-surface-soft p-3 object-contain text-muted";
+      image.title ||= `Unable to load attachment: ${this.source}`;
+    });
+    return image;
+  }
+}
+
 type TableAlignment = "left" | "center" | "right" | undefined;
 
 type TableCellContent = {
@@ -563,7 +686,7 @@ type TableCellContent = {
 
 class MarkerWidget extends WidgetType {
   constructor(
-    readonly kind: "bullet" | "ordered" | "task" | "quote" | "rule" | "image",
+    readonly kind: "bullet" | "ordered" | "task" | "quote" | "rule",
     readonly text = "",
     readonly from = 0,
   ) {
@@ -573,17 +696,6 @@ class MarkerWidget extends WidgetType {
     return this.kind === other.kind && this.text === other.text && this.from === other.from;
   }
   toDOM(view: EditorView) {
-    if (this.kind === "image") {
-      const image = document.createElement("img");
-      image.className = "my-2 block max-h-[360px] max-w-[min(100%,560px)] rounded-lg border border-line object-contain";
-      image.dataset.previewKind = "image";
-      image.alt = this.text || "Markdown image";
-      void api.resolveAttachment(this.text).then((source) => { image.src = source; }).catch(() => {
-        image.className = "my-2 block min-h-[72px] max-h-[360px] min-w-[180px] max-w-[min(100%,560px)] rounded-lg border border-line bg-surface-soft p-3 object-contain text-muted";
-        image.title = `Unable to load attachment: ${this.text}`;
-      });
-      return image;
-    }
     if (this.kind === "rule") {
       const rule = document.createElement("span");
       rule.className = "my-[.85em] block h-px bg-line";
@@ -675,7 +787,7 @@ function appendTableCellContent(parent: HTMLElement, parts: TableCellContent[]) 
   });
 }
 
-function tableCellContent(state: EditorState, cell: SyntaxNode, references: ReadonlyMap<string, string>): TableCellContent[] {
+function tableCellContent(state: EditorState, cell: SyntaxNode, references: ReadonlyMap<string, LinkReference>): TableCellContent[] {
   const parts: TableCellContent[] = [];
   let position = cell.from;
   for (let child = cell.firstChild; child; child = child.nextSibling) {
@@ -709,7 +821,7 @@ function tableCellContent(state: EditorState, cell: SyntaxNode, references: Read
   return parts;
 }
 
-function tableCells(state: EditorState, row: SyntaxNode, references: ReadonlyMap<string, string>) {
+function tableCells(state: EditorState, row: SyntaxNode, references: ReadonlyMap<string, LinkReference>) {
   const delimiters = row.getChildren("TableDelimiter");
   const cells = row.getChildren("TableCell");
   const regions: Array<{ from: number; to: number }> = [];
@@ -727,7 +839,7 @@ function tableCells(state: EditorState, row: SyntaxNode, references: ReadonlyMap
   });
 }
 
-function tableDecorations(state: EditorState, node: SyntaxNode, references: ReadonlyMap<string, string>) {
+function tableDecorations(state: EditorState, node: SyntaxNode, references: ReadonlyMap<string, LinkReference>) {
   const header = node.getChild("TableHeader");
   const rows = node.getChildren("TableRow");
   const separator = node.getChildren("TableDelimiter")[0];
@@ -906,10 +1018,51 @@ type ExtensionPreviewRange = {
   widget: WidgetType;
 };
 
+function htmlContainerPreviewRanges(state: EditorState, tree: ReturnType<typeof syntaxTree>) {
+  const blocks: Array<{ from: number; to: number; source: string }> = [];
+  tree.iterate({
+    enter(node) {
+      if (node.name === "HTMLBlock") {
+        blocks.push({ from: node.from, to: node.to, source: state.sliceDoc(node.from, node.to) });
+        return false;
+      }
+    },
+  });
+  const stack: Array<{ tag: string; from: number; to: number; source: string }> = [];
+  const ranges: ExtensionPreviewRange[] = [];
+  blocks.forEach((block) => {
+    const closing = block.source.trim().match(/^<\s*\/\s*([A-Za-z][\w:-]*)\s*>$/);
+    if (closing) {
+      const tag = closing[1].toLowerCase();
+      let index = stack.length - 1;
+      while (index >= 0 && stack[index].tag !== tag) index -= 1;
+      if (index < 0) return;
+      const opening = stack[index];
+      stack.splice(index);
+      ranges.push({
+        from: opening.from,
+        to: block.to,
+        block: true,
+        widget: new HtmlContainerWidget(tag, opening.source, state.sliceDoc(opening.to, block.from)),
+      });
+      return;
+    }
+
+    const opening = block.source.match(/^<\s*([A-Za-z][\w:-]*)\b[^>]*>/s);
+    if (!opening) return;
+    const tag = opening[1].toLowerCase();
+    if (!allowedHtmlTags.has(tag) || voidHtmlTags.has(tag)) return;
+    if (new RegExp(`<\\s*\\/\\s*${tag}\\s*>`, "i").test(block.source)) return;
+    stack.push({ tag, ...block });
+  });
+  return ranges;
+}
+
 function extensionPreviewRanges(state: EditorState, richRanges: readonly RichPreviewRange[]) {
   const blockExcluded: Array<{ from: number; to: number }> = [];
   const inlineExcluded: Array<{ from: number; to: number }> = [...richRanges];
   const tree = ensureSyntaxTree(state, state.doc.length, 100) ?? syntaxTree(state);
+  const blockRanges = htmlContainerPreviewRanges(state, tree);
   tree.iterate({
     enter(node) {
       if (["FencedCode", "CodeBlock", "HTMLBlock", "CommentBlock"].includes(node.name)) {
@@ -935,7 +1088,6 @@ function extensionPreviewRanges(state: EditorState, richRanges: readonly RichPre
     }
   }
 
-  const blockRanges: ExtensionPreviewRange[] = [];
   const blockUnavailable = (from: number, to: number) =>
     blockExcluded.some((range) => overlaps(from, to, range))
     || blockRanges.some((range) => overlaps(from, to, range));
@@ -1026,6 +1178,34 @@ function extensionPreviewRanges(state: EditorState, richRanges: readonly RichPre
     lineNumber = state.doc.lineAt(to).number;
   }
 
+  const referenceSources: string[] = [];
+  tree.iterate({
+    enter(node) {
+      if (node.name === "LinkReference") {
+        referenceSources.push(state.sliceDoc(node.from, node.to));
+        return false;
+      }
+    },
+  });
+  tree.iterate({
+    enter(node) {
+      if (node.name !== "Paragraph" || !state.sliceDoc(node.from, node.to).includes("\n")) return;
+      const source = state.sliceDoc(node.from, node.to);
+      if (
+        blockUnavailable(node.from, node.to)
+        || inlineExcluded.some((range) => overlaps(node.from, node.to, range))
+        || /\[\^[^\]\s]+\]|:[a-z0-9_+-]+:/i.test(source)
+      ) return false;
+      blockRanges.push({
+        from: node.from,
+        to: node.to,
+        block: true,
+        widget: new ParagraphWidget(source, referenceSources),
+      });
+      return false;
+    },
+  });
+
   const ranges = [...blockRanges];
   const unavailable = (from: number, to: number) =>
     inlineExcluded.some((range) => overlaps(from, to, range))
@@ -1110,6 +1290,9 @@ function buildDecorations(view: EditorView): DecorationSet {
     !rangeIsActive(range.from, range.to, view.state.selection.ranges, view.composing));
   const inactiveExtensionRanges = extensionRanges.filter((range) =>
     !rangeIsActive(range.from, range.to, view.state.selection.ranges, view.composing));
+  const activeHtmlContainerRanges = extensionRanges.filter((range) =>
+    range.widget instanceof HtmlContainerWidget
+    && rangeIsActive(range.from, range.to, view.state.selection.ranges, view.composing));
   inactiveRichRanges.forEach((range) => ranges.push(...richPreviewDecorations(view.state, range)));
   inactiveExtensionRanges.forEach((range) => ranges.push(...extensionPreviewDecorations(view.state, range)));
   for (const viewport of view.visibleRanges) {
@@ -1120,6 +1303,7 @@ function buildDecorations(view: EditorView): DecorationSet {
       enter(node) {
         if (inactiveRichRanges.some((range) => node.from >= range.from && node.to <= range.to)) return false;
         if (inactiveExtensionRanges.some((range) => node.from >= range.from && node.to <= range.to)) return false;
+        if (activeHtmlContainerRanges.some((range) => node.from >= range.from && node.to <= range.to)) return false;
         const activeNode = node.name === "Escape" || node.node.parent?.name === "Document"
           ? node.node
           : node.node.parent ?? node.node;
@@ -1239,7 +1423,17 @@ function buildDecorations(view: EditorView): DecorationSet {
           const destination = linkDestination(view.state, node.node, references);
           if (destination) {
             const source = normalizedLinkDestination(destination);
-            ranges.push({ from: node.from, to: node.to, decoration: Decoration.replace({ widget: new MarkerWidget("image", source) }) });
+            ranges.push({
+              from: node.from,
+              to: node.to,
+              decoration: Decoration.replace({
+                widget: new ImageWidget(
+                  source,
+                  imageAlt(view.state, node.node),
+                  linkTitle(view.state, node.node, references),
+                ),
+              }),
+            });
           }
           return false;
         }
@@ -1256,14 +1450,16 @@ function buildDecorations(view: EditorView): DecorationSet {
             : node.name === "URL"
               ? node.node
               : null;
+          const title = node.name === "Link" ? linkTitle(view.state, node.node, references) : undefined;
           ranges.push({
             from: node.from,
             to: node.to,
             decoration: Decoration.mark({
               class: style,
-              attributes: linkUrl
-                ? { "data-link-url": typeof linkUrl === "string" ? linkUrl : view.state.sliceDoc(linkUrl.from, linkUrl.to) }
-                : undefined,
+              attributes: linkUrl ? {
+                "data-link-url": typeof linkUrl === "string" ? linkUrl : view.state.sliceDoc(linkUrl.from, linkUrl.to),
+                ...(title ? { title } : {}),
+              } : undefined,
             }),
           });
         }

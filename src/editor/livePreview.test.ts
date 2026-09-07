@@ -189,6 +189,72 @@ describe("Live Preview activation", () => {
     host.remove();
   });
 
+  it("renders Markdown inside HTML containers and restores the complete source while editing", () => {
+    const host = document.createElement("div");
+    document.body.append(host);
+    const source = [
+      "plain",
+      "",
+      "<details>",
+      "<summary>More</summary>",
+      "",
+      "Inside **bold**.",
+      "",
+      "- one",
+      "- two",
+      "",
+      "</details>",
+    ].join("\n");
+    const view = new EditorView({
+      parent: host,
+      state: EditorState.create({ doc: source, extensions: [markdown(), livePreview] }),
+    });
+
+    const preview = host.querySelector('[data-preview-kind="html-container"]');
+    expect(preview?.querySelector("details > summary")).toHaveTextContent("More");
+    expect(preview?.querySelector("details strong")).toHaveTextContent("bold");
+    expect(preview?.querySelectorAll("details li")).toHaveLength(2);
+    expect(host.textContent).not.toContain("<details>");
+
+    view.dispatch({ selection: { anchor: source.indexOf("bold") } });
+    expect(host.querySelector('[data-preview-kind="html-container"]')).toBeNull();
+    expect(host.textContent).toContain("<details>");
+    expect(host.textContent).toContain("Inside **bold**.");
+
+    view.destroy();
+    host.remove();
+  });
+
+  it("preserves safe alignment, direction, and image width attributes", async () => {
+    const host = document.createElement("div");
+    document.body.append(host);
+    const source = [
+      "plain",
+      "",
+      '<div align="center" dir="rtl">',
+      "",
+      "Centered RTL content.",
+      "",
+      "</div>",
+      "",
+      '<img src="attachments/example.png" alt="Example" width="300">',
+    ].join("\n");
+    const view = new EditorView({
+      parent: host,
+      state: EditorState.create({ doc: source, extensions: [markdown(), livePreview] }),
+    });
+
+    const container = host.querySelector('[data-preview-kind="html-container"] div');
+    expect(container).toHaveAttribute("align", "center");
+    expect(container).toHaveAttribute("dir", "rtl");
+    const image = host.querySelector<HTMLImageElement>('[data-preview-kind="html"] img');
+    expect(image).toHaveAttribute("width", "300");
+    await vi.waitFor(() => expect(image).toHaveAttribute("src", "attachments/example.png"));
+
+    view.destroy();
+    host.remove();
+  });
+
   it("keeps bare URLs visible while hiding formatted link targets", () => {
     const host = document.createElement("div");
     document.body.append(host);
@@ -268,6 +334,8 @@ describe("Live Preview activation", () => {
       expect(images).toHaveLength(3);
       images.forEach((image) => expect(image).toHaveAttribute("src", "attachments/example.png"));
     });
+    expect(host.querySelectorAll('[data-preview-kind="image"]')[0]).toHaveAttribute("alt", "Reference image");
+    expect(host.querySelectorAll('[data-preview-kind="image"]')[0]).toHaveAttribute("title", "Example image");
     view.dispatch({ selection: { anchor: source.indexOf("Reference image") } });
     expect(host.textContent).toContain("![Reference image][test-image]");
     expect(view.state.doc.toString()).toBe(source);
@@ -289,6 +357,63 @@ describe("Live Preview activation", () => {
     expect(host.querySelectorAll('[data-preview-kind="image"]')).toHaveLength(1);
     await vi.waitFor(() => expect(host.querySelector('[data-preview-kind="image"]'))
       .toHaveAttribute("src", "attachments/a(b).png"));
+
+    view.destroy();
+    host.remove();
+  });
+
+  it("preserves Markdown image alt text and title separately from its source", async () => {
+    const host = document.createElement("div");
+    document.body.append(host);
+    const source = 'plain\n\n![Example **diagram**](attachments/example.png "Image preview")';
+    const view = new EditorView({
+      parent: host,
+      state: EditorState.create({ doc: source, extensions: [markdown(), livePreview] }),
+    });
+
+    const image = host.querySelector<HTMLImageElement>('[data-preview-kind="image"]');
+    expect(image).toHaveAttribute("alt", "Example diagram");
+    expect(image).toHaveAttribute("title", "Image preview");
+    await vi.waitFor(() => expect(image).toHaveAttribute("src", "attachments/example.png"));
+
+    view.destroy();
+    host.remove();
+  });
+
+  it("preserves formatted link titles as hover text", () => {
+    const host = document.createElement("div");
+    document.body.append(host);
+    const view = new EditorView({
+      parent: host,
+      state: EditorState.create({
+        doc: 'plain\n[Example](https://example.com "Link hint")',
+        extensions: [markdown(), livePreview],
+      }),
+    });
+
+    expect(host.querySelector('[data-link-url="https://example.com"]')).toHaveAttribute("title", "Link hint");
+
+    view.destroy();
+    host.remove();
+  });
+
+  it("collapses soft line breaks but renders Markdown hard breaks", () => {
+    const host = document.createElement("div");
+    document.body.append(host);
+    const source = "plain\n\nSoft first\nsoft second  \nhard next";
+    const view = new EditorView({
+      parent: host,
+      state: EditorState.create({ doc: source, extensions: [markdown(), livePreview] }),
+    });
+
+    const paragraph = host.querySelector('[data-preview-kind="paragraph"]');
+    expect(paragraph).toHaveTextContent("Soft first soft second hard next");
+    expect(paragraph?.querySelectorAll("br")).toHaveLength(1);
+    expect(host.textContent).not.toContain("soft second  ");
+
+    view.dispatch({ selection: { anchor: source.indexOf("soft second") } });
+    expect(host.querySelector('[data-preview-kind="paragraph"]')).toBeNull();
+    expect(host.textContent).toContain("soft second  ");
 
     view.destroy();
     host.remove();
