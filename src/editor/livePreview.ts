@@ -4,7 +4,12 @@ import { RangeSetBuilder, type EditorState } from "@codemirror/state";
 import { Decoration, type DecorationSet, EditorView, ViewPlugin, type ViewUpdate, WidgetType } from "@codemirror/view";
 import katex from "katex";
 import "katex/dist/katex.min.css";
+import MarkdownIt from "markdown-it";
+import { full as emoji } from "markdown-it-emoji";
 import { api } from "../lib/api";
+
+const markdownRenderer = new MarkdownIt({ html: false, linkify: true });
+markdownRenderer.use(emoji);
 
 let taskCheckIcon: SVGSVGElement | null = null;
 
@@ -70,6 +75,7 @@ const htmlTagClasses: Partial<Record<string, string>> = {
   a: "text-accent underline underline-offset-2",
   blockquote: "my-2 border-l-3 border-line pl-3 text-muted",
   code: "rounded border border-line bg-surface-soft px-1 py-px font-mono text-[.9em]",
+  del: "text-muted line-through",
   details: "my-2 rounded-md border border-line px-3 py-2",
   h1: "my-2 text-[1.85em] font-[760] leading-[1.45]",
   h2: "my-2 text-[1.52em] font-[730] leading-[1.5]",
@@ -78,12 +84,14 @@ const htmlTagClasses: Partial<Record<string, string>> = {
   h5: "my-2 font-bold",
   h6: "my-2 font-bold",
   hr: "my-3 border-0 border-t border-line",
+  em: "italic",
   img: "my-2 block max-h-[360px] max-w-[min(100%,560px)] rounded-lg border border-line object-contain",
   kbd: "rounded border border-line bg-surface-soft px-1.5 py-0.5 font-mono text-[.85em] shadow-sm",
   mark: "rounded bg-[color-mix(in_srgb,var(--accent)_22%,transparent)] px-0.5 text-inherit",
   ol: "my-2 list-decimal pl-6",
   pre: "my-2 overflow-x-auto rounded-md bg-surface-soft p-3 font-mono text-[.9em]",
   summary: "cursor-pointer font-semibold",
+  strong: "font-[750]",
   table: "my-2 border-collapse",
   td: "border border-line px-2.5 py-1.5",
   th: "border border-line bg-surface-soft px-2.5 py-1.5 font-bold",
@@ -167,6 +175,15 @@ function sanitizedHtmlNode(node: Node): Node | null {
     }
   }
   return element;
+}
+
+function appendMarkdown(parent: HTMLElement, source: string, inline = false) {
+  const html = inline ? markdownRenderer.renderInline(source) : markdownRenderer.render(source);
+  const parsed = new DOMParser().parseFromString(html, "text/html");
+  parsed.body.childNodes.forEach((child) => {
+    const sanitized = sanitizedHtmlNode(child);
+    if (sanitized) parent.append(sanitized);
+  });
 }
 
 class HtmlWidget extends WidgetType {
@@ -403,6 +420,135 @@ class TocWidget extends WidgetType {
   }
   ignoreEvent() {
     return true;
+  }
+}
+
+type AdmonitionType = "note" | "tip" | "important" | "warning" | "caution";
+
+const admonitionDetails: Record<AdmonitionType, { label: string; className: string }> = {
+  note: { label: "Note", className: "border-accent" },
+  tip: { label: "Tip", className: "border-success" },
+  important: { label: "Important", className: "border-[color-mix(in_srgb,var(--accent)_70%,var(--line))]" },
+  warning: { label: "Warning", className: "border-warning" },
+  caution: { label: "Caution", className: "border-danger" },
+};
+
+class AdmonitionWidget extends WidgetType {
+  constructor(readonly type: AdmonitionType, readonly source: string) {
+    super();
+  }
+  eq(other: AdmonitionWidget) {
+    return this.type === other.type && this.source === other.source;
+  }
+  toDOM() {
+    const details = admonitionDetails[this.type];
+    const aside = document.createElement("aside");
+    aside.className = `my-2 block rounded-md border border-l-4 bg-surface-soft px-3 py-2 ${details.className}`;
+    aside.dataset.previewKind = "admonition";
+    aside.dataset.admonitionType = this.type;
+    const title = document.createElement("span");
+    title.className = "mb-1 block font-[750]";
+    title.textContent = details.label;
+    const content = document.createElement("span");
+    content.className = "block [&>:first-child]:mt-0 [&>:last-child]:mb-0";
+    appendMarkdown(content, this.source);
+    aside.append(title, content);
+    return aside;
+  }
+}
+
+class DefinitionListWidget extends WidgetType {
+  constructor(readonly term: string, readonly definitions: string[]) {
+    super();
+  }
+  eq(other: DefinitionListWidget) {
+    return this.term === other.term && JSON.stringify(this.definitions) === JSON.stringify(other.definitions);
+  }
+  toDOM() {
+    const list = document.createElement("dl");
+    list.className = "my-2 block";
+    list.dataset.previewKind = "definition-list";
+    const term = document.createElement("dt");
+    term.className = "font-[750]";
+    appendMarkdown(term, this.term, true);
+    list.append(term);
+    this.definitions.forEach((source) => {
+      const definition = document.createElement("dd");
+      definition.className = "ml-5 text-muted";
+      appendMarkdown(definition, source, true);
+      list.append(definition);
+    });
+    return list;
+  }
+}
+
+class FootnoteDefinitionWidget extends WidgetType {
+  constructor(readonly label: string, readonly number: number, readonly source: string) {
+    super();
+  }
+  eq(other: FootnoteDefinitionWidget) {
+    return this.label === other.label && this.number === other.number && this.source === other.source;
+  }
+  toDOM() {
+    const footnote = document.createElement("span");
+    footnote.className = "my-1 grid grid-cols-[auto_1fr] gap-2 text-[.92em] text-muted";
+    footnote.dataset.previewKind = "footnote-definition";
+    footnote.dataset.footnoteLabel = this.label;
+    footnote.setAttribute("role", "doc-footnote");
+    const marker = document.createElement("span");
+    marker.className = "font-[750] text-accent";
+    marker.textContent = `${this.number}.`;
+    const content = document.createElement("span");
+    content.className = "min-w-0 [&>:first-child]:mt-0 [&>:last-child]:mb-0";
+    appendMarkdown(content, this.source);
+    footnote.append(marker, content);
+    return footnote;
+  }
+}
+
+class FootnoteReferenceWidget extends WidgetType {
+  constructor(readonly label: string, readonly number: number, readonly target: number) {
+    super();
+  }
+  eq(other: FootnoteReferenceWidget) {
+    return this.label === other.label && this.number === other.number && this.target === other.target;
+  }
+  toDOM(view: EditorView) {
+    const reference = document.createElement("sup");
+    reference.dataset.previewKind = "footnote-reference";
+    reference.dataset.footnoteLabel = this.label;
+    reference.setAttribute("role", "doc-noteref");
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "cursor-pointer border-0 bg-transparent p-0 text-accent hover:underline";
+    button.textContent = String(this.number);
+    button.addEventListener("mousedown", (event) => event.preventDefault());
+    button.addEventListener("click", () => {
+      view.dispatch({ selection: { anchor: this.target }, effects: EditorView.scrollIntoView(this.target, { y: "center" }) });
+      view.focus();
+    });
+    reference.append(button);
+    return reference;
+  }
+  ignoreEvent() {
+    return false;
+  }
+}
+
+class EmojiWidget extends WidgetType {
+  constructor(readonly source: string, readonly value: string) {
+    super();
+  }
+  eq(other: EmojiWidget) {
+    return this.source === other.source && this.value === other.value;
+  }
+  toDOM() {
+    const emojiNode = document.createElement("span");
+    emojiNode.dataset.previewKind = "emoji";
+    emojiNode.setAttribute("role", "img");
+    emojiNode.setAttribute("aria-label", this.source.slice(1, -1).replaceAll("_", " "));
+    emojiNode.textContent = this.value;
+    return emojiNode;
   }
 }
 
@@ -753,6 +899,180 @@ function isEscaped(text: string, position: number) {
   return slashes % 2 === 1;
 }
 
+type ExtensionPreviewRange = {
+  from: number;
+  to: number;
+  block: boolean;
+  widget: WidgetType;
+};
+
+function extensionPreviewRanges(state: EditorState, richRanges: readonly RichPreviewRange[]) {
+  const blockExcluded: Array<{ from: number; to: number }> = [];
+  const inlineExcluded: Array<{ from: number; to: number }> = [...richRanges];
+  const tree = ensureSyntaxTree(state, state.doc.length, 100) ?? syntaxTree(state);
+  tree.iterate({
+    enter(node) {
+      if (["FencedCode", "CodeBlock", "HTMLBlock", "CommentBlock"].includes(node.name)) {
+        const range = { from: node.from, to: node.to };
+        blockExcluded.push(range);
+        inlineExcluded.push(range);
+        return false;
+      }
+      if (["InlineCode", "HTMLTag", "Comment", "URL"].includes(node.name)) {
+        inlineExcluded.push({ from: node.from, to: node.to });
+      }
+    },
+  });
+
+  if (state.doc.lines > 1 && state.doc.line(1).text.trim() === "---") {
+    for (let number = 2; number <= state.doc.lines; number += 1) {
+      const line = state.doc.line(number);
+      if (line.text.trim() !== "---") continue;
+      const range = { from: 0, to: line.to };
+      blockExcluded.push(range);
+      inlineExcluded.push(range);
+      break;
+    }
+  }
+
+  const blockRanges: ExtensionPreviewRange[] = [];
+  const blockUnavailable = (from: number, to: number) =>
+    blockExcluded.some((range) => overlaps(from, to, range))
+    || blockRanges.some((range) => overlaps(from, to, range));
+  const footnotes = new Map<string, { number: number; from: number }>();
+
+  for (let lineNumber = 1; lineNumber <= state.doc.lines; lineNumber += 1) {
+    const line = state.doc.line(lineNumber);
+    const match = line.text.match(/^ {0,3}\[\^([^\]\s]+)\]:[ \t]*(.*)$/);
+    if (!match || blockUnavailable(line.from, line.to)) continue;
+    const content = [match[2]];
+    let to = line.to;
+    let nextNumber = lineNumber + 1;
+    while (nextNumber <= state.doc.lines) {
+      const next = state.doc.line(nextNumber);
+      if (/^(?: {4}|\t)/.test(next.text)) {
+        content.push(next.text.replace(/^(?: {4}|\t)/, ""));
+        to = next.to;
+        nextNumber += 1;
+        continue;
+      }
+      if (!next.text.trim() && nextNumber < state.doc.lines) {
+        const afterBlank = state.doc.line(nextNumber + 1);
+        if (/^(?: {4}|\t)/.test(afterBlank.text)) {
+          content.push("");
+          to = next.to;
+          nextNumber += 1;
+          continue;
+        }
+      }
+      break;
+    }
+    const label = match[1].toLowerCase();
+    const entry = footnotes.get(label) ?? { number: footnotes.size + 1, from: line.from };
+    footnotes.set(label, entry);
+    blockRanges.push({
+      from: line.from,
+      to,
+      block: true,
+      widget: new FootnoteDefinitionWidget(label, entry.number, content.join("\n")),
+    });
+    lineNumber = state.doc.lineAt(to).number;
+  }
+
+  for (let lineNumber = 1; lineNumber <= state.doc.lines; lineNumber += 1) {
+    const line = state.doc.line(lineNumber);
+    const admonition = line.text.match(/^ {0,3}>\s*\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]\s*$/i);
+    if (admonition && !blockUnavailable(line.from, line.to)) {
+      const content: string[] = [];
+      let to = line.to;
+      let nextNumber = lineNumber + 1;
+      while (nextNumber <= state.doc.lines) {
+        const next = state.doc.line(nextNumber);
+        const quote = next.text.match(/^ {0,3}> ?(.*)$/);
+        if (!quote) break;
+        content.push(quote[1]);
+        to = next.to;
+        nextNumber += 1;
+      }
+      blockRanges.push({
+        from: line.from,
+        to,
+        block: true,
+        widget: new AdmonitionWidget(admonition[1].toLowerCase() as AdmonitionType, content.join("\n")),
+      });
+      lineNumber = state.doc.lineAt(to).number;
+      continue;
+    }
+
+    if (!line.text.trim() || lineNumber >= state.doc.lines) continue;
+    const definitions: string[] = [];
+    let to = line.to;
+    let nextNumber = lineNumber + 1;
+    while (nextNumber <= state.doc.lines) {
+      const next = state.doc.line(nextNumber);
+      const definition = next.text.match(/^ {0,3}:\s+(.+)$/);
+      if (!definition) break;
+      definitions.push(definition[1]);
+      to = next.to;
+      nextNumber += 1;
+    }
+    if (!definitions.length || blockUnavailable(line.from, to)) continue;
+    blockRanges.push({
+      from: line.from,
+      to,
+      block: true,
+      widget: new DefinitionListWidget(line.text.trim(), definitions),
+    });
+    lineNumber = state.doc.lineAt(to).number;
+  }
+
+  const ranges = [...blockRanges];
+  const unavailable = (from: number, to: number) =>
+    inlineExcluded.some((range) => overlaps(from, to, range))
+    || blockRanges.some((range) => overlaps(from, to, range));
+  const text = state.doc.toString();
+  for (const match of text.matchAll(/\[\^([^\]\s]+)\]/g)) {
+    const from = match.index ?? 0;
+    const to = from + match[0].length;
+    const footnote = footnotes.get(match[1].toLowerCase());
+    if (!footnote || unavailable(from, to) || isEscaped(text, from)) continue;
+    ranges.push({
+      from,
+      to,
+      block: false,
+      widget: new FootnoteReferenceWidget(match[1].toLowerCase(), footnote.number, footnote.from),
+    });
+  }
+  for (const match of text.matchAll(/:([a-z0-9_+-]+):/gi)) {
+    const from = match.index ?? 0;
+    const to = from + match[0].length;
+    if (unavailable(from, to) || isEscaped(text, from)) continue;
+    const value = markdownRenderer.renderInline(match[0]);
+    if (value === match[0]) continue;
+    ranges.push({ from, to, block: false, widget: new EmojiWidget(match[0], value) });
+  }
+  return ranges.sort((left, right) => left.from - right.from || left.to - right.to);
+}
+
+function extensionPreviewDecorations(state: EditorState, range: ExtensionPreviewRange) {
+  if (!range.block) {
+    return [{ from: range.from, to: range.to, decoration: Decoration.replace({ widget: range.widget }) }];
+  }
+  const firstLine = state.doc.lineAt(range.from);
+  const lastLine = state.doc.lineAt(range.to);
+  const decorations: Array<{ from: number; to: number; decoration: Decoration }> = [{
+    from: range.from,
+    to: Math.min(firstLine.to, range.to),
+    decoration: Decoration.replace({ widget: range.widget }),
+  }];
+  for (let number = firstLine.number + 1; number <= lastLine.number; number += 1) {
+    const line = state.doc.line(number);
+    decorations.push({ from: line.from, to: line.from, decoration: Decoration.line({ class: "hidden" }) });
+    if (line.to > line.from) decorations.push({ from: line.from, to: line.to, decoration: Decoration.replace({}) });
+  }
+  return decorations;
+}
+
 function richPreviewDecorations(state: EditorState, range: RichPreviewRange) {
   if (!range.block) {
     return [{
@@ -783,11 +1103,15 @@ function buildDecorations(view: EditorView): DecorationSet {
   const builder = new RangeSetBuilder<Decoration>();
   const ranges: Array<{ from: number; to: number; decoration: Decoration }> = [];
   const richRanges = richPreviewRanges(view.state);
+  const extensionRanges = extensionPreviewRanges(view.state, richRanges);
   const references = linkReferences(view.state);
   const headings = new Map(documentHeadings(view.state).map((heading) => [heading.from, heading]));
   const inactiveRichRanges = richRanges.filter((range) =>
     !rangeIsActive(range.from, range.to, view.state.selection.ranges, view.composing));
+  const inactiveExtensionRanges = extensionRanges.filter((range) =>
+    !rangeIsActive(range.from, range.to, view.state.selection.ranges, view.composing));
   inactiveRichRanges.forEach((range) => ranges.push(...richPreviewDecorations(view.state, range)));
+  inactiveExtensionRanges.forEach((range) => ranges.push(...extensionPreviewDecorations(view.state, range)));
   for (const viewport of view.visibleRanges) {
     let htmlPreviewTo = -1;
     syntaxTree(view.state).iterate({
@@ -795,6 +1119,7 @@ function buildDecorations(view: EditorView): DecorationSet {
       to: viewport.to,
       enter(node) {
         if (inactiveRichRanges.some((range) => node.from >= range.from && node.to <= range.to)) return false;
+        if (inactiveExtensionRanges.some((range) => node.from >= range.from && node.to <= range.to)) return false;
         const activeNode = node.name === "Escape" || node.node.parent?.name === "Document"
           ? node.node
           : node.node.parent ?? node.node;

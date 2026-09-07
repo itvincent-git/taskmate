@@ -3,7 +3,10 @@ import { describe, expect, it } from "vitest";
 import { codeLanguages } from "./codeLanguages";
 
 describe("codeLanguages", () => {
-  it.each(["js", "ts", "java", "rust", "objc", "swift", "python", "jsx", "tsx"])(
+  it.each([
+    "js", "ts", "java", "rust", "objc", "swift", "python", "jsx", "tsx",
+    "bash", "json", "yaml", "toml", "sql", "css", "html", "diff", "markdown",
+  ])(
     "loads the %s fenced-code language",
     async (name) => {
       const description = LanguageDescription.matchLanguageName(codeLanguages, name, false);

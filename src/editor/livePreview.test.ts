@@ -719,4 +719,109 @@ describe("Live Preview activation", () => {
     view.destroy();
     host.remove();
   });
+
+  it("renders footnote references and definitions and reveals their source while editing", () => {
+    const host = document.createElement("div");
+    document.body.append(host);
+    const source = [
+      "plain",
+      "Text with a footnote.[^note] Another reference.[^note]",
+      "",
+      "[^note]: Footnote with **formatting**.",
+      "",
+      "    A second paragraph.",
+    ].join("\n");
+    const view = new EditorView({
+      parent: host,
+      state: EditorState.create({ doc: source, extensions: [markdown({ extensions: [GFM] }), livePreview] }),
+    });
+
+    expect(host.querySelectorAll('[data-preview-kind="footnote-reference"]')).toHaveLength(2);
+    expect(host.querySelectorAll('[data-footnote-label="note"]')[0]).toHaveTextContent("1");
+    expect(host.querySelector('[data-preview-kind="footnote-definition"]')).toHaveTextContent(
+      "Footnote with formatting. A second paragraph.",
+    );
+    expect(host.querySelector('[data-preview-kind="footnote-definition"] strong')).toHaveTextContent("formatting");
+    expect(host.textContent).not.toContain("[^note]");
+
+    view.dispatch({ selection: { anchor: source.indexOf("[^note]") + 2 } });
+    expect(host.querySelectorAll('[data-preview-kind="footnote-reference"]')).toHaveLength(1);
+    expect(host.textContent).toContain("[^note]");
+
+    view.destroy();
+    host.remove();
+  });
+
+  it("renders GitHub admonitions and restores the blockquote source while editing", () => {
+    const host = document.createElement("div");
+    document.body.append(host);
+    const source = "plain\n\n> [!NOTE]\n> Read **this** note.\n\n> [!WARNING]\n> Be careful.";
+    const view = new EditorView({
+      parent: host,
+      state: EditorState.create({ doc: source, extensions: [markdown({ extensions: [GFM] }), livePreview] }),
+    });
+
+    const admonitions = host.querySelectorAll('[data-preview-kind="admonition"]');
+    expect(admonitions).toHaveLength(2);
+    expect(admonitions[0]).toHaveAttribute("data-admonition-type", "note");
+    expect(admonitions[0]).toHaveTextContent("NoteRead this note.");
+    expect(admonitions[0]?.querySelector("strong")).toHaveTextContent("this");
+    expect(admonitions[1]).toHaveAttribute("data-admonition-type", "warning");
+    expect(host.textContent).not.toContain("[!NOTE]");
+
+    view.dispatch({ selection: { anchor: source.indexOf("[!NOTE]") + 2 } });
+    expect(host.querySelectorAll('[data-preview-kind="admonition"]')).toHaveLength(1);
+    expect(host.textContent).toContain("[!NOTE]");
+
+    view.destroy();
+    host.remove();
+  });
+
+  it("renders definition lists and restores their source while editing", () => {
+    const host = document.createElement("div");
+    document.body.append(host);
+    const source = "plain\n\nMarkdown\n: A **lightweight** markup language.\n\nTauri\n: A desktop framework.";
+    const view = new EditorView({
+      parent: host,
+      state: EditorState.create({ doc: source, extensions: [markdown({ extensions: [GFM] }), livePreview] }),
+    });
+
+    const lists = host.querySelectorAll('[data-preview-kind="definition-list"]');
+    expect(lists).toHaveLength(2);
+    expect(lists[0]?.querySelector("dt")).toHaveTextContent("Markdown");
+    expect(lists[0]?.querySelector("dd")).toHaveTextContent("A lightweight markup language.");
+    expect(lists[0]?.querySelector("strong")).toHaveTextContent("lightweight");
+    expect(host.textContent).not.toContain(": A **lightweight**");
+
+    view.dispatch({ selection: { anchor: source.indexOf("lightweight") } });
+    expect(host.querySelectorAll('[data-preview-kind="definition-list"]')).toHaveLength(1);
+    expect(host.textContent).toContain(": A **lightweight** markup language.");
+
+    view.destroy();
+    host.remove();
+  });
+
+  it("renders supported emoji shortcodes outside code and restores them while editing", () => {
+    const host = document.createElement("div");
+    document.body.append(host);
+    const source = "plain\n:smile: :rocket: :white_check_mark: :warning: :fire: :not_an_emoji: `:smile:` \\:rocket:";
+    const view = new EditorView({
+      parent: host,
+      state: EditorState.create({ doc: source, extensions: [markdown(), livePreview] }),
+    });
+
+    expect(Array.from(host.querySelectorAll('[data-preview-kind="emoji"]'), (node) => node.textContent)).toEqual([
+      "😄", "🚀", "✅", "⚠️", "🔥",
+    ]);
+    expect(host.textContent).toContain(":not_an_emoji:");
+    expect(host.textContent).toContain(":smile:");
+    expect(host.textContent).toContain(":rocket:");
+
+    view.dispatch({ selection: { anchor: source.indexOf(":smile:") + 2 } });
+    expect(host.querySelectorAll('[data-preview-kind="emoji"]')).toHaveLength(4);
+    expect(host.textContent).toContain(":smile:");
+
+    view.destroy();
+    host.remove();
+  });
 });
