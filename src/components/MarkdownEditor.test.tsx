@@ -136,6 +136,44 @@ describe("MarkdownEditor", () => {
     expect(view.state.selection.main.head).toBe(0);
   });
 
+  it.each([
+    ["MacIntel", { metaKey: true }, "#15-代码块"],
+    ["Win32", { ctrlKey: true }, "#15-%E4%BB%A3%E7%A0%81%E5%9D%97"],
+  ])("navigates fragments locally with the modifier on %s", (platform, modifier, fragment) => {
+    vi.spyOn(navigator, "platform", "get").mockReturnValue(platform);
+    const openExternalUrl = vi.spyOn(api, "openExternalUrl").mockResolvedValue();
+    const scrollIntoView = vi.spyOn(EditorView, "scrollIntoView");
+    const value = `plain\n\n[Jump](${fragment})\n\n${"paragraph\n\n".repeat(500)}## 15. 代码块`;
+    const onChange = vi.fn();
+    const { container } = render(<MarkdownEditor value={value} onChange={onChange} />);
+    const view = editorView(container);
+    fireEvent.mouseDown(container.querySelector('[data-link-url]')!, modifier);
+    expect(view.state.selection.main.head).toBe(value.indexOf("## 15."));
+    expect(scrollIntoView).toHaveBeenCalledWith(value.indexOf("## 15."), { y: "start" });
+    expect(openExternalUrl).not.toHaveBeenCalled();
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it("navigates source-mode fragments through the editor event handler", () => {
+    vi.spyOn(navigator, "platform", "get").mockReturnValue("Win32");
+    const openExternalUrl = vi.spyOn(api, "openExternalUrl").mockResolvedValue();
+    const value = "[Jump](#subtitle)\n\nSubtitle\n---";
+    vi.spyOn(EditorView.prototype, "posAtCoords").mockReturnValue(value.indexOf("Jump"));
+    const { container } = render(<MarkdownEditor value={value} onChange={vi.fn()} sourceMode />);
+    fireEvent.mouseDown(container.querySelector(".cm-content")!, { ctrlKey: true });
+    expect(editorView(container).state.selection.main.head).toBe(value.indexOf("Subtitle"));
+    expect(openExternalUrl).not.toHaveBeenCalled();
+  });
+
+  it("keeps malformed and missing fragments away from the external opener", () => {
+    vi.spyOn(navigator, "platform", "get").mockReturnValue("Win32");
+    const openExternalUrl = vi.spyOn(api, "openExternalUrl").mockResolvedValue();
+    const { container } = render(<MarkdownEditor value={"plain\n\n[Missing](#missing) [Malformed](#%XX)"} onChange={vi.fn()} />);
+    container.querySelectorAll('[data-link-url]').forEach((link) => fireEvent.mouseDown(link, { ctrlKey: true }));
+    expect(openExternalUrl).not.toHaveBeenCalled();
+    expect(editorView(container).state.selection.main.head).toBe(0);
+  });
+
   it("keeps ordinary link clicks in the editor", () => {
     vi.spyOn(navigator, "platform", "get").mockReturnValue("Win32");
     const openExternalUrl = vi.spyOn(api, "openExternalUrl").mockResolvedValue();

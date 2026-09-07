@@ -26,7 +26,7 @@ import {
 } from "lucide-react";
 import { applyMarkdownAction, MARKDOWN_ACTIONS, type MarkdownAction } from "../editor/commands";
 import { codeLanguages } from "../editor/codeLanguages";
-import { linkUrlAt, livePreview } from "../editor/livePreview";
+import { linkUrlAt, livePreview, navigateToFragment } from "../editor/livePreview";
 import { api } from "../lib/api";
 import {
   EDITOR_SHORTCUT_ACTIONS,
@@ -119,6 +119,7 @@ export const MarkdownEditor = memo(function MarkdownEditor({ value, onChange, on
                 ?? (position === null ? null : linkUrlAt(editorView.state, position));
               if (!url) return false;
               event.preventDefault();
+              if (navigateToFragment(editorView, url)) return true;
               void api.openExternalUrl(url).catch((cause) => errorHandler.current?.(cause));
               return true;
             },
@@ -290,6 +291,7 @@ export const MarkdownEditor = memo(function MarkdownEditor({ value, onChange, on
           if (!url) return;
           event.preventDefault();
           event.stopPropagation();
+          if (editor.current && navigateToFragment(editor.current, url)) return;
           void api.openExternalUrl(url).catch((cause) => errorHandler.current?.(cause));
         }}
       />

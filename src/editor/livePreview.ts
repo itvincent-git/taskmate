@@ -1,4 +1,4 @@
-import { syntaxTree } from "@codemirror/language";
+import { ensureSyntaxTree, syntaxTree } from "@codemirror/language";
 import type { SyntaxNode } from "@lezer/common";
 import { RangeSetBuilder, type EditorState } from "@codemirror/state";
 import { Decoration, type DecorationSet, EditorView, ViewPlugin, type ViewUpdate, WidgetType } from "@codemirror/view";
@@ -45,6 +45,8 @@ const styledNodes: Record<string, string> = {
   ATXHeading4: "font-bold no-underline",
   ATXHeading5: "font-bold no-underline",
   ATXHeading6: "font-bold no-underline",
+  SetextHeading1: "text-[1.85em] font-[760] leading-[1.45] no-underline",
+  SetextHeading2: "text-[1.52em] font-[730] leading-[1.5] no-underline",
   StrongEmphasis: "font-[750]",
   Emphasis: "italic",
   Strikethrough: "text-muted line-through",
@@ -99,7 +101,7 @@ function htmlTag(source: string) {
 }
 
 function safeLinkUrl(value: string) {
-  return /^(?:https?:|mailto:)/i.test(value) ? value : null;
+  return /^(?:https?:|mailto:|#)/i.test(value) ? value : null;
 }
 
 function safeImageSource(value: string) {
@@ -326,6 +328,82 @@ function linkDestination(state: EditorState, link: SyntaxNode, references: Reado
 
 function nodeIsActive(state: EditorState, node: SyntaxNode, composing: boolean) {
   return rangeIsActive(node.from, node.to, state.selection.ranges, composing);
+}
+
+export function documentHeadings(state: EditorState) {
+  const tree = ensureSyntaxTree(state, state.doc.length, 100) ?? syntaxTree(state);
+  const headings: Array<{ from: number; to: number; level: number; text: string; id: string }> = [];
+  const used = new Set<string>();
+  const references = linkReferences(state);
+  const plainText = (parts: TableCellContent[]): string => parts.map((part) =>
+    part.text ?? plainText(part.children ?? [])).join("");
+  tree.iterate({
+    enter(node) {
+      const match = node.name.match(/^(?:ATX|Setext)Heading([1-6])$/);
+      if (!match) return;
+      const text = plainText(tableCellContent(state, node.node, references)).trim().replace(/\s+/g, " ");
+      const base = text.toLowerCase().replace(/[^\p{L}\p{N}\p{M}\s_-]/gu, "").replace(/\s/g, "-");
+      let id = base;
+      for (let suffix = 1; used.has(id); suffix += 1) id = `${base}-${suffix}`;
+      used.add(id);
+      headings.push({ from: node.from, to: node.to, level: Number(match[1]), text, id });
+      return false;
+    },
+  });
+  return headings;
+}
+
+export function navigateToFragment(view: EditorView, url: string) {
+  if (!url.startsWith("#")) return false;
+  let id: string;
+  try {
+    id = decodeURIComponent(url.slice(1));
+  } catch {
+    return true;
+  }
+  const target = id ? documentHeadings(view.state).find((heading) => heading.id === id)?.from : 0;
+  if (target !== undefined) {
+    view.dispatch({ selection: { anchor: target }, effects: EditorView.scrollIntoView(target, { y: "start" }) });
+    view.focus();
+  }
+  return true;
+}
+
+class TocWidget extends WidgetType {
+  constructor(readonly headings: ReturnType<typeof documentHeadings>) {
+    super();
+  }
+  eq(other: TocWidget) {
+    return JSON.stringify(this.headings) === JSON.stringify(other.headings);
+  }
+  toDOM(view: EditorView) {
+    const nav = document.createElement("nav");
+    nav.dataset.previewKind = "toc";
+    nav.setAttribute("aria-label", "Table of contents");
+    nav.className = "my-2 rounded-md border border-line bg-surface-soft p-3";
+    const list = document.createElement("ol");
+    list.className = "m-0 list-none p-0";
+    const baseLevel = Math.min(...this.headings.map((heading) => heading.level));
+    this.headings.forEach((heading) => {
+      const item = document.createElement("li");
+      item.dataset.headingLevel = String(heading.level);
+      item.style.marginInlineStart = `${(heading.level - baseLevel) * 16}px`;
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "cursor-pointer border-0 bg-transparent p-0 text-left text-accent hover:underline";
+      button.textContent = heading.text;
+      button.dataset.tocTarget = heading.id;
+      button.addEventListener("mousedown", (event) => event.preventDefault());
+      button.addEventListener("click", () => navigateToFragment(view, `#${encodeURIComponent(heading.id)}`));
+      item.append(button);
+      list.append(item);
+    });
+    nav.append(list);
+    return nav;
+  }
+  ignoreEvent() {
+    return true;
+  }
 }
 
 type TableAlignment = "left" | "center" | "right" | undefined;
@@ -706,6 +784,7 @@ function buildDecorations(view: EditorView): DecorationSet {
   const ranges: Array<{ from: number; to: number; decoration: Decoration }> = [];
   const richRanges = richPreviewRanges(view.state);
   const references = linkReferences(view.state);
+  const headings = new Map(documentHeadings(view.state).map((heading) => [heading.from, heading]));
   const inactiveRichRanges = richRanges.filter((range) =>
     !rangeIsActive(range.from, range.to, view.state.selection.ranges, view.composing));
   inactiveRichRanges.forEach((range) => ranges.push(...richPreviewDecorations(view.state, range)));
@@ -720,6 +799,74 @@ function buildDecorations(view: EditorView): DecorationSet {
           ? node.node
           : node.node.parent ?? node.node;
         const active = nodeIsActive(view.state, activeNode, view.composing);
+        if (node.name === "Paragraph" && /^\s*\[TOC\]\s*$/i.test(view.state.sliceDoc(node.from, node.to))) {
+          if (!active) {
+            ranges.push({
+              from: node.from,
+              to: node.to,
+              decoration: Decoration.replace({ widget: new TocWidget([...headings.values()]) }),
+            });
+          }
+          return false;
+        }
+        if (/^(?:ATX|Setext)Heading[1-6]$/.test(node.name)) {
+          const heading = headings.get(node.from);
+          if (heading) {
+            ranges.push({
+              from: view.state.doc.lineAt(node.from).from,
+              to: view.state.doc.lineAt(node.from).from,
+              decoration: Decoration.line({ attributes: { id: heading.id, "data-heading-id": heading.id } }),
+            });
+          }
+          if (!active && node.name.startsWith("Setext")) {
+            const underline = node.node.getChild("HeaderMark");
+            if (underline) {
+              ranges.push({
+                from: view.state.doc.lineAt(underline.from).from,
+                to: view.state.doc.lineAt(underline.from).from,
+                decoration: Decoration.line({ class: "hidden" }),
+              });
+            }
+          }
+        }
+        if (node.name === "Comment" || node.name === "CommentBlock") {
+          if (!nodeIsActive(view.state, node.node, view.composing)) {
+            const firstLine = view.state.doc.lineAt(node.from);
+            const lastLine = view.state.doc.lineAt(node.to);
+            for (let number = firstLine.number; number <= lastLine.number; number += 1) {
+              const line = view.state.doc.line(number);
+              const from = Math.max(line.from, node.from);
+              const to = Math.min(line.to, node.to);
+              if (from === line.from && to === line.to) {
+                ranges.push({
+                  from: line.from,
+                  to: line.from,
+                  decoration: Decoration.line({ class: "hidden", attributes: { "data-preview-hidden": "comment" } }),
+                });
+              }
+              if (to > from) ranges.push({ from, to, decoration: Decoration.replace({}) });
+            }
+          }
+          return false;
+        }
+        if (node.name === "LinkReference") {
+          if (!active) {
+            const firstLine = view.state.doc.lineAt(node.from);
+            const lastLine = view.state.doc.lineAt(node.to);
+            for (let number = firstLine.number; number <= lastLine.number; number += 1) {
+              const line = view.state.doc.line(number);
+              ranges.push({
+                from: line.from,
+                to: line.from,
+                decoration: Decoration.line({ class: "hidden", attributes: { "data-preview-hidden": "reference" } }),
+              });
+              if (line.to > line.from) {
+                ranges.push({ from: line.from, to: line.to, decoration: Decoration.replace({}) });
+              }
+            }
+          }
+          return false;
+        }
         if (node.name === "FencedCode") {
           ranges.push(...codeBlockLineDecorations(view.state, node.node));
         }
@@ -764,8 +911,11 @@ function buildDecorations(view: EditorView): DecorationSet {
           return false;
         }
         if (!active && node.name === "Image") {
-          const source = view.state.sliceDoc(node.from, node.to).match(/\]\(([^)\s]+)(?:\s+"[^"]*")?\)/)?.[1] || "";
-          ranges.push({ from: node.from, to: node.to, decoration: Decoration.replace({ widget: new MarkerWidget("image", source) }) });
+          const destination = linkDestination(view.state, node.node, references);
+          if (destination) {
+            const source = normalizedLinkDestination(destination);
+            ranges.push({ from: node.from, to: node.to, decoration: Decoration.replace({ widget: new MarkerWidget("image", source) }) });
+          }
           return false;
         }
         if (!active && node.name === "HorizontalRule") {

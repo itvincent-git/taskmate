@@ -3,7 +3,7 @@ import { EditorState } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 import { markdown } from "@codemirror/lang-markdown";
 import { GFM } from "@lezer/markdown";
-import { linkUrlAt, livePreview, rangeIsActive } from "./livePreview";
+import { documentHeadings, linkUrlAt, livePreview, rangeIsActive } from "./livePreview";
 
 vi.mock("mermaid", () => ({
   default: {
@@ -248,12 +248,212 @@ describe("Live Preview activation", () => {
     host.remove();
   });
 
+  it("renders full, collapsed, and shortcut reference images and restores their source while editing", async () => {
+    const host = document.createElement("div");
+    document.body.append(host);
+    const source = [
+      "plain",
+      "",
+      "![Reference image][test-image] ![test-image][] ![test-image]",
+      "",
+      '[TEST-IMAGE]: <attachments/example.png> "Example image"',
+    ].join("\n");
+    const view = new EditorView({
+      parent: host,
+      state: EditorState.create({ doc: source, extensions: [markdown(), livePreview] }),
+    });
+
+    await vi.waitFor(() => {
+      const images = host.querySelectorAll('[data-preview-kind="image"]');
+      expect(images).toHaveLength(3);
+      images.forEach((image) => expect(image).toHaveAttribute("src", "attachments/example.png"));
+    });
+    view.dispatch({ selection: { anchor: source.indexOf("Reference image") } });
+    expect(host.textContent).toContain("![Reference image][test-image]");
+    expect(view.state.doc.toString()).toBe(source);
+
+    view.destroy();
+    host.remove();
+  });
+
+  it("keeps unresolved image references as text and resolves inline image destinations from syntax", async () => {
+    const host = document.createElement("div");
+    document.body.append(host);
+    const source = 'plain\n\n![missing][unknown]\n\n![inline](<attachments/a(b).png> "Image title")';
+    const view = new EditorView({
+      parent: host,
+      state: EditorState.create({ doc: source, extensions: [markdown(), livePreview] }),
+    });
+
+    expect(host.textContent).toContain("![missing][unknown]");
+    expect(host.querySelectorAll('[data-preview-kind="image"]')).toHaveLength(1);
+    await vi.waitFor(() => expect(host.querySelector('[data-preview-kind="image"]'))
+      .toHaveAttribute("src", "attachments/a(b).png"));
+
+    view.destroy();
+    host.remove();
+  });
+
+  it("hides inactive multiline reference definitions and reveals them while editing", async () => {
+    const host = document.createElement("div");
+    document.body.append(host);
+    const source = [
+      "plain", "", "[Guide][docs]", "", "![Picture][picture]", "",
+      "[docs]:", "  <https://example.com>", '  "Documentation"', "",
+      "[picture]: attachments/example.png", "", "Following paragraph",
+    ].join("\n");
+    const view = new EditorView({
+      parent: host,
+      state: EditorState.create({ doc: source, extensions: [markdown(), livePreview] }),
+    });
+
+    expect(host.textContent).not.toContain("[docs]:");
+    expect(host.textContent).not.toContain("Documentation");
+    expect(host.textContent).not.toContain("[picture]:");
+    expect(host.textContent).toContain("Following paragraph");
+    expect(host.querySelector('[data-link-url="https://example.com"]')).toHaveTextContent("Guide");
+    await vi.waitFor(() => expect(host.querySelector('[data-preview-kind="image"]'))
+      .toHaveAttribute("src", "attachments/example.png"));
+    expect(host.querySelectorAll('.cm-line[data-preview-hidden="reference"]')).toHaveLength(4);
+
+    view.dispatch({ selection: { anchor: source.indexOf("Documentation") } });
+    expect(host.textContent).toContain("[docs]:");
+    expect(host.textContent).toContain("Documentation");
+    expect(host.textContent).not.toContain("[picture]:");
+    expect(view.state.doc.toString()).toBe(source);
+
+    view.destroy();
+    host.remove();
+  });
+
+  it("keeps reference definition examples visible inside code", () => {
+    const host = document.createElement("div");
+    document.body.append(host);
+    const source = "plain\n\n`[inline]: https://example.com`\n\n```md\n[fenced]: https://example.com\n```";
+    const view = new EditorView({
+      parent: host,
+      state: EditorState.create({ doc: source, extensions: [markdown(), livePreview] }),
+    });
+
+    expect(host.textContent).toContain("[inline]: https://example.com");
+    expect(host.textContent).toContain("[fenced]: https://example.com");
+    expect(host.querySelector('[data-preview-hidden="reference"]')).toBeNull();
+
+    view.destroy();
+    host.remove();
+  });
+
+  it("hides block comments across blank lines and restores them while editing", () => {
+    const host = document.createElement("div");
+    document.body.append(host);
+    const source = "plain\n\n<!--\nsecret\n\nmore secret\n-->\n\nafter";
+    const view = new EditorView({
+      parent: host,
+      state: EditorState.create({ doc: source, extensions: [markdown(), livePreview] }),
+    });
+
+    expect(host.textContent).not.toContain("secret");
+    expect(host.textContent).not.toContain("<!--");
+    expect(host.textContent).toContain("after");
+    expect(host.querySelectorAll('[data-preview-hidden="comment"]')).toHaveLength(5);
+    view.dispatch({ selection: { anchor: source.indexOf("secret") } });
+    expect(host.textContent).toContain("<!--");
+    expect(host.textContent).toContain("secret");
+    expect(host.querySelector('[data-preview-hidden="comment"]')).toBeNull();
+    expect(view.state.doc.toString()).toBe(source);
+
+    view.destroy();
+    host.remove();
+  });
+
+  it("hides inline comments without hiding adjacent text or comments inside code", () => {
+    const host = document.createElement("div");
+    document.body.append(host);
+    const source = "plain\n\nbefore <!-- secret --> after\n\nleft <!--\nmultiline secret\n--> right\n\n`<!-- inline code -->`\n\n```html\n<!-- fenced code -->\n```";
+    const view = new EditorView({
+      parent: host,
+      state: EditorState.create({ doc: source, extensions: [markdown(), livePreview] }),
+    });
+
+    expect(host.textContent).not.toContain("secret");
+    expect(host.textContent).toContain("before  after");
+    expect(host.textContent).toContain("left ");
+    expect(host.textContent).toContain(" right");
+    expect(host.textContent).toContain("<!-- inline code -->");
+    expect(host.textContent).toContain("<!-- fenced code -->");
+    view.dispatch({ selection: { anchor: source.indexOf("secret") } });
+    expect(host.textContent).toContain("before <!-- secret --> after");
+
+    view.destroy();
+    host.remove();
+  });
+
   it("resolves reference link destinations at the linked text", () => {
     const doc = "[Reference][guide]\n\n[GUIDE]: https://example.com/reference";
     const state = EditorState.create({ doc, extensions: [markdown()] });
 
     expect(linkUrlAt(state, doc.indexOf("Reference"))).toBe("https://example.com/reference");
     expect(linkUrlAt(state, doc.indexOf("GUIDE"))).toBeNull();
+  });
+
+  it("indexes Unicode and duplicate headings and renders Setext headings", () => {
+    const host = document.createElement("div");
+    document.body.append(host);
+    const source = "plain\n\n## 15. 代码块\n\n## 15. 代码块\n\nAnother **title**\n===\n\nSubtitle\n---";
+    const view = new EditorView({
+      parent: host,
+      state: EditorState.create({ doc: source, extensions: [markdown(), livePreview] }),
+    });
+    expect(documentHeadings(view.state).map(({ id, level }) => [id, level])).toEqual([
+      ["15-代码块", 2], ["15-代码块-1", 2], ["another-title", 1], ["subtitle", 2],
+    ]);
+    expect(host.querySelector('[data-heading-id="another-title"]')).toHaveTextContent("Another title");
+    expect(host.textContent).not.toContain("===");
+    expect(host.textContent).not.toContain("---");
+    view.dispatch({ selection: { anchor: source.indexOf("Another") } });
+    expect(host.textContent).toContain("===");
+    view.destroy();
+    host.remove();
+  });
+
+  it("renders a hierarchical TOC that navigates and updates with headings", () => {
+    const host = document.createElement("div");
+    document.body.append(host);
+    const source = "plain\n\n[TOC]\n\n# Main\n\n## Child\n\n## Child";
+    const view = new EditorView({
+      parent: host,
+      state: EditorState.create({ doc: source, extensions: [markdown(), livePreview] }),
+    });
+    const toc = host.querySelector('[data-preview-kind="toc"]');
+    expect(toc).toHaveAttribute("aria-label", "Table of contents");
+    expect(Array.from(toc!.querySelectorAll("li"), (item) => item.dataset.headingLevel)).toEqual(["1", "2", "2"]);
+    expect(toc!.querySelectorAll("li")[1]).toHaveStyle({ marginInlineStart: "16px" });
+    toc!.querySelector<HTMLButtonElement>('[data-toc-target="child-1"]')!.click();
+    expect(view.state.selection.main.head).toBe(source.lastIndexOf("## Child"));
+
+    view.dispatch({ changes: { from: source.indexOf("Main"), to: source.indexOf("Main") + 4, insert: "Renamed" } });
+    expect(host.querySelector('[data-toc-target="renamed"]')).toHaveTextContent("Renamed");
+    view.dispatch({ selection: { anchor: source.indexOf("[TOC]") + 1 } });
+    expect(host.querySelector('[data-preview-kind="toc"]')).toBeNull();
+    expect(host.textContent).toContain("[TOC]");
+    view.destroy();
+    host.remove();
+  });
+
+  it("only renders standalone TOC directives outside code and includes distant headings", () => {
+    const host = document.createElement("div");
+    document.body.append(host);
+    const source = "plain\n\n[TOC]\n\n`[TOC]`\n\n```md\n[TOC]\n```\n\nAn inline [TOC] marker\n\n"
+      + "paragraph\n\n".repeat(500) + "# Distant";
+    const view = new EditorView({
+      parent: host,
+      state: EditorState.create({ doc: source, extensions: [markdown(), livePreview] }),
+    });
+    expect(host.querySelectorAll('[data-preview-kind="toc"]')).toHaveLength(1);
+    expect(host.querySelector('[data-toc-target="distant"]')).toHaveTextContent("Distant");
+    expect(host.textContent).toContain("[TOC]");
+    view.destroy();
+    host.remove();
   });
 
   it("hides heading markers and separator whitespace for h1 through h6", () => {
