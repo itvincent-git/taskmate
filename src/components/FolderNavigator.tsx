@@ -5,9 +5,11 @@ import type { TaskFolder } from "../types";
 import { Dialog } from "./ui/Dialog";
 import { Button } from "./ui/Button";
 import { Input } from "./ui/Input";
+import { Select } from "./ui/Select";
 import { useTaskmateI18n } from "../lib/taskmate-i18n";
 
 export const TASK_DRAG_TYPE = "application/x-taskmate";
+const ROOT_FOLDER_VALUE = "__taskmate_root_folder__";
 export type FolderAction = { kind: "create" | "move" | "delete"; source: string; parent: string; name: string };
 export type DragPayload = { archived: boolean; ids?: string[]; folder?: string };
 export function readTaskDrag(event: DragEvent): DragPayload | null {
@@ -69,12 +71,29 @@ export function FolderNavigator({ folders, archived, selected, expanded, onSelec
       <button className="ml-auto rounded px-2 py-1 hover:bg-accent-soft disabled:opacity-40" disabled={!checked || busy} onClick={onMoveSelected}>{label("Move to", "移动到")} · {checked}</button>
     </div>
     <Dialog open={!!action} onOpenChange={(open) => { if (!open && !busy) setAction(null); }} title={label("Manage folder", "管理文件夹")} contentClassName="w-[min(480px,calc(100vw-40px))]">
-      {action && <form className="grid gap-3" onSubmit={(event) => { event.preventDefault(); void onAction(action).then((ok) => { if (ok) setAction(null); }); }}>
+      {action && <form className="grid gap-4" onSubmit={(event) => { event.preventDefault(); void onAction(action).then((ok) => { if (ok) setAction(null); }); }}>
         {action.kind === "delete" ? <p>{label("Only empty folders can be deleted", "仅可删除空文件夹")}: {action.source}</p> : <>
-          <label>{label("Folder name", "文件夹名称")}<Input value={action.name} onChange={(e) => setAction({ ...action, name: e.target.value })} autoFocus /></label>
-          <label>{label("Parent folder", "上级文件夹")}<select className="block w-full rounded border border-line bg-surface p-2" value={action.parent} onChange={(e) => setAction({ ...action, parent: e.target.value })}><option value="">{rootLabel}</option>{paths.filter((p) => action.kind !== "move" || (p !== action.source && !p.startsWith(action.source + "/"))).map((p) => <option key={p}>{p}</option>)}</select></label>
+          <label className="grid gap-1.5 text-xs font-medium">
+            <span>{label("Folder name", "文件夹名称")}</span>
+            <Input className="w-full" aria-label={label("Folder name", "文件夹名称")} value={action.name} onChange={(event) => setAction({ ...action, name: event.target.value })} autoFocus />
+          </label>
+          <label className="grid gap-1.5 text-xs font-medium">
+            <span>{label("Parent folder", "上级文件夹")}</span>
+            <Select
+              className="w-full min-w-0"
+              ariaLabel={label("Parent folder", "上级文件夹")}
+              value={action.parent || ROOT_FOLDER_VALUE}
+              onValueChange={(value) => setAction({ ...action, parent: value === ROOT_FOLDER_VALUE ? "" : value })}
+              options={[
+                { value: ROOT_FOLDER_VALUE, label: rootLabel },
+                ...paths
+                  .filter((path) => action.kind !== "move" || (path !== action.source && !path.startsWith(action.source + "/")))
+                  .map((path) => ({ value: path, label: path })),
+              ]}
+            />
+          </label>
         </>}
-        <Button type="submit" disabled={busy || (action.kind !== "delete" && !action.name)}>{label("Apply", "应用")}</Button>
+        <Button className="mt-1 w-full" type="submit" disabled={busy || (action.kind !== "delete" && !action.name)}>{label("Apply", "应用")}</Button>
       </form>}
     </Dialog>
   </>;

@@ -1,13 +1,14 @@
 import { fireEvent, render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { FolderNavigator, TASK_DRAG_TYPE } from "./FolderNavigator";
 
-function setup() {
+function setup(onAction = vi.fn(async () => true)) {
   const onSelect = vi.fn();
   const onExpand = vi.fn();
   const onDrop = vi.fn();
-  render(<FolderNavigator folders={[{ path: "a", archived: false }, { path: "a/child", archived: false }, { path: "empty", archived: false }, { path: "archived", archived: true }]} archived={false} selected={null} expanded={[]} onSelect={onSelect} onExpand={onExpand} onAction={vi.fn()} onDrop={onDrop} checked={0} onSelectAll={vi.fn()} onMoveSelected={vi.fn()} busy={false} />);
-  return { onSelect, onExpand, onDrop };
+  render(<FolderNavigator folders={[{ path: "a", archived: false }, { path: "a/child", archived: false }, { path: "empty", archived: false }, { path: "archived", archived: true }]} archived={false} selected={null} expanded={[]} onSelect={onSelect} onExpand={onExpand} onAction={onAction} onDrop={onDrop} checked={0} onSelectAll={vi.fn()} onMoveSelected={vi.fn()} busy={false} />);
+  return { onSelect, onExpand, onDrop, onAction };
 }
 
 describe("FolderNavigator", () => {
@@ -34,5 +35,19 @@ describe("FolderNavigator", () => {
     drop({ archived: true, ids: ["3"] });
     drop({ ids: ["3"] });
     expect(onDrop).toHaveBeenCalledTimes(2);
+  });
+  it("selects a parent folder with the shared Select control", async () => {
+    const user = userEvent.setup();
+    const { onAction } = setup();
+
+    await user.click(screen.getByRole("button", { name: "New folder" }));
+    const parent = screen.getByRole("combobox", { name: "Parent folder" });
+    expect(parent).toHaveClass("w-full");
+    await user.click(parent);
+    await user.click(screen.getByRole("option", { name: /^a$/ }));
+    await user.type(screen.getByLabelText("Folder name"), "nested");
+    await user.click(screen.getByRole("button", { name: "Apply" }));
+
+    expect(onAction).toHaveBeenCalledWith({ kind: "create", source: "", parent: "a", name: "nested" });
   });
 });
