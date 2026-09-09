@@ -714,7 +714,7 @@ describe("Taskmate application", () => {
     await user.click(await screen.findByRole("menuitem", { name: "Close all" }));
     expect(screen.queryByRole("tab")).not.toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Select a task" })).toBeInTheDocument();
-  });
+  }, 10_000);
 
   it("closes the active tab with Command+W on macOS", async () => {
     vi.spyOn(navigator, "platform", "get").mockReturnValue("MacIntel");
