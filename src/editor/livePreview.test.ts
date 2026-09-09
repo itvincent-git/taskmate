@@ -557,10 +557,30 @@ describe("Live Preview activation", () => {
     expect(view.state.selection.main.head).toBe(source.lastIndexOf("## Child"));
 
     view.dispatch({ changes: { from: source.indexOf("Main"), to: source.indexOf("Main") + 4, insert: "Renamed" } });
+    view.dispatch({ selection: { anchor: source.indexOf("Child") } });
     expect(host.querySelector('[data-toc-target="renamed"]')).toHaveTextContent("Renamed");
     view.dispatch({ selection: { anchor: source.indexOf("[TOC]") + 1 } });
     expect(host.querySelector('[data-preview-kind="toc"]')).toBeNull();
     expect(host.textContent).toContain("[TOC]");
+    view.destroy();
+    host.remove();
+  });
+
+  it("removes hidden multiline source lines from layout", () => {
+    const host = document.createElement("div");
+    document.body.append(host);
+    const source = "first soft line\nsecond soft line\nthird soft line\n\n";
+    const view = new EditorView({
+      parent: host,
+      state: EditorState.create({ doc: source, extensions: [markdown(), livePreview] }),
+    });
+
+    view.dispatch({ selection: { anchor: source.length } });
+
+    const hiddenLines = host.querySelectorAll<HTMLElement>(".cm-line.hidden");
+    expect(hiddenLines.length).toBeGreaterThan(0);
+    hiddenLines.forEach((line) => expect(line).toHaveStyle({ display: "none" }));
+    expect(host.querySelector('[data-preview-kind="paragraph"]')).not.toBeNull();
     view.destroy();
     host.remove();
   });

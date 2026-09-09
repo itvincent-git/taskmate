@@ -548,6 +548,8 @@ function WorkspaceSession() {
   const [folderBusy, setFolderBusy] = useState(false);
   const folderBusyRef = useRef(false);
   const savePromise = useRef<Promise<boolean> | null>(null);
+  const bodyDraft = useRef<{ id: string; body: string } | null>(null);
+  const bodyUpdateTimer = useRef<number | null>(null);
   const refreshRequest = useRef(0);
   const [searchResults, setSearchResults] = useState<TaskSearchResult[]>([]);
   const [searchLoading, setSearchLoading] = useState(false);
@@ -752,6 +754,13 @@ function WorkspaceSession() {
   }, [fileSignal, refresh, workspaceOpen]);
 
   const save = useCallback(async (current: Task): Promise<boolean> => {
+    const pendingBody = bodyDraft.current;
+    if (pendingBody?.id === current.id) {
+      current = { ...current, body: pendingBody.body };
+      bodyDraft.current = null;
+      if (bodyUpdateTimer.current !== null) window.clearTimeout(bodyUpdateTimer.current);
+      bodyUpdateTimer.current = null;
+    }
     if (savePromise.current) {
       if (!await savePromise.current) return false;
       const latest = workspaceStore.getState().task;
@@ -764,8 +773,9 @@ function WorkspaceSession() {
         let stillDirty = false;
         setTask((open) => {
           if (open?.id !== saved.id) return open;
-          stillDirty = open.body !== current.body || JSON.stringify(open.properties) !== JSON.stringify(current.properties) || (open.title !== current.title && open.title !== saved.title);
-          return stillDirty ? { ...saved, body: open.body, title: open.title, properties: open.properties } : saved;
+          const latestBody = bodyDraft.current?.id === open.id ? bodyDraft.current.body : open.body;
+          stillDirty = latestBody !== current.body || JSON.stringify(open.properties) !== JSON.stringify(current.properties) || (open.title !== current.title && open.title !== saved.title);
+          return stillDirty ? { ...saved, body: latestBody, title: open.title, properties: open.properties } : saved;
         });
         setOpenTabs((tabs) => tabs.map((tab) => tab.kind === "task" && tab.id === saved.id ? { ...tab, title: saved.title, fileName: saved.fileName, folderPath: saved.folderPath, archived: saved.archived } : tab));
         setSaveState(stillDirty ? "dirty" : "saved");
@@ -1152,7 +1162,19 @@ function WorkspaceSession() {
   const selectTask = useLatestCallback((summary: TaskSummary) => void chooseTask(summary.id));
   const quickEditTask = useLatestCallback((summary: TaskSummary, key: string, value: unknown) => void quickEdit(summary, key, value));
   const changeTaskProperty = useLatestCallback(editProperty);
-  const changeTaskBody = useLatestCallback((body: string) => editTask({ body }));
+  const changeTaskBody = useLatestCallback((body: string) => {
+    if (!task) return;
+    const draft = { id: task.id, body };
+    bodyDraft.current = draft;
+    setSaveState("dirty");
+    if (bodyUpdateTimer.current !== null) window.clearTimeout(bodyUpdateTimer.current);
+    bodyUpdateTimer.current = window.setTimeout(() => {
+      bodyUpdateTimer.current = null;
+      if (bodyDraft.current !== draft) return;
+      bodyDraft.current = null;
+      setTask((current) => current?.id === draft.id ? { ...current, body: draft.body } : current);
+    }, 100);
+  });
   const taskListEmptyState = useMemo(() => (
     <div className="flex h-full flex-col items-center justify-center text-center text-muted [&>h2]:mt-3 [&>h2]:mb-[3px] [&>h2]:font-heading [&>h2]:text-base [&>h2]:text-foreground [&>p]:m-0 [&>p]:text-xs">
       <LayoutList />
@@ -1506,7 +1528,7 @@ function WorkspaceSession() {
                       <div className="min-h-0 min-w-0 flex-1 overflow-hidden">
                         <Suspense fallback={<div className="flex min-h-[370px] items-center justify-center gap-2 text-muted"><LoaderCircle className="animate-spin" />{t("editor.loading")}</div>}>
                           <MarkdownEditor
-                            value={task.body}
+                            value={bodyDraft.current?.id === task.id ? bodyDraft.current.body : task.body}
                             sourceMode={sourceMode}
                             onChange={changeTaskBody}
                             onError={(cause) => setError(errorMessage(cause))}

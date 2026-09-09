@@ -1,6 +1,6 @@
 import { ensureSyntaxTree, syntaxTree } from "@codemirror/language";
 import type { SyntaxNode } from "@lezer/common";
-import { RangeSetBuilder, type EditorState } from "@codemirror/state";
+import { RangeSetBuilder, StateEffect, type EditorState } from "@codemirror/state";
 import { Decoration, type DecorationSet, EditorView, ViewPlugin, type ViewUpdate, WidgetType } from "@codemirror/view";
 import katex from "katex";
 import "katex/dist/katex.min.css";
@@ -10,6 +10,9 @@ import { api } from "../lib/api";
 
 const markdownRenderer = new MarkdownIt({ html: false, linkify: true });
 markdownRenderer.use(emoji);
+
+const refreshLivePreview = StateEffect.define<null>();
+const previewRefreshDelay = 75;
 
 let taskCheckIcon: SVGSVGElement | null = null;
 
@@ -717,6 +720,7 @@ class MarkerWidget extends WidgetType {
       checkbox.addEventListener("click", () => {
         view.dispatch({
           changes: { from: this.from, to: this.from + this.text.length, insert: checked ? "[ ]" : "[x]" },
+          effects: refreshLivePreview.of(null),
         });
       });
       return checkbox;
@@ -898,7 +902,7 @@ function htmlBlockDecorations(state: EditorState, node: SyntaxNode) {
   }];
   for (let number = firstLine.number + 1; number <= state.doc.lineAt(node.to).number; number += 1) {
     const line = state.doc.line(number);
-    decorations.push({ from: line.from, to: line.from, decoration: Decoration.line({ class: "hidden" }) });
+    decorations.push({ from: line.from, to: line.from, decoration: Decoration.line({ class: "hidden", attributes: { style: "display: none" } }) });
     if (line.to > line.from) {
       decorations.push({ from: line.from, to: line.to, decoration: Decoration.replace({}) });
     }
@@ -1247,7 +1251,7 @@ function extensionPreviewDecorations(state: EditorState, range: ExtensionPreview
   }];
   for (let number = firstLine.number + 1; number <= lastLine.number; number += 1) {
     const line = state.doc.line(number);
-    decorations.push({ from: line.from, to: line.from, decoration: Decoration.line({ class: "hidden" }) });
+    decorations.push({ from: line.from, to: line.from, decoration: Decoration.line({ class: "hidden", attributes: { style: "display: none" } }) });
     if (line.to > line.from) decorations.push({ from: line.from, to: line.to, decoration: Decoration.replace({}) });
   }
   return decorations;
@@ -1273,7 +1277,7 @@ function richPreviewDecorations(state: EditorState, range: RichPreviewRange) {
   }];
   for (let number = firstLine.number + 1; number <= lastLine.number; number += 1) {
     const line = state.doc.line(number);
-    decorations.push({ from: line.from, to: line.from, decoration: Decoration.line({ class: "hidden" }) });
+    decorations.push({ from: line.from, to: line.from, decoration: Decoration.line({ class: "hidden", attributes: { style: "display: none" } }) });
     if (line.to > line.from) decorations.push({ from: line.from, to: line.to, decoration: Decoration.replace({}) });
   }
   return decorations;
@@ -1286,10 +1290,14 @@ function buildDecorations(view: EditorView): DecorationSet {
   const extensionRanges = extensionPreviewRanges(view.state, richRanges);
   const references = linkReferences(view.state);
   const headings = new Map(documentHeadings(view.state).map((heading) => [heading.from, heading]));
+  const startsInViewport = (range: { from: number }) =>
+    view.visibleRanges.some((viewport) => range.from >= viewport.from && range.from <= viewport.to);
   const inactiveRichRanges = richRanges.filter((range) =>
-    !rangeIsActive(range.from, range.to, view.state.selection.ranges, view.composing));
+    !rangeIsActive(range.from, range.to, view.state.selection.ranges, view.composing)
+    && (!range.block || startsInViewport(range)));
   const inactiveExtensionRanges = extensionRanges.filter((range) =>
-    !rangeIsActive(range.from, range.to, view.state.selection.ranges, view.composing));
+    !rangeIsActive(range.from, range.to, view.state.selection.ranges, view.composing)
+    && (!range.block || startsInViewport(range)));
   const activeHtmlContainerRanges = extensionRanges.filter((range) =>
     range.widget instanceof HtmlContainerWidget
     && rangeIsActive(range.from, range.to, view.state.selection.ranges, view.composing));
@@ -1333,7 +1341,7 @@ function buildDecorations(view: EditorView): DecorationSet {
               ranges.push({
                 from: view.state.doc.lineAt(underline.from).from,
                 to: view.state.doc.lineAt(underline.from).from,
-                decoration: Decoration.line({ class: "hidden" }),
+                decoration: Decoration.line({ class: "hidden", attributes: { style: "display: none" } }),
               });
             }
           }
@@ -1350,7 +1358,7 @@ function buildDecorations(view: EditorView): DecorationSet {
                 ranges.push({
                   from: line.from,
                   to: line.from,
-                  decoration: Decoration.line({ class: "hidden", attributes: { "data-preview-hidden": "comment" } }),
+                  decoration: Decoration.line({ class: "hidden", attributes: { "data-preview-hidden": "comment", style: "display: none" } }),
                 });
               }
               if (to > from) ranges.push({ from, to, decoration: Decoration.replace({}) });
@@ -1367,7 +1375,7 @@ function buildDecorations(view: EditorView): DecorationSet {
               ranges.push({
                 from: line.from,
                 to: line.from,
-                decoration: Decoration.line({ class: "hidden", attributes: { "data-preview-hidden": "reference" } }),
+                decoration: Decoration.line({ class: "hidden", attributes: { "data-preview-hidden": "reference", style: "display: none" } }),
               });
               if (line.to > line.from) {
                 ranges.push({ from: line.from, to: line.to, decoration: Decoration.replace({}) });
@@ -1515,20 +1523,40 @@ function buildDecorations(view: EditorView): DecorationSet {
 export const livePreview = ViewPlugin.fromClass(
   class {
     decorations: DecorationSet;
+    refreshTimer: number | null = null;
 
     constructor(view: EditorView) {
       this.decorations = buildDecorations(view);
     }
 
     update(update: ViewUpdate) {
+      const refreshRequested = update.transactions.some((transaction) =>
+        transaction.effects.some((effect) => effect.is(refreshLivePreview)));
+      if (update.docChanged) {
+        if (refreshRequested) {
+          this.decorations = buildDecorations(update.view);
+          return;
+        }
+        this.decorations = this.decorations.map(update.changes);
+        if (this.refreshTimer !== null) window.clearTimeout(this.refreshTimer);
+        this.refreshTimer = window.setTimeout(() => {
+          this.refreshTimer = null;
+          update.view.dispatch({ effects: refreshLivePreview.of(null) });
+        }, previewRefreshDelay);
+        return;
+      }
       if (
-        update.docChanged ||
+        refreshRequested ||
         update.selectionSet ||
         update.viewportChanged ||
         update.transactions.some((transaction) => transaction.reconfigured)
       ) {
         this.decorations = buildDecorations(update.view);
       }
+    }
+
+    destroy() {
+      if (this.refreshTimer !== null) window.clearTimeout(this.refreshTimer);
     }
   },
   { decorations: (plugin) => plugin.decorations },

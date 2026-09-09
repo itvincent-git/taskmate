@@ -86,4 +86,18 @@ describe("folder workflows", () => {
     await waitFor(() => expect(localStorage.getItem("taskmate-recent-files.v1")).toContain('"folderPath":"target"'));
     expect(editor).toHaveValue("Unsaved draft");
   });
+
+  it("saves the latest body when switching tasks before the batched update", async () => {
+    await setup();
+    const currentTitle = (screen.getByLabelText("Task title") as HTMLInputElement).value;
+    const current = (await api.queryTasks({ search: "", archived: false, filters: [], sorts: [] }))
+      .find((task) => task.title === currentTitle)!;
+    fireEvent.change(await screen.findByLabelText("Test body"), { target: { value: "Latest draft" } });
+
+    const nextTitle = currentTitle === "Beta" ? "Alpha" : "Beta";
+    fireEvent.click(screen.getByText(nextTitle, { selector: "article div" }));
+
+    await waitFor(() => expect(screen.getByLabelText("Task title")).toHaveValue(nextTitle));
+    expect((await api.getTask(current.id)).body).toBe("Latest draft");
+  });
 });
