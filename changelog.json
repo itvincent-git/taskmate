@@ -1,4 +1,8 @@
 {
+  "0.15.0": {
+    "en": "- fix(editor): smooth live preview updates\n- fix(performance): keep editor and task scrolling responsive",
+    "zh": "- fix(editor): smooth live preview updates\n- fix(performance): keep editor and task scrolling responsive"
+  },
   "0.14.0": {
     "en": "- feat: improve markdown live preview\n- feat(editor): complete P1 markdown previews\n- feat(editor): complete P2 markdown previews\n- feat(ui): refine folder management dialog",
     "zh": "- feat: improve markdown live preview\n- feat(editor): complete P1 markdown previews\n- feat(editor): complete P2 markdown previews\n- feat(ui): refine folder management dialog"
