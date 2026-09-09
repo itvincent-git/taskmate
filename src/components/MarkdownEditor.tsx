@@ -4,7 +4,7 @@ import { markdown } from "@codemirror/lang-markdown";
 import { GFM } from "@lezer/markdown";
 import { HighlightStyle, syntaxHighlighting } from "@codemirror/language";
 import { openSearchPanel, search, searchKeymap } from "@codemirror/search";
-import { Annotation, Compartment, EditorState, Prec } from "@codemirror/state";
+import { Annotation, Compartment, EditorState, Prec, type Text } from "@codemirror/state";
 import { keymap, EditorView, placeholder } from "@codemirror/view";
 import { tags } from "@lezer/highlight";
 import {
@@ -44,8 +44,10 @@ import { Button } from "./ui/Button";
 import { Tooltip } from "./ui/Tooltip";
 
 interface Props {
-  value: string;
-  onChange(value: string): void;
+  value: string | Text;
+  documentId?: string;
+  replacementRevision?: number;
+  onChange(document: Text): void;
   onError?(cause: unknown): void;
   sourceMode?: boolean;
 }
@@ -81,7 +83,7 @@ const githubHighlightStyle = HighlightStyle.define([
   { tag: tags.invalid, color: "var(--danger)" },
 ]);
 
-export const MarkdownEditor = memo(function MarkdownEditor({ value, onChange, onError, sourceMode = false }: Props) {
+export const MarkdownEditor = memo(function MarkdownEditor({ value, documentId, replacementRevision = 0, onChange, onError, sourceMode = false }: Props) {
   const { locale, t } = useTaskmateI18n();
   const shortcuts = useSyncExternalStore(subscribeEditorShortcuts, getEditorShortcuts, getEditorShortcuts);
   const platform = getShortcutPlatform();
@@ -131,7 +133,7 @@ export const MarkdownEditor = memo(function MarkdownEditor({ value, onChange, on
           EditorView.lineWrapping,
           EditorView.updateListener.of((update) => {
             if (update.docChanged && !update.transactions.some((transaction) => transaction.annotation(syncValue))) {
-              changeHandler.current(update.state.doc.toString());
+              changeHandler.current(update.state.doc);
             }
           }),
           EditorView.theme({
@@ -216,7 +218,7 @@ export const MarkdownEditor = memo(function MarkdownEditor({ value, onChange, on
       view.destroy();
       editor.current = null;
     };
-  }, [platform, t]);
+  }, [documentId, platform, t]);
 
   useEffect(() => {
     editor.current?.dispatch({
@@ -232,12 +234,12 @@ export const MarkdownEditor = memo(function MarkdownEditor({ value, onChange, on
 
   useEffect(() => {
     const view = editor.current;
-    if (!view || view.state.doc.toString() === value) return;
+    if (!view || (typeof value === "string" ? view.state.doc.toString() === value : view.state.doc.eq(value))) return;
     view.dispatch({
       changes: { from: 0, to: view.state.doc.length, insert: value },
       annotations: syncValue.of(true),
     });
-  }, [value]);
+  }, [documentId, replacementRevision]);
 
   return (
     <section className="flex h-full min-h-0 flex-col overflow-hidden border-b border-line">

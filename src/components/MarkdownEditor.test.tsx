@@ -46,7 +46,7 @@ describe("MarkdownEditor", () => {
     const onChange = vi.fn();
     const { container, rerender } = render(<MarkdownEditor value="First body" onChange={onChange} />);
 
-    rerender(<MarkdownEditor value="Second body" onChange={onChange} />);
+    rerender(<MarkdownEditor value="Second body" replacementRevision={1} onChange={onChange} />);
 
     expect(container.querySelector(".cm-content")).toHaveTextContent("Second body");
     expect(onChange).not.toHaveBeenCalled();
@@ -61,7 +61,45 @@ describe("MarkdownEditor", () => {
     view?.dispatch({ changes: { from: view.state.doc.length, insert: " changed" } });
 
     expect(onChange).toHaveBeenCalledOnce();
-    expect(onChange).toHaveBeenCalledWith("First body changed");
+    expect(onChange.mock.calls[0][0]).toBe(view!.state.doc);
+  });
+
+  it("ignores save echoes and preserves history when preview mode changes", () => {
+    const onChange = vi.fn();
+    const { container, rerender } = render(<MarkdownEditor documentId="one" value="initial" onChange={onChange} />);
+    const view = editorView(container);
+    act(() => view.dispatch({ changes: { from: 7, insert: " local" }, selection: { anchor: 13 } }));
+    const document = view.state.doc;
+    rerender(<MarkdownEditor documentId="one" value="stale server response" onChange={onChange} sourceMode />);
+    expect(view.state.doc).toBe(document);
+    expect(view.state.selection.main.head).toBe(13);
+    fireEvent.keyDown(container.querySelector(".cm-content")!, { key: "z", ctrlKey: true });
+    expect(view.state.doc.toString()).toBe("initial");
+  });
+
+  it("creates a fresh history for a different document identity", () => {
+    const onChange = vi.fn();
+    const { container, rerender } = render(<MarkdownEditor documentId="one" value="initial" onChange={onChange} />);
+    const view = editorView(container);
+    act(() => view.dispatch({ changes: { from: 7, insert: " local" } }));
+    rerender(<MarkdownEditor documentId="two" value="other" onChange={onChange} />);
+    expect(editorView(container)).not.toBe(view);
+    fireEvent.keyDown(container.querySelector(".cm-content")!, { key: "z", ctrlKey: true });
+    expect(editorView(container).state.doc.toString()).toBe("other");
+  });
+
+  it("pastes Unicode and multiline Markdown and preserves undo/redo", () => {
+    const onChange = vi.fn();
+    const { container } = render(<MarkdownEditor value="initial" onChange={onChange} />);
+    const view = editorView(container);
+    act(() => view.dispatch({ selection: { anchor: view.state.doc.length } }));
+    fireEvent.paste(view.contentDOM, { clipboardData: { getData: () => "\n中文 **bold**\n- [ ] item" } });
+    expect(view.state.doc.toString()).toBe("initial\n中文 **bold**\n- [ ] item");
+    expect(onChange.mock.lastCall?.[0]).toBe(view.state.doc);
+    fireEvent.keyDown(view.contentDOM, { key: "z", ctrlKey: true });
+    expect(view.state.doc.toString()).toBe("initial");
+    fireEvent.keyDown(view.contentDOM, { key: "y", ctrlKey: true });
+    expect(view.state.doc.toString()).toBe("initial\n中文 **bold**\n- [ ] item");
   });
 
   it("opens find and replace from the toolbar", () => {
@@ -84,7 +122,7 @@ describe("MarkdownEditor", () => {
     fireEvent.click(screen.getByRole("button", { name: "replace all" }));
 
     expect(view.state.doc.toString()).toBe("done and done");
-    expect(onChange).toHaveBeenLastCalledWith("done and done");
+    expect(onChange.mock.lastCall?.[0].toString()).toBe("done and done");
   });
 
   it("keeps Mod+F reserved for search when stored formatting shortcuts conflict", () => {
@@ -103,7 +141,7 @@ describe("MarkdownEditor", () => {
 
     container.querySelector<HTMLButtonElement>('[data-marker-kind="task"]')?.click();
 
-    expect(onChange).toHaveBeenCalledWith("plain\n- [x] todo");
+    expect(onChange.mock.lastCall?.[0].toString()).toBe("plain\n- [x] todo");
   });
 
   it("shows raw Markdown when source mode is enabled", () => {

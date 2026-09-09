@@ -1,3 +1,4 @@
+import type { Text } from "@codemirror/state";
 import type { TaskFolder } from "./types";
 import { FolderNavigator, type FolderAction, type DragPayload } from "./components/FolderNavigator";
 import { createContext, lazy, Suspense, useCallback, useContext, useEffect, useMemo, useRef, useState, type Dispatch, type ReactNode, type SetStateAction } from "react";
@@ -548,8 +549,11 @@ function WorkspaceSession() {
   const [folderBusy, setFolderBusy] = useState(false);
   const folderBusyRef = useRef(false);
   const savePromise = useRef<Promise<boolean> | null>(null);
-  const bodyDraft = useRef<{ id: string; body: string } | null>(null);
+  const bodyDraft = useRef<{ id: string; body: Text; version: number } | null>(null);
   const bodyUpdateTimer = useRef<number | null>(null);
+  const bodyVersion = useRef(0);
+  const lastEditAt = useRef(0);
+  const [bodyReplacementRevision, setBodyReplacementRevision] = useState(0);
   const refreshRequest = useRef(0);
   const [searchResults, setSearchResults] = useState<TaskSearchResult[]>([]);
   const [searchLoading, setSearchLoading] = useState(false);
@@ -754,18 +758,16 @@ function WorkspaceSession() {
   }, [fileSignal, refresh, workspaceOpen]);
 
   const save = useCallback(async (current: Task): Promise<boolean> => {
-    const pendingBody = bodyDraft.current;
-    if (pendingBody?.id === current.id) {
-      current = { ...current, body: pendingBody.body };
-      bodyDraft.current = null;
-      if (bodyUpdateTimer.current !== null) window.clearTimeout(bodyUpdateTimer.current);
-      bodyUpdateTimer.current = null;
-    }
-    if (savePromise.current) {
+    const requestedIsCurrent = current === workspaceStore.getState().task;
+    while (savePromise.current) {
       if (!await savePromise.current) return false;
       const latest = workspaceStore.getState().task;
-      if (latest?.id === current.id) current = { ...current, contentHash: latest.contentHash, folderPath: latest.folderPath };
+      if (latest?.id === current.id) current = requestedIsCurrent ? latest : { ...current, contentHash: latest.contentHash, folderPath: latest.folderPath };
     }
+    const pendingBody = bodyDraft.current?.id === current.id ? bodyDraft.current : null;
+    if (pendingBody) current = { ...current, body: pendingBody.body.toString() };
+    if (bodyUpdateTimer.current !== null) window.clearTimeout(bodyUpdateTimer.current);
+    bodyUpdateTimer.current = null;
     const operation = (async () => {
       setSaveState("saving");
       try {
@@ -773,8 +775,9 @@ function WorkspaceSession() {
         let stillDirty = false;
         setTask((open) => {
           if (open?.id !== saved.id) return open;
-          const latestBody = bodyDraft.current?.id === open.id ? bodyDraft.current.body : open.body;
-          stillDirty = latestBody !== current.body || JSON.stringify(open.properties) !== JSON.stringify(current.properties) || (open.title !== current.title && open.title !== saved.title);
+          const latestDraft = bodyDraft.current?.id === open.id ? bodyDraft.current : null;
+          const latestBody = latestDraft ? latestDraft.body.toString() : open.body;
+          stillDirty = (latestDraft?.version ?? 0) !== (pendingBody?.version ?? 0) || JSON.stringify(open.properties) !== JSON.stringify(current.properties) || (open.title !== current.title && open.title !== saved.title);
           return stillDirty ? { ...saved, body: latestBody, title: open.title, properties: open.properties } : saved;
         });
         setOpenTabs((tabs) => tabs.map((tab) => tab.kind === "task" && tab.id === saved.id ? { ...tab, title: saved.title, fileName: saved.fileName, folderPath: saved.folderPath, archived: saved.archived } : tab));
@@ -795,6 +798,20 @@ function WorkspaceSession() {
     savePromise.current = operation;
     try { return await operation; } finally { if (savePromise.current === operation) savePromise.current = null; }
   }, [refresh]);
+
+  const saveCurrentTask = useLatestCallback(() => {
+    const current = workspaceStore.getState();
+    if (current.task && current.saveState !== "external") void save(current.task);
+  });
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key.toLowerCase() !== "s" || !(event.metaKey || event.ctrlKey) || event.altKey || event.shiftKey) return;
+      event.preventDefault();
+      saveCurrentTask();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [saveCurrentTask]);
 
   useEffect(() => {
     setCheckedIds(new Set());
@@ -880,8 +897,12 @@ function WorkspaceSession() {
 
   useEffect(() => {
     if (!task || saveState !== "dirty" || titleEditing || folderBusy) return;
-    const timer = window.setTimeout(() => void save(task), 650);
-    return () => window.clearTimeout(timer);
+    if (bodyUpdateTimer.current !== null) window.clearTimeout(bodyUpdateTimer.current);
+    bodyUpdateTimer.current = window.setTimeout(() => void save(task), lastEditAt.current ? Math.max(0, 650 - (Date.now() - lastEditAt.current)) : 650);
+    return () => {
+      if (bodyUpdateTimer.current !== null) window.clearTimeout(bodyUpdateTimer.current);
+      bodyUpdateTimer.current = null;
+    };
   }, [task, save, saveState, titleEditing, folderBusy]);
 
   useEffect(() => {
@@ -889,8 +910,12 @@ function WorkspaceSession() {
     const detect = async () => {
       try {
         const changed = await api.checkExternalChange(task.id, task.contentHash);
+        const latest = workspaceStore.getState();
+        if (latest.task?.id !== task.id || latest.task.contentHash !== task.contentHash) return;
         if (changed) {
-          if (saveState === "saved") {
+          if (latest.saveState === "saved") {
+            bodyDraft.current = null;
+            setBodyReplacementRevision((version) => version + 1);
             setTask(changed);
             await refresh();
           } else {
@@ -911,6 +936,7 @@ function WorkspaceSession() {
   }, [fileSignal, refresh, saveState, task?.contentHash, task?.id, folderBusy]);
 
   const editTask = (patch: Partial<Task>) => {
+    lastEditAt.current = Date.now();
     setTask((current) => current ? { ...current, ...patch } : current);
     if (patch.title !== undefined && task) {
       setOpenTabs((tabs) => tabs.map((tab) => tab.kind === "task" && tab.id === task.id ? { ...tab, title: patch.title! } : tab));
@@ -962,11 +988,20 @@ function WorkspaceSession() {
   const renameTask = () => {
     renameRequested.current = true;
   };
+  const flushTask = async () => {
+    if (savePromise.current && !await savePromise.current) return false;
+    const current = workspaceStore.getState();
+    if (!current.task || current.saveState === "saved") return true;
+    if (current.saveState === "external") return false;
+    if (!await save(current.task)) return false;
+    return workspaceStore.getState().saveState === "saved";
+  };
   const chooseTask = async (id: string) => {
     if (id === selectedId || folderBusyRef.current) return;
-    if (task && saveState === "dirty" && !await save(task)) return;
+    if (!await flushTask()) return;
     try {
       const next = await api.getTask(id);
+      if (!await flushTask()) return;
       setTask(next);
       setOpenTabs((tabs) => tabs.some((tab) => tab.kind === "task" && tab.id === next.id) ? tabs : [...tabs, { kind: "task", id: next.id, title: next.title, fileName: next.fileName, folderPath: next.folderPath, archived: next.archived }]);
       setSaveState("saved");
@@ -974,6 +1009,7 @@ function WorkspaceSession() {
   };
   const create = async () => {
     if (query.archived || folderBusyRef.current) return;
+    if (!await flushTask()) return;
     try {
       const created = await api.createTask(t("tasks.untitled"), query.folderPath || "");
       setTask(created);
@@ -1037,7 +1073,7 @@ function WorkspaceSession() {
   }, [activeTabKey, openTabs, workspaceOpen, workspacePath]);
   const closeTabs = async (closing: OpenTab[], preferred?: OpenTab) => {
     const closingKeys = new Set(closing.map(tabKey));
-    if (task && closingKeys.has(`task:${task.id}`) && saveState === "dirty") await save(task);
+    if (task && closingKeys.has(`task:${task.id}`) && !await flushTask()) return;
     const firstClosingIndex = openTabs.findIndex((tab) => closingKeys.has(tabKey(tab)));
     const remaining = openTabs.filter((tab) => !closingKeys.has(tabKey(tab)));
     setOpenTabs(remaining);
@@ -1084,7 +1120,7 @@ function WorkspaceSession() {
   };
 
   const switchWorkspace = async () => {
-    if (task && saveState === "dirty" && !await save(task)) return;
+    if (!await flushTask()) return;
     setTask(null);
     setOpenTabs([]);
     setWorkspaceOpen(false);
@@ -1162,19 +1198,26 @@ function WorkspaceSession() {
   const selectTask = useLatestCallback((summary: TaskSummary) => void chooseTask(summary.id));
   const quickEditTask = useLatestCallback((summary: TaskSummary, key: string, value: unknown) => void quickEdit(summary, key, value));
   const changeTaskProperty = useLatestCallback(editProperty);
-  const changeTaskBody = useLatestCallback((body: string) => {
+  const changeTaskBody = useLatestCallback((body: Text) => {
     if (!task) return;
-    const draft = { id: task.id, body };
-    bodyDraft.current = draft;
-    setSaveState("dirty");
+    bodyDraft.current = { id: task.id, body, version: ++bodyVersion.current };
+    lastEditAt.current = Date.now();
+    const state = workspaceStore.getState();
+    if (state.saveState !== "external" && state.saveState !== "saving") setSaveState("dirty");
     if (bodyUpdateTimer.current !== null) window.clearTimeout(bodyUpdateTimer.current);
     bodyUpdateTimer.current = window.setTimeout(() => {
       bodyUpdateTimer.current = null;
-      if (bodyDraft.current !== draft) return;
-      bodyDraft.current = null;
-      setTask((current) => current?.id === draft.id ? { ...current, body: draft.body } : current);
-    }, 100);
+      const latest = workspaceStore.getState();
+      if (latest.task?.id === task.id && latest.saveState === "dirty" && !titleEditing && !folderBusyRef.current) void save(latest.task);
+    }, 650);
   });
+  useEffect(() => {
+    if (bodyDraft.current?.id !== task?.id) { bodyDraft.current = null; lastEditAt.current = 0; }
+    return () => {
+      if (bodyUpdateTimer.current !== null) window.clearTimeout(bodyUpdateTimer.current);
+      bodyUpdateTimer.current = null;
+    };
+  }, [task?.id]);
   const taskListEmptyState = useMemo(() => (
     <div className="flex h-full flex-col items-center justify-center text-center text-muted [&>h2]:mt-3 [&>h2]:mb-[3px] [&>h2]:font-heading [&>h2]:text-base [&>h2]:text-foreground [&>p]:m-0 [&>p]:text-xs">
       <LayoutList />
@@ -1528,6 +1571,9 @@ function WorkspaceSession() {
                       <div className="min-h-0 min-w-0 flex-1 overflow-hidden">
                         <Suspense fallback={<div className="flex min-h-[370px] items-center justify-center gap-2 text-muted"><LoaderCircle className="animate-spin" />{t("editor.loading")}</div>}>
                           <MarkdownEditor
+                            key={task.id}
+                            documentId={task.id}
+                            replacementRevision={bodyReplacementRevision}
                             value={bodyDraft.current?.id === task.id ? bodyDraft.current.body : task.body}
                             sourceMode={sourceMode}
                             onChange={changeTaskBody}
@@ -1566,9 +1612,9 @@ function WorkspaceSession() {
           title={t("external.title", { title: task?.title ?? "" })}
           description={t("external.description")}
           closeLabel={t("common.close")}
-          footer={<><Button variant="outline" onClick={() => { setExternalTask(null); setSaveState("dirty"); }}>{t("external.keep")}</Button><Button onClick={() => { if (externalTask) setTask(externalTask); setExternalTask(null); setSaveState("saved"); }}>{t("external.reload")}</Button></>}
+          footer={<><Button variant="outline" onClick={() => { if (externalTask) setTask((current) => current ? { ...current, contentHash: externalTask.contentHash } : current); setExternalTask(null); setSaveState("dirty"); }}>{t("external.keep")}</Button><Button onClick={() => { if (externalTask) { bodyDraft.current = null; setBodyReplacementRevision((version) => version + 1); setTask(externalTask); } setExternalTask(null); setSaveState("saved"); }}>{t("external.reload")}</Button></>}
         >
-          {externalTask && task ? <div className="grid grid-cols-2 gap-2.5 [&_pre]:max-h-80 [&_pre]:overflow-auto [&_pre]:whitespace-pre-wrap [&_pre]:rounded-lg [&_pre]:border [&_pre]:border-line [&_pre]:bg-surface-soft [&_pre]:p-3 [&_pre]:text-xs"><div><strong>{t("external.editor")}</strong><pre>{task.body}</pre></div><div><strong>{t("external.disk")}</strong><pre>{externalTask.body}</pre></div></div> : null}
+          {externalTask && task ? <div className="grid grid-cols-2 gap-2.5 [&_pre]:max-h-80 [&_pre]:overflow-auto [&_pre]:whitespace-pre-wrap [&_pre]:rounded-lg [&_pre]:border [&_pre]:border-line [&_pre]:bg-surface-soft [&_pre]:p-3 [&_pre]:text-xs"><div><strong>{t("external.editor")}</strong><pre>{bodyDraft.current?.id === task.id ? bodyDraft.current.body.toString() : task.body}</pre></div><div><strong>{t("external.disk")}</strong><pre>{externalTask.body}</pre></div></div> : null}
         </Dialog>
       </main>
       </div>

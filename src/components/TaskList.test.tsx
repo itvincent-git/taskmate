@@ -62,6 +62,7 @@ describe("TaskList", () => {
     const options = virtualizerMock.options.mock.lastCall?.[0] as {
       overscan: number;
       paddingStart: number;
+      useAnimationFrameWithResizeObserver: boolean;
       getScrollElement(): Element | null;
       getItemKey(index: number): React.Key;
       estimateSize(): number;
@@ -71,12 +72,14 @@ describe("TaskList", () => {
 
     expect(options.overscan).toBe(6);
     expect(options.paddingStart).toBe(8);
+    expect(options.useAnimationFrameWithResizeObserver).toBe(true);
     expect(options.getItemKey(0)).toBe("task");
     expect(options.estimateSize()).toBe(84);
     expect(options.getScrollElement()).toBe(sizeContainer?.parentElement);
     expect(virtualizerMock.virtualizer.measureElement).toHaveBeenCalledWith(row);
     expect((sizeContainer as HTMLElement).style.height).toBe("130px");
     expect((row as HTMLElement).style.transform).toBe("translateY(0px)");
+    expect((row as HTMLElement).style.contain).toBe("layout style");
     expect(row).toHaveClass("pb-1");
     expect(sizeContainer?.parentElement).toHaveClass("overflow-x-hidden", "overflow-y-auto", "px-2", "pb-2");
   });

@@ -26,6 +26,68 @@ describe("Live Preview activation", () => {
     expect(rangeIsActive(4, 12, [{ from: 30, to: 30 }], true)).toBe(false);
   });
 
+  it("reuses the document index when moving within plain prose", () => {
+    const host = document.createElement("div");
+    document.body.append(host);
+    const view = new EditorView({ parent: host, state: EditorState.create({ doc: "ordinary paragraph\n\n- [ ] task", extensions: [markdown({ extensions: [GFM] }), livePreview] }) });
+    const serialize = vi.spyOn(view.state.doc, "toString");
+    view.dispatch({ selection: { anchor: 2 } });
+    const decorations = view.state.facet(EditorView.decorations)[0];
+    view.dispatch({ selection: { anchor: 3 } });
+    expect(view.state.facet(EditorView.decorations)[0]).toBe(decorations);
+    expect(serialize).not.toHaveBeenCalled();
+    view.destroy();
+    host.remove();
+  });
+
+  it("uses the current checkbox position before the deferred refresh", () => {
+    const host = document.createElement("div");
+    document.body.append(host);
+    const view = new EditorView({ parent: host, state: EditorState.create({ doc: "plain\n\n- [ ] task", extensions: [markdown({ extensions: [GFM] }), livePreview] }) });
+    view.dispatch({ changes: { from: 2, insert: " added" } });
+    host.querySelector<HTMLButtonElement>('[data-marker-kind="task"]')!.click();
+    expect(view.state.doc.toString()).toBe("pl addedain\n\n- [x] task");
+    view.destroy();
+    host.remove();
+  });
+
+  it("resolves footnote destinations after mapped edits", () => {
+    const host = document.createElement("div");
+    document.body.append(host);
+    const view = new EditorView({ parent: host, state: EditorState.create({ doc: "plain\n\nsee [^a]\n\n[^a]: note", extensions: [markdown(), livePreview] }) });
+    view.dispatch({ changes: { from: 2, insert: " added" } });
+    host.querySelector<HTMLButtonElement>('[data-preview-kind="footnote-reference"] button')!.click();
+    expect(view.state.selection.main.head).toBe(view.state.doc.toString().indexOf("[^a]:"));
+    view.destroy();
+    host.remove();
+  });
+
+  it("keeps unrelated preview DOM stable throughout composition", async () => {
+    const host = document.createElement("div");
+    document.body.append(host);
+    const source = "plain\n\n$$\nx^2\n$$";
+    const view = new EditorView({ parent: host, state: EditorState.create({ doc: source, extensions: [markdown(), livePreview] }) });
+    const math = host.querySelector('[data-preview-kind="math"]');
+    view.contentDOM.dispatchEvent(new CompositionEvent("compositionstart", { bubbles: true }));
+    view.dispatch({ changes: { from: 2, insert: "中文" }, selection: { anchor: 4 } });
+    expect(host.querySelector('[data-preview-kind="math"]')).toBe(math);
+    view.contentDOM.dispatchEvent(new CompositionEvent("compositionend", { bubbles: true }));
+    await vi.waitFor(() => expect(view.state.doc.toString()).toBe("pl中文ain\n\n$$\nx^2\n$$"));
+    view.destroy();
+    host.remove();
+  });
+
+  it("refreshes inactive paragraphs changed by replacement commands", async () => {
+    const host = document.createElement("div");
+    document.body.append(host);
+    const source = "active\n\nfirst line\nsecond line";
+    const view = new EditorView({ parent: host, state: EditorState.create({ doc: source, extensions: [markdown(), livePreview] }) });
+    view.dispatch({ changes: { from: source.indexOf("second") + 1, insert: "new" } });
+    await vi.waitFor(() => expect(host.querySelector('[data-preview-kind="paragraph"]')).toHaveTextContent("snewecond"));
+    view.destroy();
+    host.remove();
+  });
+
   it("hides inactive markers and reveals them when the cursor enters the syntax node", () => {
     const host = document.createElement("div");
     document.body.append(host);
@@ -439,7 +501,7 @@ describe("Live Preview activation", () => {
     expect(host.querySelector('[data-link-url="https://example.com"]')).toHaveTextContent("Guide");
     await vi.waitFor(() => expect(host.querySelector('[data-preview-kind="image"]'))
       .toHaveAttribute("src", "attachments/example.png"));
-    expect(host.querySelectorAll('.cm-line[data-preview-hidden="reference"]')).toHaveLength(4);
+    expect(host.querySelectorAll(".cm-line.hidden")).toHaveLength(0);
 
     view.dispatch({ selection: { anchor: source.indexOf("Documentation") } });
     expect(host.textContent).toContain("[docs]:");
@@ -480,7 +542,7 @@ describe("Live Preview activation", () => {
     expect(host.textContent).not.toContain("secret");
     expect(host.textContent).not.toContain("<!--");
     expect(host.textContent).toContain("after");
-    expect(host.querySelectorAll('[data-preview-hidden="comment"]')).toHaveLength(5);
+    expect(host.querySelectorAll(".cm-line.hidden")).toHaveLength(0);
     view.dispatch({ selection: { anchor: source.indexOf("secret") } });
     expect(host.textContent).toContain("<!--");
     expect(host.textContent).toContain("secret");
@@ -578,14 +640,14 @@ describe("Live Preview activation", () => {
     view.dispatch({ selection: { anchor: source.length } });
 
     const hiddenLines = host.querySelectorAll<HTMLElement>(".cm-line.hidden");
-    expect(hiddenLines.length).toBeGreaterThan(0);
-    hiddenLines.forEach((line) => expect(line).toHaveStyle({ display: "none" }));
+    expect(hiddenLines).toHaveLength(0);
+    expect(host.querySelectorAll(".cm-line")).toHaveLength(2);
     expect(host.querySelector('[data-preview-kind="paragraph"]')).not.toBeNull();
     view.destroy();
     host.remove();
   });
 
-  it("only renders standalone TOC directives outside code and includes distant headings", () => {
+  it("only renders standalone TOC directives outside code and includes distant headings", async () => {
     const host = document.createElement("div");
     document.body.append(host);
     const source = "plain\n\n[TOC]\n\n`[TOC]`\n\n```md\n[TOC]\n```\n\nAn inline [TOC] marker\n\n"
@@ -595,7 +657,7 @@ describe("Live Preview activation", () => {
       state: EditorState.create({ doc: source, extensions: [markdown(), livePreview] }),
     });
     expect(host.querySelectorAll('[data-preview-kind="toc"]')).toHaveLength(1);
-    expect(host.querySelector('[data-toc-target="distant"]')).toHaveTextContent("Distant");
+    await vi.waitFor(() => expect(host.querySelector('[data-toc-target="distant"]')).toHaveTextContent("Distant"));
     expect(host.textContent).toContain("[TOC]");
     view.destroy();
     host.remove();
@@ -810,7 +872,7 @@ describe("Live Preview activation", () => {
     expect(tableRows[1]?.querySelectorAll('[role="cell"]')).toHaveLength(2);
     expect(tableRows[0]?.textContent).toContain("Item");
     expect(host.textContent).not.toContain("| --- |");
-    expect(getComputedStyle(host.querySelector<HTMLElement>(".cm-line.hidden")!).display).toBe("none");
+    expect(host.querySelector(".cm-line.hidden")).toBeNull();
 
     view.dispatch({ selection: { anchor: source.indexOf("Item") } });
     expect(host.querySelector('[data-preview-kind="table-row"]')).toBeNull();

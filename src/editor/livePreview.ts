@@ -1,6 +1,6 @@
-import { ensureSyntaxTree, syntaxTree } from "@codemirror/language";
+import { ensureSyntaxTree, forceParsing, syntaxTree } from "@codemirror/language";
 import type { SyntaxNode } from "@lezer/common";
-import { RangeSetBuilder, StateEffect, type EditorState } from "@codemirror/state";
+import { StateField, StateEffect, type EditorState, type Transaction } from "@codemirror/state";
 import { Decoration, type DecorationSet, EditorView, ViewPlugin, type ViewUpdate, WidgetType } from "@codemirror/view";
 import katex from "katex";
 import "katex/dist/katex.min.css";
@@ -271,6 +271,8 @@ class ParagraphWidget extends WidgetType {
   }
 }
 
+const mathCache = new Map<string, string>();
+
 class MathWidget extends WidgetType {
   constructor(readonly source: string, readonly block: boolean) {
     super();
@@ -284,11 +286,14 @@ class MathWidget extends WidgetType {
       ? "cm-math-preview cm-math-preview-block my-2 block overflow-x-auto py-1 text-center"
       : "cm-math-preview inline-block align-middle";
     wrapper.dataset.previewKind = "math";
-    katex.render(this.source, wrapper, {
-      displayMode: this.block,
-      throwOnError: false,
-      trust: false,
-    });
+    const key = `${this.block}:${this.source}`;
+    let html = mathCache.get(key);
+    if (html === undefined) {
+      html = katex.renderToString(this.source, { displayMode: this.block, throwOnError: false, trust: false });
+      if (mathCache.size >= 64) mathCache.delete(mathCache.keys().next().value!);
+      mathCache.set(key, html);
+    }
+    wrapper.innerHTML = html;
     return wrapper;
   }
   ignoreEvent() {
@@ -299,6 +304,7 @@ class MathWidget extends WidgetType {
 let mermaidId = 0;
 
 class MermaidWidget extends WidgetType {
+  private dom?: HTMLElement;
   constructor(readonly source: string) {
     super();
   }
@@ -306,7 +312,9 @@ class MermaidWidget extends WidgetType {
     return this.source === other.source;
   }
   toDOM(view: EditorView) {
+    if (this.dom && !this.dom.isConnected) return this.dom;
     const wrapper = document.createElement("span");
+    this.dom = wrapper;
     wrapper.className = "cm-mermaid-preview my-3 block overflow-x-auto rounded-lg border border-line bg-surface-soft p-4 text-center";
     wrapper.dataset.previewKind = "mermaid";
     wrapper.setAttribute("aria-label", "Mermaid diagram");
@@ -448,8 +456,8 @@ function nodeIsActive(state: EditorState, node: SyntaxNode, composing: boolean) 
   return rangeIsActive(node.from, node.to, state.selection.ranges, composing);
 }
 
-export function documentHeadings(state: EditorState) {
-  const tree = ensureSyntaxTree(state, state.doc.length, 100) ?? syntaxTree(state);
+export function documentHeadings(state: EditorState, complete = false) {
+  const tree = complete ? ensureSyntaxTree(state, state.doc.length, 100) ?? syntaxTree(state) : syntaxTree(state);
   const headings: Array<{ from: number; to: number; level: number; text: string; id: string }> = [];
   const used = new Set<string>();
   const references = linkReferences(state);
@@ -479,7 +487,7 @@ export function navigateToFragment(view: EditorView, url: string) {
   } catch {
     return true;
   }
-  const target = id ? documentHeadings(view.state).find((heading) => heading.id === id)?.from : 0;
+  const target = id ? documentHeadings(view.state, true).find((heading) => heading.id === id)?.from : 0;
   if (target !== undefined) {
     view.dispatch({ selection: { anchor: target }, effects: EditorView.scrollIntoView(target, { y: "start" }) });
     view.focus();
@@ -608,11 +616,11 @@ class FootnoteDefinitionWidget extends WidgetType {
 }
 
 class FootnoteReferenceWidget extends WidgetType {
-  constructor(readonly label: string, readonly number: number, readonly target: number) {
+  constructor(readonly label: string, readonly number: number) {
     super();
   }
   eq(other: FootnoteReferenceWidget) {
-    return this.label === other.label && this.number === other.number && this.target === other.target;
+    return this.label === other.label && this.number === other.number;
   }
   toDOM(view: EditorView) {
     const reference = document.createElement("sup");
@@ -625,7 +633,10 @@ class FootnoteReferenceWidget extends WidgetType {
     button.textContent = String(this.number);
     button.addEventListener("mousedown", (event) => event.preventDefault());
     button.addEventListener("click", () => {
-      view.dispatch({ selection: { anchor: this.target }, effects: EditorView.scrollIntoView(this.target, { y: "center" }) });
+      const target = extensionPreviewRanges(view.state, richPreviewRanges(view.state))
+        .find((range) => range.widget instanceof FootnoteDefinitionWidget && range.widget.label === this.label)?.from;
+      if (target === undefined) return;
+      view.dispatch({ selection: { anchor: target }, effects: EditorView.scrollIntoView(target, { y: "center" }) });
       view.focus();
     });
     reference.append(button);
@@ -719,7 +730,7 @@ class MarkerWidget extends WidgetType {
       checkbox.addEventListener("mousedown", (event) => event.preventDefault());
       checkbox.addEventListener("click", () => {
         view.dispatch({
-          changes: { from: this.from, to: this.from + this.text.length, insert: checked ? "[ ]" : "[x]" },
+          changes: { from: view.posAtDOM(checkbox), to: view.posAtDOM(checkbox) + this.text.length, insert: checked ? "[ ]" : "[x]" },
           effects: refreshLivePreview.of(null),
         });
       });
@@ -894,20 +905,9 @@ function inlineHtmlRange(state: EditorState, node: SyntaxNode) {
 }
 
 function htmlBlockDecorations(state: EditorState, node: SyntaxNode) {
-  const firstLine = state.doc.lineAt(node.from);
-  const decorations: Array<{ from: number; to: number; decoration: Decoration }> = [{
-    from: node.from,
-    to: Math.min(firstLine.to, node.to),
-    decoration: Decoration.replace({ widget: new HtmlWidget(state.sliceDoc(node.from, node.to), true) }),
-  }];
-  for (let number = firstLine.number + 1; number <= state.doc.lineAt(node.to).number; number += 1) {
-    const line = state.doc.line(number);
-    decorations.push({ from: line.from, to: line.from, decoration: Decoration.line({ class: "hidden", attributes: { style: "display: none" } }) });
-    if (line.to > line.from) {
-      decorations.push({ from: line.from, to: line.to, decoration: Decoration.replace({}) });
-    }
-  }
-  return decorations;
+  return [{ from: node.from, to: node.to, decoration: Decoration.replace({
+    widget: new HtmlWidget(state.sliceDoc(node.from, node.to), true), block: true,
+  }) }];
 }
 
 function codeBlockLineDecorations(state: EditorState, node: SyntaxNode) {
@@ -939,6 +939,7 @@ type RichPreviewRange = {
   source: string;
   kind: "math" | "mermaid";
   block: boolean;
+  widget?: WidgetType;
 };
 
 function overlaps(from: number, to: number, range: { from: number; to: number }) {
@@ -1065,7 +1066,7 @@ function htmlContainerPreviewRanges(state: EditorState, tree: ReturnType<typeof 
 function extensionPreviewRanges(state: EditorState, richRanges: readonly RichPreviewRange[]) {
   const blockExcluded: Array<{ from: number; to: number }> = [];
   const inlineExcluded: Array<{ from: number; to: number }> = [...richRanges];
-  const tree = ensureSyntaxTree(state, state.doc.length, 100) ?? syntaxTree(state);
+  const tree = syntaxTree(state);
   const blockRanges = htmlContainerPreviewRanges(state, tree);
   tree.iterate({
     enter(node) {
@@ -1095,7 +1096,7 @@ function extensionPreviewRanges(state: EditorState, richRanges: readonly RichPre
   const blockUnavailable = (from: number, to: number) =>
     blockExcluded.some((range) => overlaps(from, to, range))
     || blockRanges.some((range) => overlaps(from, to, range));
-  const footnotes = new Map<string, { number: number; from: number }>();
+  const footnotes = new Map<string, { number: number }>();
 
   for (let lineNumber = 1; lineNumber <= state.doc.lines; lineNumber += 1) {
     const line = state.doc.line(lineNumber);
@@ -1124,7 +1125,7 @@ function extensionPreviewRanges(state: EditorState, richRanges: readonly RichPre
       break;
     }
     const label = match[1].toLowerCase();
-    const entry = footnotes.get(label) ?? { number: footnotes.size + 1, from: line.from };
+    const entry = footnotes.get(label) ?? { number: footnotes.size + 1 };
     footnotes.set(label, entry);
     blockRanges.push({
       from: line.from,
@@ -1224,7 +1225,7 @@ function extensionPreviewRanges(state: EditorState, richRanges: readonly RichPre
       from,
       to,
       block: false,
-      widget: new FootnoteReferenceWidget(match[1].toLowerCase(), footnote.number, footnote.from),
+      widget: new FootnoteReferenceWidget(match[1].toLowerCase(), footnote.number),
     });
   }
   for (const match of text.matchAll(/:([a-z0-9_+-]+):/gi)) {
@@ -1238,74 +1239,52 @@ function extensionPreviewRanges(state: EditorState, richRanges: readonly RichPre
   return ranges.sort((left, right) => left.from - right.from || left.to - right.to);
 }
 
-function extensionPreviewDecorations(state: EditorState, range: ExtensionPreviewRange) {
-  if (!range.block) {
-    return [{ from: range.from, to: range.to, decoration: Decoration.replace({ widget: range.widget }) }];
-  }
-  const firstLine = state.doc.lineAt(range.from);
-  const lastLine = state.doc.lineAt(range.to);
-  const decorations: Array<{ from: number; to: number; decoration: Decoration }> = [{
-    from: range.from,
-    to: Math.min(firstLine.to, range.to),
-    decoration: Decoration.replace({ widget: range.widget }),
-  }];
-  for (let number = firstLine.number + 1; number <= lastLine.number; number += 1) {
-    const line = state.doc.line(number);
-    decorations.push({ from: line.from, to: line.from, decoration: Decoration.line({ class: "hidden", attributes: { style: "display: none" } }) });
-    if (line.to > line.from) decorations.push({ from: line.from, to: line.to, decoration: Decoration.replace({}) });
-  }
-  return decorations;
+function extensionPreviewDecorations(_state: EditorState, range: ExtensionPreviewRange) {
+  return [{ from: range.from, to: range.to, decoration: Decoration.replace({ widget: range.widget, block: range.block }) }];
 }
 
-function richPreviewDecorations(state: EditorState, range: RichPreviewRange) {
-  if (!range.block) {
-    return [{
-      from: range.from,
-      to: range.to,
-      decoration: Decoration.replace({ widget: new MathWidget(range.source, false) }),
-    }];
-  }
-  const firstLine = state.doc.lineAt(range.from);
-  const lastLine = state.doc.lineAt(range.to);
-  const widget = range.kind === "mermaid"
+function richPreviewDecorations(_state: EditorState, range: RichPreviewRange) {
+  const widget = range.widget ??= range.kind === "mermaid"
     ? new MermaidWidget(range.source)
-    : new MathWidget(range.source, true);
-  const decorations: Array<{ from: number; to: number; decoration: Decoration }> = [{
-    from: range.from,
-    to: Math.min(firstLine.to, range.to),
-    decoration: Decoration.replace({ widget }),
-  }];
-  for (let number = firstLine.number + 1; number <= lastLine.number; number += 1) {
-    const line = state.doc.line(number);
-    decorations.push({ from: line.from, to: line.from, decoration: Decoration.line({ class: "hidden", attributes: { style: "display: none" } }) });
-    if (line.to > line.from) decorations.push({ from: line.from, to: line.to, decoration: Decoration.replace({}) });
-  }
-  return decorations;
+    : new MathWidget(range.source, range.block);
+  return [{ from: range.from, to: range.to, decoration: Decoration.replace({ widget, block: range.block }) }];
 }
 
-function buildDecorations(view: EditorView): DecorationSet {
-  const builder = new RangeSetBuilder<Decoration>();
+function previewIndex(state: EditorState) {
+  const rich = richPreviewRanges(state);
+  const plain: Array<{ from: number; to: number }> = [];
+  syntaxTree(state).iterate({ enter(node) {
+    if (node.name === "Paragraph" && /^[\p{L}\p{N} \t\n.,!?，。！？]*$/u.test(state.sliceDoc(node.from, node.to))) {
+      plain.push({ from: node.from, to: node.to });
+      return false;
+    }
+  } });
+  return {
+    plain,
+    tree: syntaxTree(state),
+    rich,
+    extensions: extensionPreviewRanges(state, rich),
+    references: linkReferences(state),
+    headings: new Map(documentHeadings(state).map((heading) => [heading.from, heading])),
+  };
+}
+type PreviewIndex = ReturnType<typeof previewIndex>;
+
+function buildDecorations(state: EditorState, index: PreviewIndex, area = { from: 0, to: state.doc.length }): DecorationSet {
   const ranges: Array<{ from: number; to: number; decoration: Decoration }> = [];
-  const richRanges = richPreviewRanges(view.state);
-  const extensionRanges = extensionPreviewRanges(view.state, richRanges);
-  const references = linkReferences(view.state);
-  const headings = new Map(documentHeadings(view.state).map((heading) => [heading.from, heading]));
-  const startsInViewport = (range: { from: number }) =>
-    view.visibleRanges.some((viewport) => range.from >= viewport.from && range.from <= viewport.to);
+  const { rich: richRanges, extensions: extensionRanges, references, headings } = index;
   const inactiveRichRanges = richRanges.filter((range) =>
-    !rangeIsActive(range.from, range.to, view.state.selection.ranges, view.composing)
-    && (!range.block || startsInViewport(range)));
+    !rangeIsActive(range.from, range.to, state.selection.ranges, false));
   const inactiveExtensionRanges = extensionRanges.filter((range) =>
-    !rangeIsActive(range.from, range.to, view.state.selection.ranges, view.composing)
-    && (!range.block || startsInViewport(range)));
+    !rangeIsActive(range.from, range.to, state.selection.ranges, false));
   const activeHtmlContainerRanges = extensionRanges.filter((range) =>
     range.widget instanceof HtmlContainerWidget
-    && rangeIsActive(range.from, range.to, view.state.selection.ranges, view.composing));
-  inactiveRichRanges.forEach((range) => ranges.push(...richPreviewDecorations(view.state, range)));
-  inactiveExtensionRanges.forEach((range) => ranges.push(...extensionPreviewDecorations(view.state, range)));
-  for (const viewport of view.visibleRanges) {
+    && rangeIsActive(range.from, range.to, state.selection.ranges, false));
+  inactiveRichRanges.forEach((range) => ranges.push(...richPreviewDecorations(state, range)));
+  inactiveExtensionRanges.forEach((range) => ranges.push(...extensionPreviewDecorations(state, range)));
+  for (const viewport of [area]) {
     let htmlPreviewTo = -1;
-    syntaxTree(view.state).iterate({
+    syntaxTree(state).iterate({
       from: viewport.from,
       to: viewport.to,
       enter(node) {
@@ -1315,8 +1294,8 @@ function buildDecorations(view: EditorView): DecorationSet {
         const activeNode = node.name === "Escape" || node.node.parent?.name === "Document"
           ? node.node
           : node.node.parent ?? node.node;
-        const active = nodeIsActive(view.state, activeNode, view.composing);
-        if (node.name === "Paragraph" && /^\s*\[TOC\]\s*$/i.test(view.state.sliceDoc(node.from, node.to))) {
+        const active = nodeIsActive(state, activeNode, false);
+        if (node.name === "Paragraph" && /^\s*\[TOC\]\s*$/i.test(state.sliceDoc(node.from, node.to))) {
           if (!active) {
             ranges.push({
               from: node.from,
@@ -1330,8 +1309,8 @@ function buildDecorations(view: EditorView): DecorationSet {
           const heading = headings.get(node.from);
           if (heading) {
             ranges.push({
-              from: view.state.doc.lineAt(node.from).from,
-              to: view.state.doc.lineAt(node.from).from,
+              from: state.doc.lineAt(node.from).from,
+              to: state.doc.lineAt(node.from).from,
               decoration: Decoration.line({ attributes: { id: heading.id, "data-heading-id": heading.id } }),
             });
           }
@@ -1339,71 +1318,45 @@ function buildDecorations(view: EditorView): DecorationSet {
             const underline = node.node.getChild("HeaderMark");
             if (underline) {
               ranges.push({
-                from: view.state.doc.lineAt(underline.from).from,
-                to: view.state.doc.lineAt(underline.from).from,
-                decoration: Decoration.line({ class: "hidden", attributes: { style: "display: none" } }),
+                from: state.doc.lineAt(underline.from).from - 1,
+                to: underline.to,
+                decoration: Decoration.replace({}),
               });
             }
           }
         }
         if (node.name === "Comment" || node.name === "CommentBlock") {
-          if (!nodeIsActive(view.state, node.node, view.composing)) {
-            const firstLine = view.state.doc.lineAt(node.from);
-            const lastLine = view.state.doc.lineAt(node.to);
-            for (let number = firstLine.number; number <= lastLine.number; number += 1) {
-              const line = view.state.doc.line(number);
-              const from = Math.max(line.from, node.from);
-              const to = Math.min(line.to, node.to);
-              if (from === line.from && to === line.to) {
-                ranges.push({
-                  from: line.from,
-                  to: line.from,
-                  decoration: Decoration.line({ class: "hidden", attributes: { "data-preview-hidden": "comment", style: "display: none" } }),
-                });
-              }
-              if (to > from) ranges.push({ from, to, decoration: Decoration.replace({}) });
-            }
+          if (!nodeIsActive(state, node.node, false)) {
+            ranges.push({ from: node.from, to: node.to, decoration: Decoration.replace({ block: node.name === "CommentBlock" }) });
           }
           return false;
         }
         if (node.name === "LinkReference") {
           if (!active) {
-            const firstLine = view.state.doc.lineAt(node.from);
-            const lastLine = view.state.doc.lineAt(node.to);
-            for (let number = firstLine.number; number <= lastLine.number; number += 1) {
-              const line = view.state.doc.line(number);
-              ranges.push({
-                from: line.from,
-                to: line.from,
-                decoration: Decoration.line({ class: "hidden", attributes: { "data-preview-hidden": "reference", style: "display: none" } }),
-              });
-              if (line.to > line.from) {
-                ranges.push({ from: line.from, to: line.to, decoration: Decoration.replace({}) });
-              }
-            }
+            ranges.push({ from: node.from, to: node.to, decoration: Decoration.replace({ block: true }) });
           }
           return false;
         }
         if (node.name === "FencedCode") {
-          ranges.push(...codeBlockLineDecorations(view.state, node.node));
+          ranges.push(...codeBlockLineDecorations(state, node.node));
         }
         if (!active && node.name === "HTMLBlock") {
-          ranges.push(...htmlBlockDecorations(view.state, node.node));
+          ranges.push(...htmlBlockDecorations(state, node.node));
           return false;
         }
         if (node.name === "HTMLTag" && node.from >= htmlPreviewTo) {
-          const range = inlineHtmlRange(view.state, node.node);
+          const range = inlineHtmlRange(state, node.node);
           if (range) {
             htmlPreviewTo = range.to;
-            if (!rangeIsActive(range.from, range.to, view.state.selection.ranges, view.composing)) {
-              const firstLine = view.state.doc.lineAt(range.from);
-              const lastLine = view.state.doc.lineAt(range.to);
+            if (!rangeIsActive(range.from, range.to, state.selection.ranges, false)) {
+              const firstLine = state.doc.lineAt(range.from);
+              const lastLine = state.doc.lineAt(range.to);
               if (firstLine.number !== lastLine.number) {
-                ranges.push(...htmlBlockDecorations(view.state, node.node));
+                ranges.push(...htmlBlockDecorations(state, node.node));
               } else {
                 ranges.push({
                   ...range,
-                  decoration: Decoration.replace({ widget: new HtmlWidget(view.state.sliceDoc(range.from, range.to), false) }),
+                  decoration: Decoration.replace({ widget: new HtmlWidget(state.sliceDoc(range.from, range.to), false) }),
                 });
               }
             }
@@ -1411,24 +1364,15 @@ function buildDecorations(view: EditorView): DecorationSet {
           return false;
         }
         if (!active && node.name === "Table") {
-          const table = tableDecorations(view.state, node.node, references);
+          const table = tableDecorations(state, node.node, references);
           ranges.push(...table.rows);
           if (table.separator) {
-            ranges.push({
-              from: table.separator.from,
-              to: table.separator.from,
-              decoration: Decoration.line({ class: "hidden", attributes: { style: "display: none" } }),
-            });
-            ranges.push({
-              from: table.separator.from,
-              to: table.separator.to,
-              decoration: Decoration.replace({}),
-            });
+            ranges.push({ from: table.separator.from - 1, to: table.separator.to, decoration: Decoration.replace({}) });
           }
           return false;
         }
         if (!active && node.name === "Image") {
-          const destination = linkDestination(view.state, node.node, references);
+          const destination = linkDestination(state, node.node, references);
           if (destination) {
             const source = normalizedLinkDestination(destination);
             ranges.push({
@@ -1437,8 +1381,8 @@ function buildDecorations(view: EditorView): DecorationSet {
               decoration: Decoration.replace({
                 widget: new ImageWidget(
                   source,
-                  imageAlt(view.state, node.node),
-                  linkTitle(view.state, node.node, references),
+                  imageAlt(state, node.node),
+                  linkTitle(state, node.node, references),
                 ),
               }),
             });
@@ -1454,18 +1398,18 @@ function buildDecorations(view: EditorView): DecorationSet {
         const style = isLinkTarget ? undefined : styledNodes[node.name];
         if (style) {
           const linkUrl = node.name === "Link"
-            ? linkDestination(view.state, node.node, references)
+            ? linkDestination(state, node.node, references)
             : node.name === "URL"
               ? node.node
               : null;
-          const title = node.name === "Link" ? linkTitle(view.state, node.node, references) : undefined;
+          const title = node.name === "Link" ? linkTitle(state, node.node, references) : undefined;
           ranges.push({
             from: node.from,
             to: node.to,
             decoration: Decoration.mark({
               class: style,
               attributes: linkUrl ? {
-                "data-link-url": typeof linkUrl === "string" ? linkUrl : view.state.sliceDoc(linkUrl.from, linkUrl.to),
+                "data-link-url": typeof linkUrl === "string" ? linkUrl : state.sliceDoc(linkUrl.from, linkUrl.to),
                 ...(title ? { title } : {}),
               } : undefined,
             }),
@@ -1477,7 +1421,7 @@ function buildDecorations(view: EditorView): DecorationSet {
             ranges.push({ from: node.from, to: taskMarker.from, decoration: Decoration.replace({}) });
             return;
           }
-          const marker = view.state.sliceDoc(node.from, node.to);
+          const marker = state.sliceDoc(node.from, node.to);
           const kind = /^\d/.test(marker) ? "ordered" : "bullet";
           ranges.push({ from: node.from, to: node.to, decoration: Decoration.replace({ widget: new MarkerWidget(kind, marker) }) });
         } else if (!active && node.name === "TaskMarker") {
@@ -1485,7 +1429,7 @@ function buildDecorations(view: EditorView): DecorationSet {
             from: node.from,
             to: node.to,
             decoration: Decoration.replace({
-              widget: new MarkerWidget("task", view.state.sliceDoc(node.from, node.to), node.from),
+              widget: new MarkerWidget("task", state.sliceDoc(node.from, node.to), node.from),
             }),
           });
         } else if (!active && node.name === "QuoteMark") {
@@ -1501,9 +1445,9 @@ function buildDecorations(view: EditorView): DecorationSet {
           if (
             node.name === "HeaderMark" &&
             node.node.parent &&
-            /^[ \t]*$/.test(view.state.sliceDoc(node.node.parent.from, node.from))
+            /^[ \t]*$/.test(state.sliceDoc(node.node.parent.from, node.from))
           ) {
-            while (/[ \t]/.test(view.state.sliceDoc(to, to + 1))) to += 1;
+            while (/[ \t]/.test(state.sliceDoc(to, to + 1))) to += 1;
           }
           ranges.push({
             from: node.from,
@@ -1514,50 +1458,164 @@ function buildDecorations(view: EditorView): DecorationSet {
       },
     });
   }
-  ranges
-    .sort((left, right) => left.from - right.from || left.to - right.to)
-    .forEach(({ from, to, decoration }) => builder.add(from, to, decoration));
-  return builder.finish();
+  return Decoration.set(ranges.filter((range) => range.from >= area.from && range.to <= area.to)
+    .map(({ from, to, decoration }) => decoration.range(from, to)), true);
 }
 
-export const livePreview = ViewPlugin.fromClass(
-  class {
-    decorations: DecorationSet;
-    refreshTimer: number | null = null;
+// Plain prose cannot change reference/footnote/heading dependencies. Map the
+// existing index and only replace the edited paragraph's cached source.
+function mapPlainIndex(index: PreviewIndex, transaction: Transaction): PreviewIndex | null {
+  const touched = new Set<{ from: number; to: number }>();
+  let plain = true;
+  transaction.changes.iterChanges((from, to, _newFrom, _newTo, inserted) => {
+    const block = index.plain.find((range) => from > range.from && to <= range.to);
+    if (!block || !rangeIsActive(block.from, block.to, transaction.startState.selection.ranges)
+      || !rangeIsActive(transaction.changes.mapPos(block.from, -1), transaction.changes.mapPos(block.to, 1), transaction.state.selection.ranges)
+      || !/^[\p{L}\p{N} \t.,!?，。！？]*$/u.test(inserted.toString())
+      || transaction.startState.sliceDoc(from, to).includes("\n")) plain = false;
+    else touched.add(block);
+  });
+  if (!plain) return null;
+  const map = <T extends { from: number; to: number }>(range: T): T => ({
+    ...range, from: transaction.changes.mapPos(range.from, -1), to: transaction.changes.mapPos(range.to, 1),
+  });
+  return {
+    ...index,
+    tree: syntaxTree(transaction.state),
+    plain: index.plain.map(map),
+    rich: index.rich.map(map),
+    headings: new Map([...index.headings.values()].map((heading) => { const mapped = map(heading); return [mapped.from, mapped]; })),
+    extensions: index.extensions.map((range) => {
+      const mapped = map(range);
+      if (range.widget instanceof ParagraphWidget && [...touched].some((block) => overlaps(block.from, block.to, range))) {
+        mapped.widget = new ParagraphWidget(transaction.state.sliceDoc(mapped.from, mapped.to), range.widget.references);
+      }
+      return mapped;
+    }),
+  };
+}
 
-    constructor(view: EditorView) {
-      this.decorations = buildDecorations(view);
-    }
-
-    update(update: ViewUpdate) {
-      const refreshRequested = update.transactions.some((transaction) =>
-        transaction.effects.some((effect) => effect.is(refreshLivePreview)));
-      if (update.docChanged) {
-        if (refreshRequested) {
-          this.decorations = buildDecorations(update.view);
-          return;
+// Layout-changing replacements must be direct decorations: viewport-dependent
+// replacements feed their own height changes back into viewport computation.
+const composingPreview = StateEffect.define<boolean>();
+function activeKey(state: EditorState, index: PreviewIndex) {
+  const keys: string[] = [];
+  for (const selection of state.selection.ranges) {
+    for (const position of [selection.from, selection.to]) {
+      for (const bias of [-1, 1] as const) {
+        let node: SyntaxNode | null = syntaxTree(state).resolveInner(position, bias);
+        while (node) {
+          keys.push(`${node.name}:${node.from}:${node.to}`);
+          node = node.parent;
         }
-        this.decorations = this.decorations.map(update.changes);
-        if (this.refreshTimer !== null) window.clearTimeout(this.refreshTimer);
-        this.refreshTimer = window.setTimeout(() => {
-          this.refreshTimer = null;
-          update.view.dispatch({ effects: refreshLivePreview.of(null) });
-        }, previewRefreshDelay);
-        return;
-      }
-      if (
-        refreshRequested ||
-        update.selectionSet ||
-        update.viewportChanged ||
-        update.transactions.some((transaction) => transaction.reconfigured)
-      ) {
-        this.decorations = buildDecorations(update.view);
       }
     }
+  }
+  for (const range of [...index.rich, ...index.extensions]) {
+    if (rangeIsActive(range.from, range.to, state.selection.ranges)) keys.push(`${range.from}:${range.to}`);
+  }
+  return keys.join("|");
+}
 
+function selectionAreas(state: EditorState, index: PreviewIndex) {
+  const areas: Array<{ from: number; to: number }> = [];
+  for (const selection of state.selection.ranges) {
+    syntaxTree(state).iterate({ from: selection.from, to: selection.to, enter(node) {
+      if (node.name === "Document") return;
+      areas.push({ from: node.from, to: node.to });
+      return false;
+    } });
+  }
+  for (const range of [...index.rich, ...index.extensions]) {
+    if (rangeIsActive(range.from, range.to, state.selection.ranges)) areas.push({ from: range.from, to: range.to });
+  }
+  return areas;
+}
+
+function updateSelectionDecorations(value: DecorationSet, transaction: Transaction, index: PreviewIndex) {
+  const areas = [...selectionAreas(transaction.startState, index), ...selectionAreas(transaction.state, index)]
+    .sort((left, right) => left.from - right.from);
+  const merged: typeof areas = [];
+  for (const area of areas) {
+    const previous = merged.at(-1);
+    if (previous && area.from <= previous.to) previous.to = Math.max(previous.to, area.to);
+    else merged.push({ ...area });
+  }
+  const add = merged.flatMap((area) => {
+    const ranges = [];
+    for (let cursor = buildDecorations(transaction.state, index, area).iter(); cursor.value; cursor.next()) {
+      ranges.push(cursor.value.range(cursor.from, cursor.to));
+    }
+    return ranges;
+  });
+  return value.update({
+    filter: (from, to) => !merged.some((area) => from >= area.from && to <= area.to),
+    add, sort: true,
+  });
+}
+
+const previewState = StateField.define<{
+  decorations: DecorationSet;
+  index: PreviewIndex;
+  active: string;
+  composing: boolean;
+  pending: boolean;
+}>({
+  create(state) {
+    const index = previewIndex(state);
+    return { decorations: buildDecorations(state, index), index, active: activeKey(state, index), composing: false, pending: false };
+  },
+  update(value, transaction) {
+    const composition = transaction.effects.find((effect) => effect.is(composingPreview));
+    const composing = composition ? composition.value as boolean : value.composing;
+    const refresh = transaction.effects.some((effect) => effect.is(refreshLivePreview));
+    if ((transaction.docChanged && !refresh) || composing) {
+      const mapped = transaction.docChanged && !value.pending ? mapPlainIndex(value.index, transaction) : null;
+      const index = mapped ?? value.index;
+      return { ...value, index, composing, pending: value.pending || (transaction.docChanged && !mapped),
+        active: mapped ? activeKey(transaction.state, index) : value.active,
+        decorations: value.decorations.map(transaction.changes) };
+    }
+    if (!refresh && !transaction.selection && !composition) return value;
+    const index = value.pending || transaction.docChanged || value.index.tree !== syntaxTree(transaction.state) ? previewIndex(transaction.state) : value.index;
+    const active = activeKey(transaction.state, index);
+    if (value.pending || index !== value.index || active !== value.active || composition) {
+      const decorations = !value.pending && index === value.index && !transaction.docChanged && !composition
+        ? updateSelectionDecorations(value.decorations, transaction, index)
+        : buildDecorations(transaction.state, index);
+      return { decorations, index, active, composing, pending: false };
+    }
+    return value;
+  },
+  provide: (field) => EditorView.decorations.from(field, (value) => value.decorations),
+});
+
+export const livePreview = [previewState, ViewPlugin.fromClass(
+  class {
+    refreshTimer: number | null = null;
+    constructor(view: EditorView) { this.schedule(view); }
+    schedule(view: EditorView) {
+      if (this.refreshTimer !== null) window.clearTimeout(this.refreshTimer);
+      this.refreshTimer = window.setTimeout(() => {
+        this.refreshTimer = null;
+        if (view.composing) return;
+        const complete = forceParsing(view, view.state.doc.length, 10);
+        view.dispatch({ effects: refreshLivePreview.of(null) });
+        if (!complete) this.schedule(view);
+      }, previewRefreshDelay);
+    }
+    update(update: ViewUpdate) {
+      if (!update.docChanged && syntaxTree(update.startState) === syntaxTree(update.state)) return;
+      this.schedule(update.view);
+    }
     destroy() {
       if (this.refreshTimer !== null) window.clearTimeout(this.refreshTimer);
     }
   },
-  { decorations: (plugin) => plugin.decorations },
-);
+), EditorView.domEventHandlers({
+  compositionstart(_event, view) { view.dispatch({ effects: composingPreview.of(true) }); },
+  compositionend(_event, view) {
+    // Let CodeMirror ingest the final composition mutation before refreshing.
+    requestAnimationFrame(() => { if (view.dom.isConnected) view.dispatch({ effects: [composingPreview.of(false), refreshLivePreview.of(null)] }); });
+  },
+})];

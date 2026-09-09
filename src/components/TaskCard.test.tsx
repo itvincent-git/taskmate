@@ -43,16 +43,29 @@ describe("TaskCard quick editing", () => {
     const onQuickEdit = vi.fn();
     render(<TaskCard task={task} selected={false} definitions={[status]} onSelect={onSelect} onQuickEdit={onQuickEdit} />);
     await user.hover(screen.getAllByText("To do")[0]);
-    await user.click(screen.getByRole("combobox", { name: "Status" }));
+    await user.click(await screen.findByRole("combobox", { name: "Status" }));
     await user.click(await screen.findByRole("option", { name: "Done" }));
     expect(onQuickEdit).toHaveBeenCalledWith("status", "done");
     expect(onSelect).not.toHaveBeenCalled();
   });
 
-  it("keeps the property editor positioned inside the card", () => {
+  it("keeps the property editor positioned inside the card", async () => {
     const { container } = render(<TaskCard task={task} selected={false} definitions={[status]} onSelect={vi.fn()} onQuickEdit={vi.fn()} />);
-    expect(screen.getByRole("combobox", { name: "Status" })).toHaveClass("max-w-40");
+    expect(screen.queryByRole("combobox", { name: "Status" })).not.toBeInTheDocument();
+    fireEvent.pointerEnter(container.querySelector("article")!);
+    expect(await screen.findByRole("combobox", { name: "Status" })).toHaveClass("max-w-40");
     expect(container.querySelector(".group.relative")).toContainElement(screen.getByRole("combobox", { name: "Status" }));
+  });
+
+  it("does not mount property editors while a card only passes under the pointer", async () => {
+    const { container } = render(<TaskCard task={task} selected={false} definitions={[status]} onSelect={vi.fn()} onQuickEdit={vi.fn()} />);
+    const card = container.querySelector("article")!;
+    fireEvent.pointerEnter(card);
+    fireEvent.pointerLeave(card);
+
+    await new Promise((resolve) => window.setTimeout(resolve, 200));
+
+    expect(screen.queryByRole("combobox", { name: "Status" })).not.toBeInTheDocument();
   });
 
   it("creates a tag option before quick editing the card", async () => {
@@ -61,7 +74,8 @@ describe("TaskCard quick editing", () => {
     const onQuickEdit = vi.fn();
     render(<TaskCard task={{ ...task, properties: { tags: [] } }} selected={false} definitions={[tags]} onSelect={vi.fn()} onQuickEdit={onQuickEdit} onCreateOption={onCreateOption} />);
 
-    await user.type(screen.getByRole("textbox", { name: "Tags" }), "Card tag{Enter}");
+    await user.hover(screen.getByText("Card task"));
+    await user.type(await screen.findByRole("textbox", { name: "Tags" }), "Card tag{Enter}");
 
     expect(onCreateOption).toHaveBeenCalledWith(tags, "Card tag");
     expect(onQuickEdit).toHaveBeenCalledWith("tags", ["Card tag"]);
