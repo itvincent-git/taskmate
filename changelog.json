@@ -1,4 +1,8 @@
 {
+  "0.15.1": {
+    "en": "- test(app): allow tab context menu test more time",
+    "zh": "- test(app): allow tab context menu test more time"
+  },
   "0.15.0": {
     "en": "- fix(editor): smooth live preview updates\n- fix(performance): keep editor and task scrolling responsive",
     "zh": "- fix(editor): smooth live preview updates\n- fix(performance): keep editor and task scrolling responsive"
