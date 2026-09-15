@@ -510,7 +510,7 @@ fn show_main_window(app: &tauri::AppHandle) {
 }
 
 pub fn run() {
-    let app = tauri::Builder::default()
+    let builder = tauri::Builder::default()
         .manage(AppState {
             workspace: Mutex::new(None),
             watcher: Mutex::new(None),
@@ -527,7 +527,13 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_clipboard_manager::init())
-        .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_opener::init());
+    #[cfg(feature = "e2e")]
+    let builder = builder
+        .plugin(tauri_plugin_wdio_webdriver::init())
+        .plugin(tauri_plugin_wdio::init());
+
+    let app = builder
         .invoke_handler(tauri::generate_handler![
             open_workspace,
             create_task,

@@ -70,6 +70,12 @@ pnpm dev:app
 
 Browser-only UI development is available with `pnpm dev`. It uses a localStorage-backed demo workspace because browsers cannot access the Rust filesystem commands.
 
+Native page tests use WebdriverIO with the embedded Tauri WebDriver. The test command builds the frontend and a debug Tauri binary, then launches the real desktop WebView:
+
+```sh
+pnpm test:e2e
+```
+
 ## Releases and updates
 
 Taskmate publishes signed macOS (Intel and Apple Silicon) and Windows x64 installers from tags named `app-v<version>`. The updater reads the public manifest at `releases/latest/download/latest.json`.
@@ -82,6 +88,7 @@ For a new version, run `pnpm release <patch|minor|major|x.y.z>`, then push the r
 
 ```sh
 pnpm test
+pnpm test:e2e
 pnpm typecheck
 pnpm build
 cargo test --manifest-path src-tauri/Cargo.toml
