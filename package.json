@@ -21,7 +21,7 @@
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.e2e.json",
     "test": "vitest run && node --test scripts/version.test.mjs",
     "test:e2e:build": "tauri build --debug --no-bundle --features e2e --config src-tauri/tauri.e2e.conf.json",
-    "test:e2e": "pnpm test:e2e:build && wdio run ./wdio.conf.ts",
+    "test:e2e": "wdio run ./wdio.conf.ts",
     "tauri": "tauri",
     "release": "node scripts/release.mjs"
   },

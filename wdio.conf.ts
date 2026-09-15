@@ -1,9 +1,14 @@
 import { createTauriCapabilities } from "@wdio/tauri-service";
+import { execFileSync } from "node:child_process";
 
 const binaryName = process.platform === "win32" ? "taskmate.exe" : "taskmate";
 const appBinaryPath = `./src-tauri/target/debug/${binaryName}`;
+const pnpmCommand = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
 
 export const config: WebdriverIO.Config = {
+  onPrepare() {
+    execFileSync(pnpmCommand, ["test:e2e:build"], { stdio: "inherit" });
+  },
   runner: "local",
   tsConfigPath: "./tsconfig.e2e.json",
   specs: ["./e2e/**/*.spec.ts"],

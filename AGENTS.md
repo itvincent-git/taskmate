@@ -66,7 +66,7 @@ Strong success criteria let you loop independently. Weak criteria ("make it work
 
 Recommended workflow in this repo:
 - Run `pnpm test:e2e`. It builds the native application with the e2e feature and launches it through `@wdio/tauri-service`.
-- For iteration, add or update a focused spec under `e2e/`, then run that spec with `pnpm test:e2e:build && pnpm exec wdio run ./wdio.conf.ts --spec ./e2e/<name>.spec.ts`.
+- For iteration, add or update a focused spec under `e2e/`, then run that spec with `pnpm exec wdio run ./wdio.conf.ts --spec ./e2e/<name>.spec.ts`. The WDIO configuration builds the e2e application before starting the session.
 - Use WDIO browser, element, and assertion APIs to inspect rendered state, exercise interactions, and wait for asynchronous updates.
 - If the issue looks like loading, sync, or missing data, inspect the Tauri command path and Rust logs before blaming React.
 
