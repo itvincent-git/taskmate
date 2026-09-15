@@ -1,4 +1,8 @@
 {
+  "0.15.2": {
+    "en": "- test(e2e): add WebdriverIO Tauri page tests\n- fix(editor): position cursor in multiline previews\n- fix(editor): keep clicks on their rendered line\n- docs: replace Playwright UI checks with WDIO e2e\n- fix(editor): place cursor correctly on mouse down",
+    "zh": "- test(e2e): add WebdriverIO Tauri page tests\n- fix(editor): position cursor in multiline previews\n- fix(editor): keep clicks on their rendered line\n- docs: replace Playwright UI checks with WDIO e2e\n- fix(editor): place cursor correctly on mouse down"
+  },
   "0.15.1": {
     "en": "- test(app): allow tab context menu test more time",
     "zh": "- test(app): allow tab context menu test more time"
