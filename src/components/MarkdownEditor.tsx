@@ -132,6 +132,9 @@ export const MarkdownEditor = memo(function MarkdownEditor({ value, documentId, 
           keymap.of([indentWithTab, ...searchKeymap, ...defaultKeymap, ...historyKeymap]),
           EditorView.lineWrapping,
           EditorView.updateListener.of((update) => {
+            if (import.meta.env.MODE === "e2e") {
+              update.view.dom.dataset.selectionLine = String(update.state.doc.lineAt(update.state.selection.main.head).number);
+            }
             if (update.docChanged && !update.transactions.some((transaction) => transaction.annotation(syncValue))) {
               changeHandler.current(update.state.doc);
             }
@@ -195,6 +198,7 @@ export const MarkdownEditor = memo(function MarkdownEditor({ value, documentId, 
         ],
       }),
     });
+    if (import.meta.env.MODE === "e2e") view.dom.dataset.selectionLine = "1";
     editor.current = view;
     let modifierLinks = false;
     const setModifierLinks = (pressed: boolean) => {

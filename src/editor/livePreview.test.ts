@@ -113,6 +113,36 @@ describe("Live Preview activation", () => {
     host.remove();
   });
 
+  it("uses the DOM caret when a click selects an adjacent line", async () => {
+    const host = document.createElement("div");
+    document.body.append(host);
+    const source = "active\n\n这是memcheck的日志：.artifacts/ssr-oom/remote/20260911T130516Z \n\n这是k6的日志\n分析问题";
+    const view = new EditorView({ parent: host, state: EditorState.create({ doc: source, extensions: [markdown(), livePreview] }) });
+    const line = Array.from(host.querySelectorAll<HTMLElement>(".cm-line"))
+      .find((candidate) => candidate.textContent?.includes("memcheck的日志"))!;
+    const textNode = line.firstChild!;
+    const targetOffset = textNode.textContent!.indexOf("memcheck") + 3;
+    const caretPositionDescriptor = Object.getOwnPropertyDescriptor(document, "caretPositionFromPoint");
+    Object.defineProperty(document, "caretPositionFromPoint", {
+      configurable: true,
+      value: () => ({ offsetNode: textNode, offset: targetOffset }),
+    });
+    const clientRectsDescriptor = Object.getOwnPropertyDescriptor(Range.prototype, "getClientRects");
+    Object.defineProperty(Range.prototype, "getClientRects", { configurable: true, value: () => [] });
+    line.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, button: 0, clientX: 10, clientY: 10 }));
+    view.dispatch({ selection: { anchor: view.state.doc.line(4).from } });
+    window.dispatchEvent(new MouseEvent("mouseup", { bubbles: true, button: 0, clientX: 10, clientY: 10 }));
+    await Promise.resolve();
+
+    expect(view.state.selection.main.head).toBe(source.indexOf("memcheck") + 3);
+    if (caretPositionDescriptor) Object.defineProperty(document, "caretPositionFromPoint", caretPositionDescriptor);
+    else Reflect.deleteProperty(document, "caretPositionFromPoint");
+    if (clientRectsDescriptor) Object.defineProperty(Range.prototype, "getClientRects", clientRectsDescriptor);
+    else Reflect.deleteProperty(Range.prototype, "getClientRects");
+    view.destroy();
+    host.remove();
+  });
+
   it("hides inactive markers and reveals them when the cursor enters the syntax node", () => {
     const host = document.createElement("div");
     document.body.append(host);

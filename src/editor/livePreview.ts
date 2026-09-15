@@ -197,7 +197,7 @@ function appendMarkdown(parent: HTMLElement, source: string, inline = false) {
   });
 }
 
-function textOffsetAtPoint(root: HTMLElement, x: number, y: number) {
+function domPositionAtPoint(root: HTMLElement, x: number, y: number) {
   const caretDocument = document as Document & {
     caretPositionFromPoint?(x: number, y: number): { offsetNode: Node; offset: number } | null;
     caretRangeFromPoint?(x: number, y: number): Range | null;
@@ -207,9 +207,15 @@ function textOffsetAtPoint(root: HTMLElement, x: number, y: number) {
   const node = position?.offsetNode ?? fallback?.startContainer;
   const offset = position?.offset ?? fallback?.startOffset;
   if (!node || offset === undefined || !root.contains(node)) return null;
+  return { node, offset };
+}
+
+function textOffsetAtPoint(root: HTMLElement, x: number, y: number) {
+  const position = domPositionAtPoint(root, x, y);
+  if (!position) return null;
   const range = document.createRange();
   range.setStart(root, 0);
-  range.setEnd(node, offset);
+  range.setEnd(position.node, position.offset);
   return range.toString().length;
 }
 
@@ -1660,6 +1666,29 @@ export const livePreview = [previewState, ViewPlugin.fromClass(
     }
   },
 ), EditorView.domEventHandlers({
+  mousedown(event, view) {
+    if (event.button !== 0 || event.metaKey || event.ctrlKey) return false;
+    const target = event.target instanceof Element ? event.target : null;
+    const line = target?.closest(".cm-line") as HTMLElement | null;
+    if (!line || target?.closest("[data-preview-kind], [data-marker-kind]")) return false;
+    const position = domPositionAtPoint(line, event.clientX, event.clientY);
+    if (!position) return false;
+    const anchor = view.posAtDOM(position.node, position.offset);
+    const selectionAnchor = view.state.selection.main.anchor;
+    const { clientX, clientY, shiftKey } = event;
+    window.addEventListener("mouseup", (upEvent) => {
+      if (upEvent.button !== 0 || Math.hypot(upEvent.clientX - clientX, upEvent.clientY - clientY) > 4) return;
+      queueMicrotask(() => {
+        if (!view.dom.isConnected
+          || view.state.doc.lineAt(anchor).number === view.state.doc.lineAt(view.state.selection.main.head).number) return;
+        view.dispatch({ selection: shiftKey
+          ? { anchor: selectionAnchor, head: anchor }
+          : { anchor } });
+        view.focus();
+      });
+    }, { once: true });
+    return false;
+  },
   compositionstart(_event, view) { view.dispatch({ effects: composingPreview.of(true) }); },
   compositionend(_event, view) {
     // Let CodeMirror ingest the final composition mutation before refreshing.
