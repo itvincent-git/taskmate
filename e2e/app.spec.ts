@@ -67,8 +67,14 @@ describe("Taskmate desktop page", () => {
         y: Math.round(rect.top + rect.height / 2 - (lineRect.top + lineRect.height / 2)),
       };
     });
-    await targetLine.click({ x: offset.x, y: offset.y });
-
-    await expect($(".cm-editor")).toHaveAttribute("data-selection-line", "3");
+    await browser.action("pointer", { parameters: { pointerType: "mouse" } })
+      .move({ origin: targetLine, x: offset.x, y: offset.y })
+      .down()
+      .perform();
+    try {
+      await expect($(".cm-editor")).toHaveAttribute("data-selection-line", "3");
+    } finally {
+      await browser.action("pointer", { parameters: { pointerType: "mouse" } }).up().perform();
+    }
   });
 });

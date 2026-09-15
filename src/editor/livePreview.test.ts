@@ -113,7 +113,7 @@ describe("Live Preview activation", () => {
     host.remove();
   });
 
-  it("uses the DOM caret when a click selects an adjacent line", async () => {
+  it("uses the DOM caret for the initial mouse selection", () => {
     const host = document.createElement("div");
     document.body.append(host);
     const source = "active\n\n这是memcheck的日志：.artifacts/ssr-oom/remote/20260911T130516Z \n\n这是k6的日志\n分析问题";
@@ -127,18 +127,11 @@ describe("Live Preview activation", () => {
       configurable: true,
       value: () => ({ offsetNode: textNode, offset: targetOffset }),
     });
-    const clientRectsDescriptor = Object.getOwnPropertyDescriptor(Range.prototype, "getClientRects");
-    Object.defineProperty(Range.prototype, "getClientRects", { configurable: true, value: () => [] });
-    line.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, button: 0, clientX: 10, clientY: 10 }));
-    view.dispatch({ selection: { anchor: view.state.doc.line(4).from } });
-    window.dispatchEvent(new MouseEvent("mouseup", { bubbles: true, button: 0, clientX: 10, clientY: 10 }));
-    await Promise.resolve();
+    line.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, button: 0, detail: 1, clientX: 10, clientY: 10 }));
 
     expect(view.state.selection.main.head).toBe(source.indexOf("memcheck") + 3);
     if (caretPositionDescriptor) Object.defineProperty(document, "caretPositionFromPoint", caretPositionDescriptor);
     else Reflect.deleteProperty(document, "caretPositionFromPoint");
-    if (clientRectsDescriptor) Object.defineProperty(Range.prototype, "getClientRects", clientRectsDescriptor);
-    else Reflect.deleteProperty(Range.prototype, "getClientRects");
     view.destroy();
     host.remove();
   });

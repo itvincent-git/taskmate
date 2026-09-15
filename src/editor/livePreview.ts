@@ -1,6 +1,6 @@
 import { ensureSyntaxTree, forceParsing, syntaxTree } from "@codemirror/language";
 import type { SyntaxNode } from "@lezer/common";
-import { StateField, StateEffect, type EditorState, type Transaction } from "@codemirror/state";
+import { EditorSelection, StateField, StateEffect, type EditorState, type Transaction } from "@codemirror/state";
 import { Decoration, type DecorationSet, EditorView, ViewPlugin, type ViewUpdate, WidgetType } from "@codemirror/view";
 import katex from "katex";
 import "katex/dist/katex.min.css";
@@ -233,6 +233,34 @@ function sourceOffsetForRenderedText(source: string, rendered: string, renderedO
   }
   return sourceOffset;
 }
+
+const renderedLineSelection = EditorView.mouseSelectionStyle.of((view, event) => {
+  if (event.button !== 0 || event.metaKey || event.ctrlKey || event.detail > 1) return null;
+  const target = event.target instanceof Element ? event.target : null;
+  const line = target?.closest(".cm-line") as HTMLElement | null;
+  if (!line || target?.closest("[data-preview-kind], [data-marker-kind]")) return null;
+  const position = domPositionAtPoint(line, event.clientX, event.clientY);
+  if (!position) return null;
+  let anchor = view.posAtDOM(position.node, position.offset);
+  let startSelection = view.state.selection;
+  return {
+    get(currentEvent, extend, multiple) {
+      const head = currentEvent === event
+        ? anchor
+        : view.posAtCoords({ x: currentEvent.clientX, y: currentEvent.clientY }, false) ?? anchor;
+      const range = EditorSelection.range(anchor, head);
+      if (extend) return startSelection.replaceRange(startSelection.main.extend(range.from, range.to));
+      if (multiple) return startSelection.addRange(range);
+      return EditorSelection.create([range]);
+    },
+    update(update) {
+      if (update.docChanged) {
+        anchor = update.changes.mapPos(anchor);
+        startSelection = startSelection.map(update.changes);
+      }
+    },
+  };
+});
 
 class HtmlWidget extends WidgetType {
   constructor(readonly source: string, readonly block: boolean) {
@@ -1665,30 +1693,7 @@ export const livePreview = [previewState, ViewPlugin.fromClass(
       if (this.refreshTimer !== null) window.clearTimeout(this.refreshTimer);
     }
   },
-), EditorView.domEventHandlers({
-  mousedown(event, view) {
-    if (event.button !== 0 || event.metaKey || event.ctrlKey) return false;
-    const target = event.target instanceof Element ? event.target : null;
-    const line = target?.closest(".cm-line") as HTMLElement | null;
-    if (!line || target?.closest("[data-preview-kind], [data-marker-kind]")) return false;
-    const position = domPositionAtPoint(line, event.clientX, event.clientY);
-    if (!position) return false;
-    const anchor = view.posAtDOM(position.node, position.offset);
-    const selectionAnchor = view.state.selection.main.anchor;
-    const { clientX, clientY, shiftKey } = event;
-    window.addEventListener("mouseup", (upEvent) => {
-      if (upEvent.button !== 0 || Math.hypot(upEvent.clientX - clientX, upEvent.clientY - clientY) > 4) return;
-      queueMicrotask(() => {
-        if (!view.dom.isConnected
-          || view.state.doc.lineAt(anchor).number === view.state.doc.lineAt(view.state.selection.main.head).number) return;
-        view.dispatch({ selection: shiftKey
-          ? { anchor: selectionAnchor, head: anchor }
-          : { anchor } });
-        view.focus();
-      });
-    }, { once: true });
-    return false;
-  },
+), renderedLineSelection, EditorView.domEventHandlers({
   compositionstart(_event, view) { view.dispatch({ effects: composingPreview.of(true) }); },
   compositionend(_event, view) {
     // Let CodeMirror ingest the final composition mutation before refreshing.
