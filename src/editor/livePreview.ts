@@ -197,6 +197,37 @@ function appendMarkdown(parent: HTMLElement, source: string, inline = false) {
   });
 }
 
+function textOffsetAtPoint(root: HTMLElement, x: number, y: number) {
+  const caretDocument = document as Document & {
+    caretPositionFromPoint?(x: number, y: number): { offsetNode: Node; offset: number } | null;
+    caretRangeFromPoint?(x: number, y: number): Range | null;
+  };
+  const position = caretDocument.caretPositionFromPoint?.(x, y);
+  const fallback = position ? null : caretDocument.caretRangeFromPoint?.(x, y);
+  const node = position?.offsetNode ?? fallback?.startContainer;
+  const offset = position?.offset ?? fallback?.startOffset;
+  if (!node || offset === undefined || !root.contains(node)) return null;
+  const range = document.createRange();
+  range.setStart(root, 0);
+  range.setEnd(node, offset);
+  return range.toString().length;
+}
+
+function sourceOffsetForRenderedText(source: string, rendered: string, renderedOffset: number) {
+  let sourceOffset = 0;
+  let textOffset = 0;
+  while (sourceOffset < source.length && textOffset < renderedOffset) {
+    const sourceCharacter = source[sourceOffset];
+    const renderedCharacter = rendered[textOffset];
+    if (sourceCharacter === renderedCharacter
+      || (/\s/u.test(sourceCharacter) && /\s/u.test(renderedCharacter))) {
+      textOffset += 1;
+    }
+    sourceOffset += 1;
+  }
+  return sourceOffset;
+}
+
 class HtmlWidget extends WidgetType {
   constructor(readonly source: string, readonly block: boolean) {
     super();
@@ -259,15 +290,31 @@ class ParagraphWidget extends WidgetType {
   eq(other: ParagraphWidget) {
     return this.source === other.source && JSON.stringify(this.references) === JSON.stringify(other.references);
   }
-  toDOM() {
+  toDOM(view: EditorView) {
     const wrapper = document.createElement("span");
     wrapper.className = "cm-paragraph-preview block [&>p]:m-0";
     wrapper.dataset.previewKind = "paragraph";
     appendMarkdown(wrapper, [this.source, ...this.references].join("\n\n"));
+    wrapper.addEventListener("mousedown", (event) => {
+      if (event.button !== 0 || event.metaKey || event.ctrlKey) return;
+      const renderedOffset = textOffsetAtPoint(wrapper, event.clientX, event.clientY);
+      if (renderedOffset === null) return;
+      event.preventDefault();
+      const from = view.posAtDOM(wrapper);
+      const anchor = from + sourceOffsetForRenderedText(
+        this.source,
+        wrapper.textContent?.slice(0, this.source.length) ?? "",
+        renderedOffset,
+      );
+      view.dispatch({ selection: event.shiftKey
+        ? { anchor: view.state.selection.main.anchor, head: anchor }
+        : { anchor } });
+      view.focus();
+    });
     return wrapper;
   }
   ignoreEvent() {
-    return false;
+    return true;
   }
 }
 

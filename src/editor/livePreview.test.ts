@@ -88,6 +88,31 @@ describe("Live Preview activation", () => {
     host.remove();
   });
 
+  it("positions the cursor at clicked text inside a multiline paragraph", () => {
+    const host = document.createElement("div");
+    document.body.append(host);
+    const source = "active\n\nfirst line\nsecond **target text**\nlast line";
+    const view = new EditorView({ parent: host, state: EditorState.create({ doc: source, extensions: [markdown(), livePreview] }) });
+    const preview = host.querySelector<HTMLElement>('[data-preview-kind="paragraph"]')!;
+    const textNode = preview.querySelector("strong")!.firstChild!;
+    const targetOffset = 3;
+    const caretPositionDescriptor = Object.getOwnPropertyDescriptor(document, "caretPositionFromPoint");
+    Object.defineProperty(document, "caretPositionFromPoint", {
+      configurable: true,
+      value: () => ({ offsetNode: textNode, offset: targetOffset }),
+    });
+
+    preview.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, button: 0, clientX: 10, clientY: 10 }));
+
+    expect(view.state.selection.main.head).toBe(source.indexOf("target text") + 3);
+    expect(host.querySelector('[data-preview-kind="paragraph"]')).toBeNull();
+    expect(view.hasFocus).toBe(true);
+    if (caretPositionDescriptor) Object.defineProperty(document, "caretPositionFromPoint", caretPositionDescriptor);
+    else Reflect.deleteProperty(document, "caretPositionFromPoint");
+    view.destroy();
+    host.remove();
+  });
+
   it("hides inactive markers and reveals them when the cursor enters the syntax node", () => {
     const host = document.createElement("div");
     document.body.append(host);
