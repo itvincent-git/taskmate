@@ -1,6 +1,6 @@
 import { ensureSyntaxTree, forceParsing, syntaxTree } from "@codemirror/language";
 import type { SyntaxNode } from "@lezer/common";
-import { EditorSelection, StateField, StateEffect, type EditorState, type Transaction } from "@codemirror/state";
+import { StateField, StateEffect, type EditorState, type Transaction } from "@codemirror/state";
 import { Decoration, type DecorationSet, EditorView, ViewPlugin, type ViewUpdate, WidgetType } from "@codemirror/view";
 import katex from "katex";
 import "katex/dist/katex.min.css";
@@ -197,71 +197,6 @@ function appendMarkdown(parent: HTMLElement, source: string, inline = false) {
   });
 }
 
-function domPositionAtPoint(root: HTMLElement, x: number, y: number) {
-  const caretDocument = document as Document & {
-    caretPositionFromPoint?(x: number, y: number): { offsetNode: Node; offset: number } | null;
-    caretRangeFromPoint?(x: number, y: number): Range | null;
-  };
-  const position = caretDocument.caretPositionFromPoint?.(x, y);
-  const fallback = position ? null : caretDocument.caretRangeFromPoint?.(x, y);
-  const node = position?.offsetNode ?? fallback?.startContainer;
-  const offset = position?.offset ?? fallback?.startOffset;
-  if (!node || offset === undefined || !root.contains(node)) return null;
-  return { node, offset };
-}
-
-function textOffsetAtPoint(root: HTMLElement, x: number, y: number) {
-  const position = domPositionAtPoint(root, x, y);
-  if (!position) return null;
-  const range = document.createRange();
-  range.setStart(root, 0);
-  range.setEnd(position.node, position.offset);
-  return range.toString().length;
-}
-
-function sourceOffsetForRenderedText(source: string, rendered: string, renderedOffset: number) {
-  let sourceOffset = 0;
-  let textOffset = 0;
-  while (sourceOffset < source.length && textOffset < renderedOffset) {
-    const sourceCharacter = source[sourceOffset];
-    const renderedCharacter = rendered[textOffset];
-    if (sourceCharacter === renderedCharacter
-      || (/\s/u.test(sourceCharacter) && /\s/u.test(renderedCharacter))) {
-      textOffset += 1;
-    }
-    sourceOffset += 1;
-  }
-  return sourceOffset;
-}
-
-const renderedLineSelection = EditorView.mouseSelectionStyle.of((view, event) => {
-  if (event.button !== 0 || event.metaKey || event.ctrlKey || event.detail > 1) return null;
-  const target = event.target instanceof Element ? event.target : null;
-  const line = target?.closest(".cm-line") as HTMLElement | null;
-  if (!line || target?.closest("[data-preview-kind], [data-marker-kind]")) return null;
-  const position = domPositionAtPoint(line, event.clientX, event.clientY);
-  if (!position) return null;
-  let anchor = view.posAtDOM(position.node, position.offset);
-  let startSelection = view.state.selection;
-  return {
-    get(currentEvent, extend, multiple) {
-      const head = currentEvent === event
-        ? anchor
-        : view.posAtCoords({ x: currentEvent.clientX, y: currentEvent.clientY }, false) ?? anchor;
-      const range = EditorSelection.range(anchor, head);
-      if (extend) return startSelection.replaceRange(startSelection.main.extend(range.from, range.to));
-      if (multiple) return startSelection.addRange(range);
-      return EditorSelection.create([range]);
-    },
-    update(update) {
-      if (update.docChanged) {
-        anchor = update.changes.mapPos(anchor);
-        startSelection = startSelection.map(update.changes);
-      }
-    },
-  };
-});
-
 class HtmlWidget extends WidgetType {
   constructor(readonly source: string, readonly block: boolean) {
     super();
@@ -314,41 +249,6 @@ class HtmlContainerWidget extends WidgetType {
   }
   ignoreEvent() {
     return false;
-  }
-}
-
-class ParagraphWidget extends WidgetType {
-  constructor(readonly source: string, readonly references: readonly string[]) {
-    super();
-  }
-  eq(other: ParagraphWidget) {
-    return this.source === other.source && JSON.stringify(this.references) === JSON.stringify(other.references);
-  }
-  toDOM(view: EditorView) {
-    const wrapper = document.createElement("span");
-    wrapper.className = "cm-paragraph-preview block [&>p]:m-0";
-    wrapper.dataset.previewKind = "paragraph";
-    appendMarkdown(wrapper, [this.source, ...this.references].join("\n\n"));
-    wrapper.addEventListener("mousedown", (event) => {
-      if (event.button !== 0 || event.metaKey || event.ctrlKey) return;
-      const renderedOffset = textOffsetAtPoint(wrapper, event.clientX, event.clientY);
-      if (renderedOffset === null) return;
-      event.preventDefault();
-      const from = view.posAtDOM(wrapper);
-      const anchor = from + sourceOffsetForRenderedText(
-        this.source,
-        wrapper.textContent?.slice(0, this.source.length) ?? "",
-        renderedOffset,
-      );
-      view.dispatch({ selection: event.shiftKey
-        ? { anchor: view.state.selection.main.anchor, head: anchor }
-        : { anchor } });
-      view.focus();
-    });
-    return wrapper;
-  }
-  ignoreEvent() {
-    return true;
   }
 }
 
@@ -1264,34 +1164,6 @@ function extensionPreviewRanges(state: EditorState, richRanges: readonly RichPre
     lineNumber = state.doc.lineAt(to).number;
   }
 
-  const referenceSources: string[] = [];
-  tree.iterate({
-    enter(node) {
-      if (node.name === "LinkReference") {
-        referenceSources.push(state.sliceDoc(node.from, node.to));
-        return false;
-      }
-    },
-  });
-  tree.iterate({
-    enter(node) {
-      if (node.name !== "Paragraph" || !state.sliceDoc(node.from, node.to).includes("\n")) return;
-      const source = state.sliceDoc(node.from, node.to);
-      if (
-        blockUnavailable(node.from, node.to)
-        || inlineExcluded.some((range) => overlaps(node.from, node.to, range))
-        || /\[\^[^\]\s]+\]|:[a-z0-9_+-]+:/i.test(source)
-      ) return false;
-      blockRanges.push({
-        from: node.from,
-        to: node.to,
-        block: true,
-        widget: new ParagraphWidget(source, referenceSources),
-      });
-      return false;
-    },
-  });
-
   const ranges = [...blockRanges];
   const unavailable = (from: number, to: number) =>
     inlineExcluded.some((range) => overlaps(from, to, range))
@@ -1515,6 +1387,12 @@ function buildDecorations(state: EditorState, index: PreviewIndex, area = { from
           });
         } else if (!active && node.name === "QuoteMark") {
           ranges.push({ from: node.from, to: node.to, decoration: Decoration.replace({ widget: new MarkerWidget("quote") }) });
+        } else if (!active && node.name === "HardBreak") {
+          ranges.push({
+            from: node.from,
+            to: state.doc.lineAt(node.from).to,
+            decoration: Decoration.replace({ inclusive: false }),
+          });
         } else if (!active && node.name === "Escape") {
           ranges.push({ from: node.from, to: node.from + 1, decoration: Decoration.replace({ inclusive: false }) });
         } else if (
@@ -1543,10 +1421,9 @@ function buildDecorations(state: EditorState, index: PreviewIndex, area = { from
     .map(({ from, to, decoration }) => decoration.range(from, to)), true);
 }
 
-// Plain prose cannot change reference/footnote/heading dependencies. Map the
-// existing index and only replace the edited paragraph's cached source.
+// Plain prose cannot change reference/footnote/heading dependencies, so its
+// existing preview index can be mapped through the transaction.
 function mapPlainIndex(index: PreviewIndex, transaction: Transaction): PreviewIndex | null {
-  const touched = new Set<{ from: number; to: number }>();
   let plain = true;
   transaction.changes.iterChanges((from, to, _newFrom, _newTo, inserted) => {
     const block = index.plain.find((range) => from > range.from && to <= range.to);
@@ -1554,7 +1431,6 @@ function mapPlainIndex(index: PreviewIndex, transaction: Transaction): PreviewIn
       || !rangeIsActive(transaction.changes.mapPos(block.from, -1), transaction.changes.mapPos(block.to, 1), transaction.state.selection.ranges)
       || !/^[\p{L}\p{N} \t.,!?，。！？]*$/u.test(inserted.toString())
       || transaction.startState.sliceDoc(from, to).includes("\n")) plain = false;
-    else touched.add(block);
   });
   if (!plain) return null;
   const map = <T extends { from: number; to: number }>(range: T): T => ({
@@ -1566,19 +1442,16 @@ function mapPlainIndex(index: PreviewIndex, transaction: Transaction): PreviewIn
     plain: index.plain.map(map),
     rich: index.rich.map(map),
     headings: new Map([...index.headings.values()].map((heading) => { const mapped = map(heading); return [mapped.from, mapped]; })),
-    extensions: index.extensions.map((range) => {
-      const mapped = map(range);
-      if (range.widget instanceof ParagraphWidget && [...touched].some((block) => overlaps(block.from, block.to, range))) {
-        mapped.widget = new ParagraphWidget(transaction.state.sliceDoc(mapped.from, mapped.to), range.widget.references);
-      }
-      return mapped;
-    }),
+    extensions: index.extensions.map(map),
   };
 }
 
 // Layout-changing replacements must be direct decorations: viewport-dependent
 // replacements feed their own height changes back into viewport computation.
 const composingPreview = StateEffect.define<boolean>();
+// Keep screen coordinates stable while CodeMirror's native mouse selection
+// gesture maps them back to document positions.
+const pointerSelectingPreview = StateEffect.define<boolean>();
 function activeKey(state: EditorState, index: PreviewIndex) {
   const keys: string[] = [];
   for (const selection of state.selection.ranges) {
@@ -1640,35 +1513,56 @@ const previewState = StateField.define<{
   index: PreviewIndex;
   active: string;
   composing: boolean;
+  pointerSelecting: boolean;
   pending: boolean;
 }>({
   create(state) {
     const index = previewIndex(state);
-    return { decorations: buildDecorations(state, index), index, active: activeKey(state, index), composing: false, pending: false };
+    return {
+      decorations: buildDecorations(state, index),
+      index,
+      active: activeKey(state, index),
+      composing: false,
+      pointerSelecting: false,
+      pending: false,
+    };
   },
   update(value, transaction) {
     const composition = transaction.effects.find((effect) => effect.is(composingPreview));
     const composing = composition ? composition.value as boolean : value.composing;
+    const pointerSelection = transaction.effects.find((effect) => effect.is(pointerSelectingPreview));
+    const pointerSelecting = pointerSelection ? pointerSelection.value as boolean : value.pointerSelecting;
     const refresh = transaction.effects.some((effect) => effect.is(refreshLivePreview));
     if ((transaction.docChanged && !refresh) || composing) {
       const mapped = transaction.docChanged && !value.pending ? mapPlainIndex(value.index, transaction) : null;
       const index = mapped ?? value.index;
-      return { ...value, index, composing, pending: value.pending || (transaction.docChanged && !mapped),
+      return { ...value, index, composing, pointerSelecting, pending: value.pending || (transaction.docChanged && !mapped),
         active: mapped ? activeKey(transaction.state, index) : value.active,
         decorations: value.decorations.map(transaction.changes) };
     }
-    if (!refresh && !transaction.selection && !composition) return value;
+    if (pointerSelecting && !transaction.docChanged) {
+      return pointerSelection ? { ...value, pointerSelecting } : value;
+    }
+    if (!refresh && !transaction.selection && !composition && !pointerSelection) return value;
     const index = value.pending || transaction.docChanged || value.index.tree !== syntaxTree(transaction.state) ? previewIndex(transaction.state) : value.index;
     const active = activeKey(transaction.state, index);
-    if (value.pending || index !== value.index || active !== value.active || composition) {
+    if (value.pending || index !== value.index || active !== value.active || composition || pointerSelection) {
       const decorations = !value.pending && index === value.index && !transaction.docChanged && !composition
         ? updateSelectionDecorations(value.decorations, transaction, index)
         : buildDecorations(transaction.state, index);
-      return { decorations, index, active, composing, pending: false };
+      return { decorations, index, active, composing, pointerSelecting, pending: false };
     }
     return value;
   },
   provide: (field) => EditorView.decorations.from(field, (value) => value.decorations),
+});
+
+const atomicPreviewRanges = EditorView.atomicRanges.of((view) => {
+  const ranges = [];
+  for (let cursor = view.state.field(previewState).decorations.iter(); cursor.value; cursor.next()) {
+    if (cursor.value.point && cursor.from < cursor.to) ranges.push(cursor.value.range(cursor.from, cursor.to));
+  }
+  return Decoration.set(ranges);
 });
 
 export const livePreview = [previewState, ViewPlugin.fromClass(
@@ -1693,7 +1587,21 @@ export const livePreview = [previewState, ViewPlugin.fromClass(
       if (this.refreshTimer !== null) window.clearTimeout(this.refreshTimer);
     }
   },
-), renderedLineSelection, EditorView.domEventHandlers({
+), atomicPreviewRanges, EditorView.domEventObservers({
+  mousedown(event, view) {
+    if (event.button !== 0) return;
+    view.dispatch({ effects: pointerSelectingPreview.of(true) });
+    const ownerDocument = view.dom.ownerDocument;
+    const ownerWindow = ownerDocument.defaultView;
+    const finish = () => {
+      ownerDocument.removeEventListener("mouseup", finish);
+      ownerWindow?.removeEventListener("blur", finish);
+      if (view.dom.isConnected) view.dispatch({ effects: pointerSelectingPreview.of(false) });
+    };
+    ownerDocument.addEventListener("mouseup", finish);
+    ownerWindow?.addEventListener("blur", finish);
+  },
+}), EditorView.domEventHandlers({
   compositionstart(_event, view) { view.dispatch({ effects: composingPreview.of(true) }); },
   compositionend(_event, view) {
     // Let CodeMirror ingest the final composition mutation before refreshing.

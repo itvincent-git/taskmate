@@ -77,61 +77,42 @@ describe("Live Preview activation", () => {
     host.remove();
   });
 
-  it("refreshes inactive paragraphs changed by replacement commands", async () => {
+  it("keeps multiline paragraph text managed by CodeMirror after edits", () => {
     const host = document.createElement("div");
     document.body.append(host);
     const source = "active\n\nfirst line\nsecond line";
     const view = new EditorView({ parent: host, state: EditorState.create({ doc: source, extensions: [markdown(), livePreview] }) });
     view.dispatch({ changes: { from: source.indexOf("second") + 1, insert: "new" } });
-    await vi.waitFor(() => expect(host.querySelector('[data-preview-kind="paragraph"]')).toHaveTextContent("snewecond"));
+    expect(host.querySelector('[data-preview-kind="paragraph"]')).toBeNull();
+    expect(Array.from(host.querySelectorAll(".cm-line"), (line) => line.textContent)).toContain("snewecond line");
     view.destroy();
     host.remove();
   });
 
-  it("positions the cursor at clicked text inside a multiline paragraph", () => {
+  it("maps formatted multiline text DOM positions directly to source positions", () => {
     const host = document.createElement("div");
     document.body.append(host);
     const source = "active\n\nfirst line\nsecond **target text**\nlast line";
     const view = new EditorView({ parent: host, state: EditorState.create({ doc: source, extensions: [markdown(), livePreview] }) });
-    const preview = host.querySelector<HTMLElement>('[data-preview-kind="paragraph"]')!;
-    const textNode = preview.querySelector("strong")!.firstChild!;
-    const targetOffset = 3;
-    const caretPositionDescriptor = Object.getOwnPropertyDescriptor(document, "caretPositionFromPoint");
-    Object.defineProperty(document, "caretPositionFromPoint", {
-      configurable: true,
-      value: () => ({ offsetNode: textNode, offset: targetOffset }),
-    });
-
-    preview.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, button: 0, clientX: 10, clientY: 10 }));
-
-    expect(view.state.selection.main.head).toBe(source.indexOf("target text") + 3);
+    const textNode = host.querySelector(".font-\\[750\\]")!.firstChild!;
+    expect(view.posAtDOM(textNode, 3)).toBe(source.indexOf("target text") + 3);
     expect(host.querySelector('[data-preview-kind="paragraph"]')).toBeNull();
-    expect(view.hasFocus).toBe(true);
-    if (caretPositionDescriptor) Object.defineProperty(document, "caretPositionFromPoint", caretPositionDescriptor);
-    else Reflect.deleteProperty(document, "caretPositionFromPoint");
     view.destroy();
     host.remove();
   });
 
-  it("uses the DOM caret for the initial mouse selection", () => {
+  it("keeps layout-changing marker decorations stable during pointer selection", () => {
     const host = document.createElement("div");
     document.body.append(host);
-    const source = "active\n\n这是memcheck的日志：.artifacts/ssr-oom/remote/20260911T130516Z \n\n这是k6的日志\n分析问题";
+    const source = "plain\n**target text**";
     const view = new EditorView({ parent: host, state: EditorState.create({ doc: source, extensions: [markdown(), livePreview] }) });
-    const line = Array.from(host.querySelectorAll<HTMLElement>(".cm-line"))
-      .find((candidate) => candidate.textContent?.includes("memcheck的日志"))!;
-    const textNode = line.firstChild!;
-    const targetOffset = textNode.textContent!.indexOf("memcheck") + 3;
-    const caretPositionDescriptor = Object.getOwnPropertyDescriptor(document, "caretPositionFromPoint");
-    Object.defineProperty(document, "caretPositionFromPoint", {
-      configurable: true,
-      value: () => ({ offsetNode: textNode, offset: targetOffset }),
-    });
-    line.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, button: 0, detail: 1, clientX: 10, clientY: 10 }));
-
-    expect(view.state.selection.main.head).toBe(source.indexOf("memcheck") + 3);
-    if (caretPositionDescriptor) Object.defineProperty(document, "caretPositionFromPoint", caretPositionDescriptor);
-    else Reflect.deleteProperty(document, "caretPositionFromPoint");
+    expect(host.textContent).not.toContain("**");
+    view.contentDOM.addEventListener("mousedown", (event) => event.preventDefault(), { capture: true, once: true });
+    host.querySelector(".font-\\[750\\]")!.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, button: 0 }));
+    view.dispatch({ selection: { anchor: source.indexOf("target"), head: source.indexOf("text") + 4 } });
+    expect(host.textContent).not.toContain("**");
+    document.dispatchEvent(new MouseEvent("mouseup", { bubbles: true, button: 0 }));
+    expect(host.textContent).toContain("**target text**");
     view.destroy();
     host.remove();
   });
@@ -151,6 +132,27 @@ describe("Live Preview activation", () => {
     view.dispatch({ selection: { anchor: 10 } });
     expect(host.textContent).toContain("**bold**");
     expect(view.state.doc.toString()).toBe("plain\n**bold**");
+    view.destroy();
+    host.remove();
+  });
+
+  it("exposes replaced syntax markers as atomic ranges", () => {
+    const host = document.createElement("div");
+    document.body.append(host);
+    const source = "plain\n**bold**";
+    const view = new EditorView({
+      parent: host,
+      state: EditorState.create({ doc: source, extensions: [markdown(), livePreview] }),
+    });
+    const ranges: Array<{ from: number; to: number }> = [];
+    view.state.facet(EditorView.atomicRanges).forEach((provider) => {
+      for (let cursor = provider(view).iter(); cursor.value; cursor.next()) {
+        ranges.push({ from: cursor.from, to: cursor.to });
+      }
+    });
+    const opening = source.indexOf("**");
+    expect(ranges).toContainEqual({ from: opening, to: opening + 2 });
+    expect(ranges).toContainEqual({ from: source.length - 2, to: source.length });
     view.destroy();
     host.remove();
   });
@@ -507,7 +509,7 @@ describe("Live Preview activation", () => {
     host.remove();
   });
 
-  it("collapses soft line breaks but renders Markdown hard breaks", () => {
+  it("keeps soft line text selectable and hides hard-break syntax", () => {
     const host = document.createElement("div");
     document.body.append(host);
     const source = "plain\n\nSoft first\nsoft second  \nhard next";
@@ -516,13 +518,12 @@ describe("Live Preview activation", () => {
       state: EditorState.create({ doc: source, extensions: [markdown(), livePreview] }),
     });
 
-    const paragraph = host.querySelector('[data-preview-kind="paragraph"]');
-    expect(paragraph).toHaveTextContent("Soft first soft second hard next");
-    expect(paragraph?.querySelectorAll("br")).toHaveLength(1);
-    expect(host.textContent).not.toContain("soft second  ");
+    expect(host.querySelector('[data-preview-kind="paragraph"]')).toBeNull();
+    expect(Array.from(host.querySelectorAll(".cm-line"), (line) => line.textContent)).toEqual([
+      "plain", "", "Soft first", "soft second", "hard next",
+    ]);
 
     view.dispatch({ selection: { anchor: source.indexOf("soft second") } });
-    expect(host.querySelector('[data-preview-kind="paragraph"]')).toBeNull();
     expect(host.textContent).toContain("soft second  ");
 
     view.destroy();
@@ -676,7 +677,7 @@ describe("Live Preview activation", () => {
     host.remove();
   });
 
-  it("removes hidden multiline source lines from layout", () => {
+  it("keeps multiline source lines in CodeMirror's selectable layout", () => {
     const host = document.createElement("div");
     document.body.append(host);
     const source = "first soft line\nsecond soft line\nthird soft line\n\n";
@@ -689,8 +690,8 @@ describe("Live Preview activation", () => {
 
     const hiddenLines = host.querySelectorAll<HTMLElement>(".cm-line.hidden");
     expect(hiddenLines).toHaveLength(0);
-    expect(host.querySelectorAll(".cm-line")).toHaveLength(2);
-    expect(host.querySelector('[data-preview-kind="paragraph"]')).not.toBeNull();
+    expect(host.querySelectorAll(".cm-line")).toHaveLength(5);
+    expect(host.querySelector('[data-preview-kind="paragraph"]')).toBeNull();
     view.destroy();
     host.remove();
   });

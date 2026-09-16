@@ -4,6 +4,15 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 let workspacePath: string;
+const taskBody = `active
+
+这是memcheck的日志：.artifacts/ssr-oom/remote/20260911T130516Z\u0020
+
+这是k6的日志.artifacts/ssr-oom/remote/20260911T130516Z
+分析问题，如何改进算法？
+
+Select **target text** across this line
+and finish on this second line.`;
 
 before(async () => {
   workspacePath = await mkdtemp(join(tmpdir(), "taskmate-e2e-"));
@@ -16,12 +25,7 @@ createdAt: 2026-09-15T00:00:00Z
 updatedAt: 2026-09-15T00:00:00Z
 ---
 
-active
-
-这是memcheck的日志：.artifacts/ssr-oom/remote/20260911T130516Z\u0020
-
-这是k6的日志.artifacts/ssr-oom/remote/20260911T130516Z
-分析问题，如何改进算法？`);
+${taskBody}`);
 });
 
 after(async () => {
@@ -72,9 +76,76 @@ describe("Taskmate desktop page", () => {
       .down()
       .perform();
     try {
-      await expect($(".cm-editor")).toHaveAttribute("data-selection-line", "3");
+      await expect($(".cm-editor")).toHaveAttribute("data-selection-line", "4");
     } finally {
       await browser.action("pointer", { parameters: { pointerType: "mouse" } }).up().perform();
     }
+  });
+
+  it("selects rendered Markdown text across lines in both directions", async () => {
+    const startLine = await $("//*[contains(concat(' ', normalize-space(@class), ' '), ' cm-line ') and contains(., 'target text')]");
+    const endLine = await $("//*[contains(concat(' ', normalize-space(@class), ' '), ' cm-line ') and contains(., 'finish on')]");
+    const pointInText = async (line: ReturnType<typeof $>, needle: string, character: number, after: boolean) => browser.execute(
+      (element, text, offset, placeAfter) => {
+        const lineElement = element as unknown as HTMLElement;
+        const walker = document.createTreeWalker(lineElement, NodeFilter.SHOW_TEXT);
+        let node: Text | null = null;
+        while (walker.nextNode()) {
+          const candidate = walker.currentNode as Text;
+          if (candidate.data.includes(text)) {
+            node = candidate;
+            break;
+          }
+        }
+        if (!node) throw new Error(`Unable to find ${text}`);
+        const position = node.data.indexOf(text) + offset;
+        const range = document.createRange();
+        range.setStart(node, position);
+        range.setEnd(node, position + 1);
+        const rect = range.getBoundingClientRect();
+        return {
+          x: Math.round(placeAfter ? rect.right - 1 : rect.left + 1),
+          y: Math.round(rect.top + rect.height / 2),
+        };
+      },
+      line,
+      needle,
+      character,
+      after,
+    );
+    const expectedText = "target text** across this line\nand finish";
+    const drag = (start: { x: number; y: number }, end: { x: number; y: number }) => browser.execute(
+      (from, to) => {
+        const target = document.elementFromPoint(from.x, from.y);
+        if (!target) throw new Error("Unable to find drag start target");
+        target.dispatchEvent(new MouseEvent("mousedown", {
+          bubbles: true, button: 0, buttons: 1, detail: 1, clientX: from.x, clientY: from.y,
+        }));
+        document.dispatchEvent(new MouseEvent("mousemove", {
+          bubbles: true, button: 0, buttons: 1, detail: 1, clientX: to.x, clientY: to.y,
+        }));
+        document.dispatchEvent(new MouseEvent("mouseup", {
+          bubbles: true, button: 0, buttons: 0, detail: 1, clientX: to.x, clientY: to.y,
+        }));
+      },
+      start,
+      end,
+    );
+
+    await drag(
+      await pointInText(startLine, "target text", 0, false),
+      await pointInText(endLine, "finish", "finish".length - 1, true),
+    );
+    await expect($(".cm-editor")).toHaveAttribute("data-selection-text", expectedText);
+    await browser.waitUntil(async () => Number(await $(".cm-editor").getAttribute("data-selection-anchor"))
+      < Number(await $(".cm-editor").getAttribute("data-selection-head")));
+
+    await drag(
+      await pointInText(endLine, "finish", "finish".length - 1, true),
+      await pointInText(startLine, "target text", 0, false),
+    );
+    await expect($(".cm-editor")).toHaveAttribute("data-selection-text", expectedText);
+    await browser.waitUntil(async () => Number(await $(".cm-editor").getAttribute("data-selection-anchor"))
+      > Number(await $(".cm-editor").getAttribute("data-selection-head")));
   });
 });
