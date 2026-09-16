@@ -197,6 +197,19 @@ function appendMarkdown(parent: HTMLElement, source: string, inline = false) {
   });
 }
 
+function domPositionAtPoint(root: HTMLElement, x: number, y: number) {
+  const caretDocument = document as Document & {
+    caretPositionFromPoint?(x: number, y: number): { offsetNode: Node; offset: number } | null;
+    caretRangeFromPoint?(x: number, y: number): Range | null;
+  };
+  const position = caretDocument.caretPositionFromPoint?.(x, y);
+  const fallback = position ? null : caretDocument.caretRangeFromPoint?.(x, y);
+  const node = position?.offsetNode ?? fallback?.startContainer;
+  const offset = position?.offset ?? fallback?.startOffset;
+  if (!node || offset === undefined || !root.contains(node)) return null;
+  return { node, offset };
+}
+
 class HtmlWidget extends WidgetType {
   constructor(readonly source: string, readonly block: boolean) {
     super();
@@ -1590,13 +1603,34 @@ export const livePreview = [previewState, ViewPlugin.fromClass(
 ), atomicPreviewRanges, EditorView.domEventObservers({
   mousedown(event, view) {
     if (event.button !== 0) return;
+    const target = event.target instanceof Element ? event.target : null;
+    const line = target?.closest<HTMLElement>(".cm-line");
+    const domPosition = line && !target?.closest("[data-preview-kind], [data-marker-kind]")
+      ? domPositionAtPoint(line, event.clientX, event.clientY)
+      : null;
+    const clickPosition = domPosition ? view.posAtDOM(domPosition.node, domPosition.offset) : null;
+    const startAnchor = view.state.selection.main.anchor;
+    const { clientX, clientY, detail, metaKey, ctrlKey, shiftKey } = event;
     view.dispatch({ effects: pointerSelectingPreview.of(true) });
     const ownerDocument = view.dom.ownerDocument;
     const ownerWindow = ownerDocument.defaultView;
-    const finish = () => {
+    const finish = (finishEvent: Event) => {
       ownerDocument.removeEventListener("mouseup", finish);
       ownerWindow?.removeEventListener("blur", finish);
-      if (view.dom.isConnected) view.dispatch({ effects: pointerSelectingPreview.of(false) });
+      const clicked = finishEvent instanceof MouseEvent
+        && clickPosition !== null
+        && detail === 1
+        && !metaKey
+        && !ctrlKey
+        && Math.hypot(finishEvent.clientX - clientX, finishEvent.clientY - clientY) <= 4;
+      ownerWindow?.requestAnimationFrame(() => {
+        if (!view.dom.isConnected) return;
+        view.dispatch({
+          effects: pointerSelectingPreview.of(false),
+          ...(clicked ? { selection: shiftKey ? { anchor: startAnchor, head: clickPosition } : { anchor: clickPosition } } : {}),
+        });
+        if (clicked) view.focus();
+      });
     };
     ownerDocument.addEventListener("mouseup", finish);
     ownerWindow?.addEventListener("blur", finish);

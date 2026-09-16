@@ -135,6 +135,7 @@ export const MarkdownEditor = memo(function MarkdownEditor({ value, documentId, 
             if (import.meta.env.MODE === "e2e") {
               const selection = update.state.selection.main;
               update.view.dom.dataset.selectionLine = String(update.state.doc.lineAt(selection.head).number);
+              update.view.dom.dataset.selectionColumn = String(selection.head - update.state.doc.lineAt(selection.head).from);
               update.view.dom.dataset.selectionAnchor = String(selection.anchor);
               update.view.dom.dataset.selectionHead = String(selection.head);
               update.view.dom.dataset.selectionText = update.state.sliceDoc(selection.from, selection.to);
@@ -204,6 +205,7 @@ export const MarkdownEditor = memo(function MarkdownEditor({ value, documentId, 
     });
     if (import.meta.env.MODE === "e2e") {
       view.dom.dataset.selectionLine = "1";
+      view.dom.dataset.selectionColumn = "0";
       view.dom.dataset.selectionAnchor = "0";
       view.dom.dataset.selectionHead = "0";
       view.dom.dataset.selectionText = "";

@@ -12,7 +12,11 @@ const taskBody = `active
 分析问题，如何改进算法？
 
 Select **target text** across this line
-and finish on this second line.`;
+and finish on this second line.
+
+### 00
+
+这是优化完联赛页后的 http 日志。`;
 
 before(async () => {
   workspacePath = await mkdtemp(join(tmpdir(), "taskmate-e2e-"));
@@ -147,5 +151,75 @@ describe("Taskmate desktop page", () => {
     await expect($(".cm-editor")).toHaveAttribute("data-selection-text", expectedText);
     await browser.waitUntil(async () => Number(await $(".cm-editor").getAttribute("data-selection-anchor"))
       > Number(await $(".cm-editor").getAttribute("data-selection-head")));
+  });
+
+  it("leaves an edited heading and positions the cursor in clicked paragraph text", async () => {
+    const headingSelector = "//*[contains(concat(' ', normalize-space(@class), ' '), ' cm-line ') and contains(., '00')]";
+    const paragraphSelector = "//*[contains(concat(' ', normalize-space(@class), ' '), ' cm-line ') and contains(., '这是优化完联赛页')]";
+    const heading = await $(headingSelector);
+    const offsetInText = (line: ReturnType<typeof $>, needle: string, character: number) => browser.execute(
+      (element, text, offset) => {
+        const lineElement = element as unknown as HTMLElement;
+        const walker = document.createTreeWalker(lineElement, NodeFilter.SHOW_TEXT);
+        while (walker.nextNode()) {
+          const node = walker.currentNode as Text;
+          const start = node.data.indexOf(text);
+          if (start < 0) continue;
+          const range = document.createRange();
+          range.setStart(node, start + offset);
+          range.setEnd(node, start + offset + 1);
+          const rect = range.getBoundingClientRect();
+          const lineRect = lineElement.getBoundingClientRect();
+          return {
+            x: Math.round(rect.left + 1 - (lineRect.left + lineRect.width / 2)),
+            y: Math.round(rect.top + rect.height / 2 - (lineRect.top + lineRect.height / 2)),
+          };
+        }
+        throw new Error(`Unable to find ${text}`);
+      },
+      line,
+      needle,
+      character,
+    );
+    const clickAt = (line: ReturnType<typeof $>, offset: { x: number; y: number }) => browser.execute(
+      (element, point) => {
+        const rect = (element as unknown as HTMLElement).getBoundingClientRect();
+        const clientX = rect.left + rect.width / 2 + point.x;
+        const clientY = rect.top + rect.height / 2 + point.y;
+        const target = document.elementFromPoint(clientX, clientY);
+        if (!target) throw new Error("Unable to find click target");
+        target.dispatchEvent(new MouseEvent("mousedown", {
+          bubbles: true, button: 0, buttons: 1, detail: 1, clientX, clientY,
+        }));
+        target.dispatchEvent(new MouseEvent("mouseup", {
+          bubbles: true, button: 0, buttons: 0, detail: 1, clientX, clientY,
+        }));
+      },
+      line,
+      offset,
+    );
+
+    const headingLine = await browser.execute((element) =>
+      Array.from(document.querySelectorAll(".cm-line")).indexOf(element as unknown as Element) + 1, heading);
+    const headingOffset = await offsetInText(heading, "00", 1);
+    await clickAt(heading, headingOffset);
+    await expect($(".cm-editor")).toHaveAttribute("data-selection-line", String(headingLine));
+    await browser.waitUntil(async () => await $(".cm-editor").getAttribute("data-selection-anchor")
+      === await $(".cm-editor").getAttribute("data-selection-head"));
+    await browser.execute(() => document.execCommand("insertText", false, "x"));
+    await browser.waitUntil(() => browser.execute((lineNumber) =>
+      document.querySelectorAll(".cm-line")[lineNumber - 1]?.textContent?.includes("x") ?? false, headingLine));
+
+    const targetCharacter = 7;
+    const paragraph = await $(paragraphSelector);
+    const paragraphLine = await browser.execute((element) =>
+      Array.from(document.querySelectorAll(".cm-line")).indexOf(element as unknown as Element) + 1, paragraph);
+    const paragraphOffset = await offsetInText(paragraph, "这是优化完联赛页", targetCharacter);
+    await clickAt(paragraph, paragraphOffset);
+
+    await browser.waitUntil(() => browser.execute((lineNumber) =>
+      !document.querySelectorAll(".cm-line")[lineNumber - 1]?.textContent?.includes("###"), headingLine));
+    await expect($(".cm-editor")).toHaveAttribute("data-selection-line", String(paragraphLine));
+    await expect($(".cm-editor")).toHaveAttribute("data-selection-column", String(targetCharacter));
   });
 });

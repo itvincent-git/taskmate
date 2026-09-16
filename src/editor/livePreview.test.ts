@@ -101,7 +101,7 @@ describe("Live Preview activation", () => {
     host.remove();
   });
 
-  it("keeps layout-changing marker decorations stable during pointer selection", () => {
+  it("keeps layout-changing marker decorations stable until pointer selection settles", async () => {
     const host = document.createElement("div");
     document.body.append(host);
     const source = "plain\n**target text**";
@@ -112,7 +112,8 @@ describe("Live Preview activation", () => {
     view.dispatch({ selection: { anchor: source.indexOf("target"), head: source.indexOf("text") + 4 } });
     expect(host.textContent).not.toContain("**");
     document.dispatchEvent(new MouseEvent("mouseup", { bubbles: true, button: 0 }));
-    expect(host.textContent).toContain("**target text**");
+    expect(host.textContent).not.toContain("**");
+    await vi.waitFor(() => expect(host.textContent).toContain("**target text**"));
     view.destroy();
     host.remove();
   });
