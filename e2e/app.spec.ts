@@ -47,7 +47,7 @@ describe("Taskmate desktop page", () => {
     expect(hasTauriRuntime).toBe(true);
   });
 
-  it("positions the cursor on the clicked line before a multiline preview", async () => {
+  it("positions the cursor at the clicked text before mouseup", async () => {
     await browser.execute(() => localStorage.clear());
     await browser.refresh();
     await $("#workspace-path").waitForDisplayed();
@@ -71,18 +71,31 @@ describe("Taskmate desktop page", () => {
       const rect = range.getBoundingClientRect();
       const lineRect = line.getBoundingClientRect();
       return {
-        x: Math.round(rect.left + rect.width / 2 - (lineRect.left + lineRect.width / 2)),
+        x: Math.round(rect.left + 1 - (lineRect.left + lineRect.width / 2)),
         y: Math.round(rect.top + rect.height / 2 - (lineRect.top + lineRect.height / 2)),
+        column: textOffset,
       };
     });
-    await browser.action("pointer", { parameters: { pointerType: "mouse" } })
-      .move({ origin: targetLine, x: offset.x, y: offset.y })
-      .down()
-      .perform();
+    const targetLineNumber = await browser.execute((element) =>
+      Array.from(document.querySelectorAll(".cm-line")).indexOf(element as unknown as Element) + 1, targetLine);
+    const point = await browser.execute((element, relative) => {
+      const rect = (element as unknown as HTMLElement).getBoundingClientRect();
+      const clientX = rect.left + rect.width / 2 + relative.x;
+      const clientY = rect.top + rect.height / 2 + relative.y;
+      const target = document.elementFromPoint(clientX, clientY);
+      if (!target) throw new Error("Unable to find click target");
+      target.dispatchEvent(new MouseEvent("mousedown", {
+        bubbles: true, button: 0, buttons: 1, detail: 1, clientX, clientY,
+      }));
+      return { x: clientX, y: clientY };
+    }, targetLine, offset);
     try {
-      await expect($(".cm-editor")).toHaveAttribute("data-selection-line", "4");
+      await expect($(".cm-editor")).toHaveAttribute("data-selection-line", String(targetLineNumber));
+      await expect($(".cm-editor")).toHaveAttribute("data-selection-column", String(offset.column));
     } finally {
-      await browser.action("pointer", { parameters: { pointerType: "mouse" } }).up().perform();
+      await browser.execute((position) => document.dispatchEvent(new MouseEvent("mouseup", {
+        bubbles: true, button: 0, buttons: 0, detail: 1, clientX: position.x, clientY: position.y,
+      })), point);
     }
   });
 

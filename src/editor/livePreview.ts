@@ -1,6 +1,6 @@
 import { ensureSyntaxTree, forceParsing, syntaxTree } from "@codemirror/language";
 import type { SyntaxNode } from "@lezer/common";
-import { StateField, StateEffect, type EditorState, type Transaction } from "@codemirror/state";
+import { EditorSelection, StateField, StateEffect, type EditorState, type Transaction } from "@codemirror/state";
 import { Decoration, type DecorationSet, EditorView, ViewPlugin, type ViewUpdate, WidgetType } from "@codemirror/view";
 import katex from "katex";
 import "katex/dist/katex.min.css";
@@ -209,6 +209,34 @@ function domPositionAtPoint(root: HTMLElement, x: number, y: number) {
   if (!node || offset === undefined || !root.contains(node)) return null;
   return { node, offset };
 }
+
+const renderedTextSelection = EditorView.mouseSelectionStyle.of((view, event) => {
+  if (event.button !== 0 || event.detail !== 1 || event.metaKey || event.ctrlKey) return null;
+  const target = event.target instanceof Element ? event.target : null;
+  const line = target?.closest<HTMLElement>(".cm-line");
+  if (!line || target?.closest("[data-preview-kind], [data-marker-kind]")) return null;
+  const position = domPositionAtPoint(line, event.clientX, event.clientY);
+  if (!position) return null;
+  let anchor = view.posAtDOM(position.node, position.offset);
+  let startSelection = view.state.selection;
+  return {
+    get(currentEvent, extend, multiple) {
+      const head = currentEvent === event
+        ? anchor
+        : view.posAtCoords({ x: currentEvent.clientX, y: currentEvent.clientY }, false) ?? anchor;
+      const range = EditorSelection.range(anchor, head);
+      if (extend) return startSelection.replaceRange(startSelection.main.extend(range.from, range.to));
+      if (multiple) return startSelection.addRange(range);
+      return EditorSelection.create([range]);
+    },
+    update(update) {
+      if (update.docChanged) {
+        anchor = update.changes.mapPos(anchor);
+        startSelection = startSelection.map(update.changes);
+      }
+    },
+  };
+});
 
 class HtmlWidget extends WidgetType {
   constructor(readonly source: string, readonly block: boolean) {
@@ -1465,6 +1493,7 @@ const composingPreview = StateEffect.define<boolean>();
 // Keep screen coordinates stable while CodeMirror's native mouse selection
 // gesture maps them back to document positions.
 const pointerSelectingPreview = StateEffect.define<boolean>();
+const pointerRefreshFrames = new WeakMap<EditorView, number>();
 function activeKey(state: EditorState, index: PreviewIndex) {
   const keys: string[] = [];
   for (const selection of state.selection.ranges) {
@@ -1600,37 +1629,26 @@ export const livePreview = [previewState, ViewPlugin.fromClass(
       if (this.refreshTimer !== null) window.clearTimeout(this.refreshTimer);
     }
   },
-), atomicPreviewRanges, EditorView.domEventObservers({
+), atomicPreviewRanges, renderedTextSelection, EditorView.domEventObservers({
   mousedown(event, view) {
     if (event.button !== 0) return;
-    const target = event.target instanceof Element ? event.target : null;
-    const line = target?.closest<HTMLElement>(".cm-line");
-    const domPosition = line && !target?.closest("[data-preview-kind], [data-marker-kind]")
-      ? domPositionAtPoint(line, event.clientX, event.clientY)
-      : null;
-    const clickPosition = domPosition ? view.posAtDOM(domPosition.node, domPosition.offset) : null;
-    const startAnchor = view.state.selection.main.anchor;
-    const { clientX, clientY, detail, metaKey, ctrlKey, shiftKey } = event;
+    const ownerWindow = view.dom.ownerDocument.defaultView;
+    const pendingFrame = pointerRefreshFrames.get(view);
+    if (pendingFrame !== undefined) {
+      ownerWindow?.cancelAnimationFrame(pendingFrame);
+      pointerRefreshFrames.delete(view);
+    }
     view.dispatch({ effects: pointerSelectingPreview.of(true) });
     const ownerDocument = view.dom.ownerDocument;
-    const ownerWindow = ownerDocument.defaultView;
-    const finish = (finishEvent: Event) => {
+    const finish = () => {
       ownerDocument.removeEventListener("mouseup", finish);
       ownerWindow?.removeEventListener("blur", finish);
-      const clicked = finishEvent instanceof MouseEvent
-        && clickPosition !== null
-        && detail === 1
-        && !metaKey
-        && !ctrlKey
-        && Math.hypot(finishEvent.clientX - clientX, finishEvent.clientY - clientY) <= 4;
-      ownerWindow?.requestAnimationFrame(() => {
+      const frame = ownerWindow?.requestAnimationFrame(() => {
+        pointerRefreshFrames.delete(view);
         if (!view.dom.isConnected) return;
-        view.dispatch({
-          effects: pointerSelectingPreview.of(false),
-          ...(clicked ? { selection: shiftKey ? { anchor: startAnchor, head: clickPosition } : { anchor: clickPosition } } : {}),
-        });
-        if (clicked) view.focus();
+        view.dispatch({ effects: pointerSelectingPreview.of(false) });
       });
+      if (frame !== undefined) pointerRefreshFrames.set(view, frame);
     };
     ownerDocument.addEventListener("mouseup", finish);
     ownerWindow?.addEventListener("blur", finish);
