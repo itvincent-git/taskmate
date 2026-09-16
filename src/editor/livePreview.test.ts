@@ -118,6 +118,31 @@ describe("Live Preview activation", () => {
     host.remove();
   });
 
+  it.each([
+    { source: "plain\n\n## Heading\n\nother", active: "Heading", marker: "##" },
+    { source: "plain\n\n---\n\nother", active: "---", marker: "---" },
+  ])("restores the $marker preview after clicking another block", async ({ source, active, marker }) => {
+    const host = document.createElement("div");
+    document.body.append(host);
+    const view = new EditorView({
+      parent: host,
+      state: EditorState.create({ doc: source, extensions: [markdown(), livePreview] }),
+    });
+    const activePosition = source.indexOf(active);
+    view.dispatch({ selection: { anchor: activePosition } });
+    expect(host.textContent).toContain(marker);
+
+    view.contentDOM.addEventListener("mousedown", (event) => event.preventDefault(), { capture: true, once: true });
+    host.querySelector<HTMLElement>(".cm-line:last-child")!
+      .dispatchEvent(new MouseEvent("mousedown", { bubbles: true, button: 0 }));
+    view.dispatch({ selection: { anchor: source.indexOf("other") } });
+    document.dispatchEvent(new MouseEvent("mouseup", { bubbles: true, button: 0 }));
+
+    await vi.waitFor(() => expect(host.textContent).not.toContain(marker));
+    view.destroy();
+    host.remove();
+  });
+
   it("hides inactive markers and reveals them when the cursor enters the syntax node", () => {
     const host = document.createElement("div");
     document.body.append(host);

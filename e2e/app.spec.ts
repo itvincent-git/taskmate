@@ -14,7 +14,7 @@ const taskBody = `active
 Select **target text** across this line
 and finish on this second line.
 
-### 00
+## 00
 
 这是优化完联赛页后的 http 日志。`;
 
@@ -166,7 +166,7 @@ describe("Taskmate desktop page", () => {
       > Number(await $(".cm-editor").getAttribute("data-selection-head")));
   });
 
-  it("leaves an edited heading and positions the cursor in clicked paragraph text", async () => {
+  it("restores a selected H2 preview and positions the cursor in clicked paragraph text", async () => {
     const headingSelector = "//*[contains(concat(' ', normalize-space(@class), ' '), ' cm-line ') and contains(., '00')]";
     const paragraphSelector = "//*[contains(concat(' ', normalize-space(@class), ' '), ' cm-line ') and contains(., '这是优化完联赛页')]";
     const heading = await $(headingSelector);
@@ -219,9 +219,8 @@ describe("Taskmate desktop page", () => {
     await expect($(".cm-editor")).toHaveAttribute("data-selection-line", String(headingLine));
     await browser.waitUntil(async () => await $(".cm-editor").getAttribute("data-selection-anchor")
       === await $(".cm-editor").getAttribute("data-selection-head"));
-    await browser.execute(() => document.execCommand("insertText", false, "x"));
     await browser.waitUntil(() => browser.execute((lineNumber) =>
-      document.querySelectorAll(".cm-line")[lineNumber - 1]?.textContent?.includes("x") ?? false, headingLine));
+      document.querySelectorAll(".cm-line")[lineNumber - 1]?.textContent?.includes("##") ?? false, headingLine));
 
     const targetCharacter = 7;
     const paragraph = await $(paragraphSelector);
@@ -231,7 +230,7 @@ describe("Taskmate desktop page", () => {
     await clickAt(paragraph, paragraphOffset);
 
     await browser.waitUntil(() => browser.execute((lineNumber) =>
-      !document.querySelectorAll(".cm-line")[lineNumber - 1]?.textContent?.includes("###"), headingLine));
+      !document.querySelectorAll(".cm-line")[lineNumber - 1]?.textContent?.includes("##"), headingLine));
     await expect($(".cm-editor")).toHaveAttribute("data-selection-line", String(paragraphLine));
     await expect($(".cm-editor")).toHaveAttribute("data-selection-column", String(targetCharacter));
   });

@@ -1513,8 +1513,10 @@ function activeKey(state: EditorState, index: PreviewIndex) {
   return keys.join("|");
 }
 
+type PreviewArea = { from: number; to: number };
+
 function selectionAreas(state: EditorState, index: PreviewIndex) {
-  const areas: Array<{ from: number; to: number }> = [];
+  const areas: PreviewArea[] = [];
   for (const selection of state.selection.ranges) {
     syntaxTree(state).iterate({ from: selection.from, to: selection.to, enter(node) {
       if (node.name === "Document") return;
@@ -1528,8 +1530,13 @@ function selectionAreas(state: EditorState, index: PreviewIndex) {
   return areas;
 }
 
-function updateSelectionDecorations(value: DecorationSet, transaction: Transaction, index: PreviewIndex) {
-  const areas = [...selectionAreas(transaction.startState, index), ...selectionAreas(transaction.state, index)]
+function updateSelectionDecorations(
+  value: DecorationSet,
+  transaction: Transaction,
+  index: PreviewIndex,
+  previousAreas: readonly PreviewArea[] = [],
+) {
+  const areas = [...previousAreas, ...selectionAreas(transaction.startState, index), ...selectionAreas(transaction.state, index)]
     .sort((left, right) => left.from - right.from);
   const merged: typeof areas = [];
   for (const area of areas) {
@@ -1556,6 +1563,7 @@ const previewState = StateField.define<{
   active: string;
   composing: boolean;
   pointerSelecting: boolean;
+  pointerAreas: readonly PreviewArea[];
   pending: boolean;
 }>({
   create(state) {
@@ -1566,6 +1574,7 @@ const previewState = StateField.define<{
       active: activeKey(state, index),
       composing: false,
       pointerSelecting: false,
+      pointerAreas: [],
       pending: false,
     };
   },
@@ -1578,21 +1587,39 @@ const previewState = StateField.define<{
     if ((transaction.docChanged && !refresh) || composing) {
       const mapped = transaction.docChanged && !value.pending ? mapPlainIndex(value.index, transaction) : null;
       const index = mapped ?? value.index;
-      return { ...value, index, composing, pointerSelecting, pending: value.pending || (transaction.docChanged && !mapped),
+      const pointerAreas = transaction.docChanged
+        ? value.pointerAreas.map((area) => ({
+          from: transaction.changes.mapPos(area.from, -1),
+          to: transaction.changes.mapPos(area.to, 1),
+        }))
+        : value.pointerAreas;
+      return { ...value, index, composing, pointerSelecting, pointerAreas, pending: value.pending || (transaction.docChanged && !mapped),
         active: mapped ? activeKey(transaction.state, index) : value.active,
         decorations: value.decorations.map(transaction.changes) };
     }
     if (pointerSelecting && !transaction.docChanged) {
-      return pointerSelection ? { ...value, pointerSelecting } : value;
+      return pointerSelection ? {
+        ...value,
+        pointerSelecting,
+        pointerAreas: selectionAreas(transaction.state, value.index),
+      } : value;
     }
     if (!refresh && !transaction.selection && !composition && !pointerSelection) return value;
     const index = value.pending || transaction.docChanged || value.index.tree !== syntaxTree(transaction.state) ? previewIndex(transaction.state) : value.index;
     const active = activeKey(transaction.state, index);
     if (value.pending || index !== value.index || active !== value.active || composition || pointerSelection) {
       const decorations = !value.pending && index === value.index && !transaction.docChanged && !composition
-        ? updateSelectionDecorations(value.decorations, transaction, index)
+        ? updateSelectionDecorations(value.decorations, transaction, index, pointerSelection ? value.pointerAreas : [])
         : buildDecorations(transaction.state, index);
-      return { decorations, index, active, composing, pointerSelecting, pending: false };
+      return {
+        decorations,
+        index,
+        active,
+        composing,
+        pointerSelecting,
+        pointerAreas: pointerSelecting ? value.pointerAreas : [],
+        pending: false,
+      };
     }
     return value;
   },
