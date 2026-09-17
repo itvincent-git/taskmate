@@ -166,6 +166,51 @@ describe("Taskmate desktop page", () => {
       > Number(await $(".cm-editor").getAttribute("data-selection-head")));
   });
 
+  it("selects the memcheck log line in both directions", async () => {
+    const lineText = "这是memcheck的日志：.artifacts/ssr-oom/remote/20260911T130516Z";
+    const line = await $(`//*[contains(concat(' ', normalize-space(@class), ' '), ' cm-line ') and contains(., 'memcheck的日志')]`);
+    const endpoints = await browser.execute((element, text) => {
+      const lineElement = element as unknown as HTMLElement;
+      const node = Array.from(lineElement.childNodes)
+        .find((candidate) => candidate.textContent?.includes(text))!;
+      const start = node.textContent!.indexOf(text);
+      const point = (offset: number, after: boolean) => {
+        const range = document.createRange();
+        range.setStart(node, offset);
+        range.setEnd(node, offset + 1);
+        const rect = range.getBoundingClientRect();
+        return {
+          x: Math.round(after ? rect.right - 1 : rect.left + 1),
+          y: Math.round(rect.top + rect.height / 2),
+        };
+      };
+      return {
+        start: point(start, false),
+        end: point(start + text.length - 1, true),
+      };
+    }, line, lineText);
+    const drag = (start: { x: number; y: number }, end: { x: number; y: number }) => browser.execute(
+      (from, to) => {
+        document.elementFromPoint(from.x, from.y)!.dispatchEvent(new MouseEvent("mousedown", {
+          bubbles: true, button: 0, buttons: 1, detail: 1, clientX: from.x, clientY: from.y,
+        }));
+        document.dispatchEvent(new MouseEvent("mousemove", {
+          bubbles: true, button: 0, buttons: 1, detail: 1, clientX: to.x, clientY: to.y,
+        }));
+        document.dispatchEvent(new MouseEvent("mouseup", {
+          bubbles: true, button: 0, buttons: 0, detail: 1, clientX: to.x, clientY: to.y,
+        }));
+      },
+      start,
+      end,
+    );
+
+    await drag(endpoints.start, endpoints.end);
+    await expect($(".cm-editor")).toHaveAttribute("data-selection-text", lineText);
+    await drag(endpoints.end, endpoints.start);
+    await expect($(".cm-editor")).toHaveAttribute("data-selection-text", lineText);
+  });
+
   it("restores a selected H2 preview and positions the cursor in clicked paragraph text", async () => {
     const headingSelector = "//*[contains(concat(' ', normalize-space(@class), ' '), ' cm-line ') and contains(., '00')]";
     const paragraphSelector = "//*[contains(concat(' ', normalize-space(@class), ' '), ' cm-line ') and contains(., '这是优化完联赛页')]";

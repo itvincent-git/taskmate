@@ -1,6 +1,6 @@
 import { ensureSyntaxTree, forceParsing, syntaxTree } from "@codemirror/language";
 import type { SyntaxNode } from "@lezer/common";
-import { EditorSelection, StateField, StateEffect, type EditorState, type Transaction } from "@codemirror/state";
+import { StateField, StateEffect, type EditorState, type Transaction } from "@codemirror/state";
 import { Decoration, type DecorationSet, EditorView, ViewPlugin, type ViewUpdate, WidgetType } from "@codemirror/view";
 import katex from "katex";
 import "katex/dist/katex.min.css";
@@ -196,47 +196,6 @@ function appendMarkdown(parent: HTMLElement, source: string, inline = false) {
     if (sanitized) parent.append(sanitized);
   });
 }
-
-function domPositionAtPoint(root: HTMLElement, x: number, y: number) {
-  const caretDocument = document as Document & {
-    caretPositionFromPoint?(x: number, y: number): { offsetNode: Node; offset: number } | null;
-    caretRangeFromPoint?(x: number, y: number): Range | null;
-  };
-  const position = caretDocument.caretPositionFromPoint?.(x, y);
-  const fallback = position ? null : caretDocument.caretRangeFromPoint?.(x, y);
-  const node = position?.offsetNode ?? fallback?.startContainer;
-  const offset = position?.offset ?? fallback?.startOffset;
-  if (!node || offset === undefined || !root.contains(node)) return null;
-  return { node, offset };
-}
-
-const renderedTextSelection = EditorView.mouseSelectionStyle.of((view, event) => {
-  if (event.button !== 0 || event.detail !== 1 || event.metaKey || event.ctrlKey) return null;
-  const target = event.target instanceof Element ? event.target : null;
-  const line = target?.closest<HTMLElement>(".cm-line");
-  if (!line || target?.closest("[data-preview-kind], [data-marker-kind]")) return null;
-  const position = domPositionAtPoint(line, event.clientX, event.clientY);
-  if (!position) return null;
-  let anchor = view.posAtDOM(position.node, position.offset);
-  let startSelection = view.state.selection;
-  return {
-    get(currentEvent, extend, multiple) {
-      const head = currentEvent === event
-        ? anchor
-        : view.posAtCoords({ x: currentEvent.clientX, y: currentEvent.clientY }, false) ?? anchor;
-      const range = EditorSelection.range(anchor, head);
-      if (extend) return startSelection.replaceRange(startSelection.main.extend(range.from, range.to));
-      if (multiple) return startSelection.addRange(range);
-      return EditorSelection.create([range]);
-    },
-    update(update) {
-      if (update.docChanged) {
-        anchor = update.changes.mapPos(anchor);
-        startSelection = startSelection.map(update.changes);
-      }
-    },
-  };
-});
 
 class HtmlWidget extends WidgetType {
   constructor(readonly source: string, readonly block: boolean) {
@@ -1656,7 +1615,7 @@ export const livePreview = [previewState, ViewPlugin.fromClass(
       if (this.refreshTimer !== null) window.clearTimeout(this.refreshTimer);
     }
   },
-), atomicPreviewRanges, renderedTextSelection, EditorView.domEventObservers({
+), atomicPreviewRanges, EditorView.domEventObservers({
   mousedown(event, view) {
     if (event.button !== 0) return;
     const ownerWindow = view.dom.ownerDocument.defaultView;
