@@ -6,6 +6,30 @@ import { join } from "node:path";
 let workspacePath: string;
 const taskBody = `active
 
+---
+
+Preparation notes.
+
+---
+
+\`\`\`
+LOAD_RATE=10 LOAD_DURATION=2m \\
+PRE_ALLOCATED_VUS=40 MAX_VUS=100 \\
+./scripts/ssr-oom/remote-load.sh
+\`\`\`
+
+### 较高压力示例：
+  LOAD_RATE=20 LOAD_DURATION=90s \\
+  PRE_ALLOCATED_VUS=80 MAX_VUS=200 \\
+  ./scripts/ssr-oom/remote-load.sh
+
+### 监听memcheck
+\`\`\`
+export X_REVALIDATION_TOKEN=test
+export RUN_ID=test
+./scripts/ssr-oom/remote-observe.sh
+\`\`\`
+
 这是memcheck的日志：.artifacts/ssr-oom/remote/20260911T130516Z\u0020
 
 这是k6的日志.artifacts/ssr-oom/remote/20260911T130516Z
@@ -59,6 +83,8 @@ describe("Taskmate desktop page", () => {
     await $(".cm-editor").waitForDisplayed();
 
     const targetLine = await $("//*[contains(concat(' ', normalize-space(@class), ' '), ' cm-line ') and contains(., 'memcheck的日志')]");
+    await targetLine.scrollIntoView({ block: "center" });
+    await targetLine.waitForDisplayed();
     const offset = await browser.execute(() => {
       const line = Array.from(document.querySelectorAll<HTMLElement>(".cm-line"))
         .find((candidate) => candidate.textContent?.includes("memcheck的日志"))!;
@@ -168,6 +194,18 @@ describe("Taskmate desktop page", () => {
 
   it("selects the memcheck log line in both directions", async () => {
     const lineText = "这是memcheck的日志：.artifacts/ssr-oom/remote/20260911T130516Z";
+    const verticalMargins = await browser.execute(() => {
+      const codeFirst = document.querySelector<HTMLElement>(".cm-codeblock-first")!;
+      const codeLast = document.querySelector<HTMLElement>(".cm-codeblock-last")!;
+      const rule = document.querySelector<HTMLElement>("[data-preview-kind='rule']")!;
+      return {
+        codeTop: getComputedStyle(codeFirst).marginTop,
+        codeBottom: getComputedStyle(codeLast).marginBottom,
+        ruleTop: getComputedStyle(rule).marginTop,
+        ruleBottom: getComputedStyle(rule).marginBottom,
+      };
+    });
+    expect(verticalMargins).toEqual({ codeTop: "0px", codeBottom: "0px", ruleTop: "0px", ruleBottom: "0px" });
     const line = await $(`//*[contains(concat(' ', normalize-space(@class), ' '), ' cm-line ') and contains(., 'memcheck的日志')]`);
     const endpoints = await browser.execute((element, text) => {
       const lineElement = element as unknown as HTMLElement;
@@ -189,21 +227,13 @@ describe("Taskmate desktop page", () => {
         end: point(start + text.length - 1, true),
       };
     }, line, lineText);
-    const drag = (start: { x: number; y: number }, end: { x: number; y: number }) => browser.execute(
-      (from, to) => {
-        document.elementFromPoint(from.x, from.y)!.dispatchEvent(new MouseEvent("mousedown", {
-          bubbles: true, button: 0, buttons: 1, detail: 1, clientX: from.x, clientY: from.y,
-        }));
-        document.dispatchEvent(new MouseEvent("mousemove", {
-          bubbles: true, button: 0, buttons: 1, detail: 1, clientX: to.x, clientY: to.y,
-        }));
-        document.dispatchEvent(new MouseEvent("mouseup", {
-          bubbles: true, button: 0, buttons: 0, detail: 1, clientX: to.x, clientY: to.y,
-        }));
-      },
-      start,
-      end,
-    );
+    const drag = (start: { x: number; y: number }, end: { x: number; y: number }) =>
+      browser.action("pointer", { parameters: { pointerType: "mouse" } })
+        .move({ x: start.x, y: start.y })
+        .down()
+        .move({ duration: 500, x: end.x, y: end.y })
+        .up()
+        .perform();
 
     await drag(endpoints.start, endpoints.end);
     await expect($(".cm-editor")).toHaveAttribute("data-selection-text", lineText);
@@ -212,7 +242,7 @@ describe("Taskmate desktop page", () => {
   });
 
   it("restores a selected H2 preview and positions the cursor in clicked paragraph text", async () => {
-    const headingSelector = "//*[contains(concat(' ', normalize-space(@class), ' '), ' cm-line ') and contains(., '00')]";
+    const headingSelector = "//*[contains(concat(' ', normalize-space(@class), ' '), ' cm-line ') and normalize-space(.) = '00']";
     const paragraphSelector = "//*[contains(concat(' ', normalize-space(@class), ' '), ' cm-line ') and contains(., '这是优化完联赛页')]";
     const heading = await $(headingSelector);
     const offsetInText = (line: ReturnType<typeof $>, needle: string, character: number) => browser.execute(

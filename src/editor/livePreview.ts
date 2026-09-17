@@ -693,8 +693,11 @@ class MarkerWidget extends WidgetType {
   toDOM(view: EditorView) {
     if (this.kind === "rule") {
       const rule = document.createElement("span");
-      rule.className = "my-[.85em] block h-px bg-line";
+      rule.className = "block py-[.85em]";
       rule.dataset.previewKind = "rule";
+      const line = document.createElement("span");
+      line.className = "block h-px bg-line";
+      rule.append(line);
       return rule;
     }
     if (this.kind === "task") {
