@@ -1,4 +1,8 @@
 {
+  "0.15.4": {
+    "en": "- fix(editor): restore preview after pointer selection",
+    "zh": "- fix(editor): restore preview after pointer selection"
+  },
   "0.15.3": {
     "en": "- fix(e2e): rebuild app before wdio runs\n- fix(editor): preserve native text selection in preview\n- fix(editor): settle preview clicks before rerender\n- fix(editor): stabilize pointer selection",
     "zh": "- fix(e2e): rebuild app before wdio runs\n- fix(editor): preserve native text selection in preview\n- fix(editor): settle preview clicks before rerender\n- fix(editor): stabilize pointer selection"
