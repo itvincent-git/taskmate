@@ -1,4 +1,8 @@
 {
+  "0.16.0": {
+    "en": "- fix(editor): restore native drag selection\n- fix(editor): keep preview spacing measurable\n- test: reduce WDIO output noise",
+    "zh": "- fix(editor): restore native drag selection\n- fix(editor): keep preview spacing measurable\n- test: reduce WDIO output noise"
+  },
   "0.15.4": {
     "en": "- fix(editor): restore preview after pointer selection",
     "zh": "- fix(editor): restore preview after pointer selection"
