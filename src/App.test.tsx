@@ -529,6 +529,16 @@ describe("Taskmate application", () => {
     await waitFor(() => expect(screen.getByRole("button", { name: label })).toBeEnabled());
   });
 
+  it("starts the application sidebar with navigation instead of a decorative checkmark", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(screen.getByRole("button", { name: "Open workspace" }));
+
+    const navigation = await screen.findByRole("navigation", { name: "Application" });
+    expect(navigation.parentElement?.firstElementChild).toBe(navigation);
+    expect(within(navigation).getByRole("link", { name: "Tasks" })).toBeInTheDocument();
+  });
+
   it("shows one settings section at a time from the settings navigation", async () => {
     const user = userEvent.setup();
     render(<App />);

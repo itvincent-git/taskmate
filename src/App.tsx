@@ -1358,7 +1358,6 @@ function WorkspaceSession() {
       </header>
       <div className="flex min-h-0 flex-1">
         <aside className="flex w-12 shrink-0 flex-col items-center border-r border-[var(--line)] bg-[var(--surface)] py-2">
-          <div className="mb-3 grid size-7 place-items-center rounded-lg bg-[var(--accent)] text-white"><Check size={15} /></div>
           <nav className="grid gap-0.5" aria-label={t("nav.application")}>
             <Tooltip label={t("nav.tasks")}><NavLink to="/tasks" aria-label={t("nav.tasks")} aria-pressed={page === "/tasks"} className={buttonVariants({ variant: "ghost", size: "icon" })}><LayoutList size={18} /></NavLink></Tooltip>
             <Tooltip label={t("nav.properties")}><NavLink to="/properties" onClick={() => openPage("/properties")} aria-label={t("nav.properties")} aria-pressed={page === "/properties"} className={buttonVariants({ variant: "ghost", size: "icon" })}><Settings2 size={18} /></NavLink></Tooltip>
