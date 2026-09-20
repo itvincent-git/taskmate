@@ -19,6 +19,7 @@ try {
 
   const packagePath = join(root, "package.json");
   const cargoPath = join(root, "src-tauri/Cargo.toml");
+  const cargoLockPath = join(root, "src-tauri/Cargo.lock");
   const configPath = join(root, "src-tauri/tauri.conf.json");
   const changelogPath = join(root, "changelog.json");
   const pkg = JSON.parse(readFileSync(packagePath, "utf8"));
@@ -44,8 +45,14 @@ try {
   config.version = version;
   writeFileSync(configPath, `${JSON.stringify(config, null, 2)}\n`);
   writeFileSync(cargoPath, readFileSync(cargoPath, "utf8").replace(/^version = ".*"$/m, `version = "${version}"`));
+  writeFileSync(
+    cargoLockPath,
+    readFileSync(cargoLockPath, "utf8").replace(
+      /(\[\[package\]\]\nname = "taskmate"\nversion = ")[^"]+("\n)/,
+      `$1${version}$2`,
+    ),
+  );
   execFileSync("pnpm", ["install", "--lockfile-only"], { cwd: root, stdio: "inherit" });
-  execFileSync("cargo", ["check", "--manifest-path", "src-tauri/Cargo.toml"], { cwd: root, stdio: "inherit" });
   git(["add", "changelog.json", "package.json", "pnpm-lock.yaml", "src-tauri/Cargo.toml", "src-tauri/Cargo.lock", "src-tauri/tauri.conf.json"]);
   git(["commit", "-m", `chore(release): ${version}`]);
   git(["tag", "-a", tag, "-m", tag]);
