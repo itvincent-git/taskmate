@@ -867,7 +867,9 @@ function tableDecorations(state: EditorState, node: SyntaxNode, references: Read
 }
 
 function inlineHtmlRange(state: EditorState, node: SyntaxNode) {
-  const tag = htmlTag(state.sliceDoc(node.from, node.to));
+  const source = state.sliceDoc(node.from, node.to);
+  if (/[{}]/.test(source)) return null;
+  const tag = htmlTag(source);
   if (!tag || tag.closing || !allowedHtmlTags.has(tag.name)) return null;
   if (tag.selfClosing || voidHtmlTags.has(tag.name)) return { from: node.from, to: node.to };
 
@@ -882,16 +884,29 @@ function inlineHtmlRange(state: EditorState, node: SyntaxNode) {
     } else if (candidateTag.closing && depth > 0) {
       depth -= 1;
     } else if (candidateTag.closing) {
-      return { from: node.from, to: candidate.to };
+      return /[{}]/.test(state.sliceDoc(node.from, candidate.to))
+        ? null
+        : { from: node.from, to: candidate.to };
     }
   }
   return null;
 }
 
 function htmlBlockDecorations(state: EditorState, node: SyntaxNode) {
+  const source = state.sliceDoc(node.from, node.to);
+  if (!htmlBlockCanPreview(source)) return [];
   return [{ from: node.from, to: node.to, decoration: Decoration.replace({
-    widget: new HtmlWidget(state.sliceDoc(node.from, node.to), true), block: true,
+    widget: new HtmlWidget(source, true), block: true,
   }) }];
+}
+
+function htmlBlockCanPreview(source: string) {
+  if (/[{}]/.test(source)) return false;
+  const parsed = new DOMParser().parseFromString(source, "text/html");
+  return Array.from(parsed.body.childNodes).every((child) =>
+    child.nodeType === Node.TEXT_NODE
+      ? !(child.textContent ?? "").trim()
+      : child instanceof Element && allowedHtmlTags.has(child.tagName.toLowerCase()));
 }
 
 function codeBlockLineDecorations(state: EditorState, node: SyntaxNode) {

@@ -3,6 +3,7 @@ import { EditorState } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 import { markdown } from "@codemirror/lang-markdown";
 import { GFM } from "@lezer/markdown";
+import { MDX, mdxJsxLanguage } from "./mdx";
 import { documentHeadings, linkUrlAt, livePreview, rangeIsActive } from "./livePreview";
 
 vi.mock("mermaid", () => ({
@@ -224,6 +225,37 @@ describe("Live Preview activation", () => {
     view.dispatch({ selection: { anchor: source.indexOf("important") } });
     expect(host.querySelector("mark")).toBeNull();
     expect(host.textContent).toContain("<mark>important</mark>");
+
+    view.destroy();
+    host.remove();
+  });
+
+  it("keeps MDX components and JSX attributes editable instead of treating them as HTML", () => {
+    const host = document.createElement("div");
+    document.body.append(host);
+    const source = [
+      "<Callout tone={tone}>",
+      "Important **content**.",
+      "</Callout>",
+      "",
+      "<Badge value={count} />",
+      "",
+      "Before <span>{name}</span> after.",
+    ].join("\n");
+    const view = new EditorView({
+      parent: host,
+      state: EditorState.create({
+        doc: source,
+        extensions: [markdown({ extensions: [MDX], htmlTagLanguage: mdxJsxLanguage }), livePreview],
+      }),
+    });
+
+    expect(host.textContent).toContain("<Callout tone={tone}>");
+    expect(host.textContent).toContain("<Badge value={count} />");
+    expect(host.textContent).toContain("<span>{name}</span>");
+    expect(host.textContent).toContain("Important **content**.");
+    expect(host.querySelector("callout")).toBeNull();
+    expect(host.querySelector("badge")).toBeNull();
 
     view.destroy();
     host.remove();

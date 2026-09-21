@@ -40,7 +40,15 @@ and finish on this second line.
 
 ## 00
 
-这是优化完联赛页后的 http 日志。`;
+这是优化完联赛页后的 http 日志。
+
+import Callout from './Callout'
+
+<Callout tone={tone}>
+MDX component content
+</Callout>
+
+Current status: {task.status}`;
 
 before(async () => {
   workspacePath = await mkdtemp(join(tmpdir(), "taskmate-e2e-"));
@@ -123,6 +131,25 @@ describe("Taskmate desktop page", () => {
         bubbles: true, button: 0, buttons: 0, detail: 1, clientX: position.x, clientY: position.y,
       })), point);
     }
+  });
+
+  it("keeps MDX syntax editable without executing components", async () => {
+    const state = await browser.execute(() => {
+      const editor = document.querySelector<HTMLElement>(".cm-content");
+      const text = editor?.textContent ?? "";
+      return {
+        text,
+        importHighlighted: Array.from(editor?.querySelectorAll("span[class]") ?? [])
+          .some((span) => span.textContent === "import"),
+        renderedComponent: Boolean(editor?.querySelector("callout")),
+      };
+    });
+
+    expect(state.text).toContain("import Callout from './Callout'");
+    expect(state.text).toContain("<Callout tone={tone}>");
+    expect(state.text).toContain("Current status: {task.status}");
+    expect(state.importHighlighted).toBe(true);
+    expect(state.renderedComponent).toBe(false);
   });
 
   it("selects rendered Markdown text across lines in both directions", async () => {

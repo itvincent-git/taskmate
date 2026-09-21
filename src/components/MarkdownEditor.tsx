@@ -27,6 +27,7 @@ import {
 import { applyMarkdownAction, MARKDOWN_ACTIONS, type MarkdownAction } from "../editor/commands";
 import { codeLanguages } from "../editor/codeLanguages";
 import { linkUrlAt, livePreview, navigateToFragment } from "../editor/livePreview";
+import { MDX, mdxJsxLanguage } from "../editor/mdx";
 import { api } from "../lib/api";
 import {
   EDITOR_SHORTCUT_ACTIONS,
@@ -104,7 +105,7 @@ export const MarkdownEditor = memo(function MarkdownEditor({ value, documentId, 
         doc: value,
         extensions: [
           history(),
-          markdown({ extensions: [GFM], codeLanguages }),
+          markdown({ extensions: [GFM, MDX], codeLanguages, htmlTagLanguage: mdxJsxLanguage }),
           syntaxHighlighting(githubHighlightStyle),
           search({ top: true }),
           EditorState.phrases.of(locale === "zh-CN" ? chineseSearchPhrases : {}),
