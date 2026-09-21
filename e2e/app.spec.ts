@@ -1,5 +1,5 @@
 import { browser, expect, $ } from "@wdio/globals";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { access, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -40,15 +40,7 @@ and finish on this second line.
 
 ## 00
 
-这是优化完联赛页后的 http 日志。
-
-import Callout from './Callout'
-
-<Callout tone={tone}>
-MDX component content
-</Callout>
-
-Current status: {task.status}`;
+这是优化完联赛页后的 http 日志。`;
 
 before(async () => {
   workspacePath = await mkdtemp(join(tmpdir(), "taskmate-e2e-"));
@@ -62,6 +54,10 @@ updatedAt: 2026-09-15T00:00:00Z
 ---
 
 ${taskBody}`);
+  await writeFile(
+    join(workspacePath, "tasks", "MDX workspace fixture.mdx"),
+    await readFile(join(process.cwd(), "e2e", "fixtures", "mdx-workspace", "tasks", "MDX workspace fixture.mdx")),
+  );
 });
 
 after(async () => {
@@ -131,25 +127,6 @@ describe("Taskmate desktop page", () => {
         bubbles: true, button: 0, buttons: 0, detail: 1, clientX: position.x, clientY: position.y,
       })), point);
     }
-  });
-
-  it("keeps MDX syntax editable without executing components", async () => {
-    const state = await browser.execute(() => {
-      const editor = document.querySelector<HTMLElement>(".cm-content");
-      const text = editor?.textContent ?? "";
-      return {
-        text,
-        importHighlighted: Array.from(editor?.querySelectorAll("span[class]") ?? [])
-          .some((span) => span.textContent === "import"),
-        renderedComponent: Boolean(editor?.querySelector("callout")),
-      };
-    });
-
-    expect(state.text).toContain("import Callout from './Callout'");
-    expect(state.text).toContain("<Callout tone={tone}>");
-    expect(state.text).toContain("Current status: {task.status}");
-    expect(state.importHighlighted).toBe(true);
-    expect(state.renderedComponent).toBe(false);
   });
 
   it("selects rendered Markdown text across lines in both directions", async () => {
@@ -335,5 +312,41 @@ describe("Taskmate desktop page", () => {
       !document.querySelectorAll(".cm-line")[lineNumber - 1]?.textContent?.includes("##"), headingLine));
     await expect($(".cm-editor")).toHaveAttribute("data-selection-line", String(paragraphLine));
     await expect($(".cm-editor")).toHaveAttribute("data-selection-column", String(targetCharacter));
+  });
+
+  it("opens and saves a real MDX workspace file without executing components", async () => {
+    const taskTitle = await $("[title='MDX workspace fixture']");
+    await taskTitle.waitForDisplayed();
+    await taskTitle.click();
+    await $(".cm-editor").waitForDisplayed();
+    const state = await browser.execute(() => {
+      const editor = document.querySelector<HTMLElement>(".cm-content");
+      const text = editor?.textContent ?? "";
+      return {
+        text,
+        importHighlighted: Array.from(editor?.querySelectorAll("span[class]") ?? [])
+          .some((span) => span.textContent === "import"),
+        renderedComponent: Boolean(editor?.querySelector("callout")),
+      };
+    });
+
+    expect(state.text).toContain("import Callout from './Callout'");
+    expect(state.text).toContain("<Callout tone={tone}>");
+    expect(state.text).toContain("Current status: {task.status}");
+    expect(state.importHighlighted).toBe(true);
+    expect(state.renderedComponent).toBe(false);
+
+    const title = await $("input[value='MDX workspace fixture']");
+    await title.setValue("Renamed MDX workspace fixture");
+    await browser.keys("Enter");
+    await expect($("[role='tab'][aria-selected='true'] button")).toHaveText("Renamed MDX workspace fixture");
+    await browser.waitUntil(async () => {
+      try {
+        await access(join(workspacePath, "tasks", "Renamed MDX workspace fixture.mdx"));
+        return true;
+      } catch {
+        return false;
+      }
+    }, { timeout: 5_000, timeoutMsg: "The edited MDX task was not saved with its .mdx extension" });
   });
 });

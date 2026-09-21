@@ -392,7 +392,12 @@ impl Workspace {
         current: Option<&Path>,
     ) -> String {
         let base = safe_file_stem(title);
-        let preferred = format!("{base}.md");
+        let extension = current
+            .and_then(Path::extension)
+            .and_then(|extension| extension.to_str())
+            .filter(|extension| matches!(*extension, "md" | "mdx"))
+            .unwrap_or("md");
+        let preferred = format!("{base}.{extension}");
         let preferred_path = directory.join(&preferred);
         if fs::symlink_metadata(&preferred_path).is_err()
             || current == Some(preferred_path.as_path())
@@ -402,9 +407,9 @@ impl Workspace {
         let suffix = &id[..8.min(id.len())];
         for number in 0.. {
             let name = if number == 0 {
-                format!("{base}-{suffix}.md")
+                format!("{base}-{suffix}.{extension}")
             } else {
-                format!("{base}-{suffix}-{number}.md")
+                format!("{base}-{suffix}-{number}.{extension}")
             };
             let path = directory.join(&name);
             if fs::symlink_metadata(&path).is_err() || current == Some(path.as_path()) {
@@ -498,7 +503,11 @@ impl Workspace {
                 });
                 self.walk_region(archived, &child, files, folders)?;
             } else if kind.is_file()
-                && entry.path().extension().and_then(|s| s.to_str()) == Some("md")
+                && entry
+                    .path()
+                    .extension()
+                    .and_then(|extension| extension.to_str())
+                    .is_some_and(|extension| matches!(extension, "md" | "mdx"))
             {
                 files.push(entry.path());
             }
@@ -597,7 +606,8 @@ impl Workspace {
                     return Ok(());
                 }
                 let source = self.find_task_path(&task.id)?;
-                let name = self.available_file_name(&directory, &task.title, &task.id, None);
+                let name =
+                    self.available_file_name(&directory, &task.title, &task.id, Some(&source));
                 move_file(&source, &directory.join(name))?;
                 Ok::<(), String>(())
             })();
@@ -911,6 +921,31 @@ mod tests {
         assert_eq!(w.list_folders().unwrap().len(), 4);
         w.rebuild_index().unwrap();
         assert_eq!(w.query(query).unwrap()[0].folder_path, "a/nested");
+    }
+
+    #[test]
+    fn scans_and_preserves_mdx_task_files() {
+        let temp = tempfile::tempdir().unwrap();
+        let w = Workspace::new(temp.path().to_path_buf());
+        w.initialize().unwrap();
+        let path = temp.path().join("tasks/MDX task.mdx");
+        fs::write(
+            &path,
+            "---\nid: mdx-task\ntitle: MDX task\narchived: false\ncreatedAt: 2026-09-21T00:00:00Z\nupdatedAt: 2026-09-21T00:00:00Z\n---\n\n# Hello {name}",
+        )
+        .unwrap();
+
+        let snapshot = w.initialize().unwrap();
+        assert_eq!(snapshot.tasks.len(), 1);
+        let task = w.get_task("mdx-task").unwrap();
+        assert_eq!(task.file_name, "MDX task.mdx");
+
+        let mut input = save_input(task, false);
+        input.title = "Renamed MDX task".into();
+        let saved = w.save_task(input).unwrap();
+        assert_eq!(saved.file_name, "Renamed MDX task.mdx");
+        assert!(temp.path().join("tasks/Renamed MDX task.mdx").exists());
+        assert!(!path.exists());
     }
 
     #[test]
