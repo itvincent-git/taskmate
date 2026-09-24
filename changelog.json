@@ -1,4 +1,8 @@
 {
+  "0.17.0": {
+    "en": "- feat(editor): support MDX syntax\n- fix(workspace): support MDX task files\n- feat: archive completed tasks from current results\n- feat: list tasks in archive confirmation\n- fix: keep bulk archiving responsive",
+    "zh": "- feat(editor): support MDX syntax\n- fix(workspace): support MDX task files\n- feat: archive completed tasks from current results\n- feat: list tasks in archive confirmation\n- fix: keep bulk archiving responsive"
+  },
   "0.16.1": {
     "en": "- fix(ui): remove unused sidebar checkmark\n- fix(release): skip compilation before release",
     "zh": "- fix(ui): remove unused sidebar checkmark\n- fix(release): skip compilation before release"
