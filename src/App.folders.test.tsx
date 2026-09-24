@@ -41,6 +41,13 @@ describe("folder workflows", () => {
     fireEvent.click(archiveButton);
     const dialog = screen.getByRole("dialog", { name: "Archive completed tasks" });
     expect(dialog).toHaveTextContent("2 completed tasks in the current results");
+    const archiveList = within(dialog).getByRole("list", { name: "Tasks to archive" });
+    expect(within(archiveList).getAllByRole("listitem")).toHaveLength(2);
+    expect(within(archiveList).getByText("Alpha")).toBeInTheDocument();
+    expect(within(archiveList).getByText("a/Alpha.md")).toBeInTheDocument();
+    expect(within(archiveList).getByText("Beta")).toBeInTheDocument();
+    expect(within(archiveList).getByText("a/child/Beta.md")).toBeInTheDocument();
+    expect(within(archiveList).queryByText("Gamma")).not.toBeInTheDocument();
     expect((await api.getTask(first.id)).archived).toBe(false);
     fireEvent.click(within(dialog).getByRole("button", { name: "Archive tasks" }));
     await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("Archived 2, skipped 0, failed 0"));

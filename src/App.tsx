@@ -548,7 +548,7 @@ function WorkspaceSession() {
   const [moveTarget, setMoveTarget] = useState("");
   const [folderBusy, setFolderBusy] = useState(false);
   const folderBusyRef = useRef(false);
-  const [archiveCompletedIds, setArchiveCompletedIds] = useState<string[] | null>(null);
+  const [archiveCompletedTasks, setArchiveCompletedTasks] = useState<TaskSummary[] | null>(null);
   const [archiveResult, setArchiveResult] = useState("");
   const savePromise = useRef<Promise<boolean> | null>(null);
   const bodyDraft = useRef<{ id: string; body: Text; version: number } | null>(null);
@@ -879,9 +879,9 @@ function WorkspaceSession() {
     else if (payload.folder) void manageFolder({ kind: "move", source: payload.folder, parent: target, name: payload.folder.split("/").at(-1)! });
   };
   const statusKey = definitions.find((definition) => definition.role === "status")?.key ?? "status";
-  const completedIds = query.archived ? [] : tasks.filter((item) => item.properties[statusKey] === "done").map((item) => item.id);
+  const completedTasks = query.archived ? [] : tasks.filter((item) => item.properties[statusKey] === "done");
   const archiveCompleted = async () => {
-    if (!archiveCompletedIds || folderBusyRef.current) return;
+    if (!archiveCompletedTasks || folderBusyRef.current) return;
     folderBusyRef.current = true;
     setFolderBusy(true);
     setArchiveResult("");
@@ -892,7 +892,7 @@ function WorkspaceSession() {
     try {
       if (savePromise.current && !await savePromise.current) return;
       const current = workspaceStore.getState();
-      if (current.task && archiveCompletedIds.includes(current.task.id)) {
+      if (current.task && archiveCompletedTasks.some((item) => item.id === current.task?.id)) {
         if (current.saveState === "external" || current.externalTask) {
           setError(locale === "zh-CN" ? "请先解决外部文件冲突。" : "Resolve the external file conflict first.");
           return;
@@ -902,7 +902,7 @@ function WorkspaceSession() {
           if (workspaceStore.getState().saveState !== "saved") return;
         }
       }
-      for (const id of archiveCompletedIds) {
+      for (const { id } of archiveCompletedTasks) {
         try {
           const latest = await api.getTask(id);
           if (latest.archived || latest.properties[statusKey] !== "done") { skipped++; continue; }
@@ -924,7 +924,7 @@ function WorkspaceSession() {
       }
       setArchiveResult(locale === "zh-CN" ? `已归档 ${archived} 项，跳过 ${skipped} 项，失败 ${failed} 项。` : `Archived ${archived}, skipped ${skipped}, failed ${failed}.`);
     } finally {
-      setArchiveCompletedIds(null);
+      setArchiveCompletedTasks(null);
       await refresh();
       setSearchEpoch((epoch) => epoch + 1);
       folderBusyRef.current = false;
@@ -1511,10 +1511,16 @@ function WorkspaceSession() {
                 <Button type="submit" disabled={folderBusy}>{locale === "zh-CN" ? "移动" : "Move"} ({moveIds?.length})</Button>
               </form>
             </Dialog>
-            <Dialog open={archiveCompletedIds !== null} onOpenChange={(open) => { if (!open && !folderBusy) setArchiveCompletedIds(null); }} title={locale === "zh-CN" ? "归档已完成任务" : "Archive completed tasks"} contentClassName="w-[min(480px,calc(100vw-40px))]">
-              <p className="text-sm">{locale === "zh-CN" ? `将归档当前结果中的 ${archiveCompletedIds?.length ?? 0} 项已完成任务。任务内容和相对文件夹路径会保留，可从归档视图恢复。` : `Archive ${archiveCompletedIds?.length ?? 0} completed tasks in the current results? Their content and relative folder paths will be preserved, and they can be restored from Archive.`}</p>
+            <Dialog open={archiveCompletedTasks !== null} onOpenChange={(open) => { if (!open && !folderBusy) setArchiveCompletedTasks(null); }} title={locale === "zh-CN" ? "归档已完成任务" : "Archive completed tasks"} contentClassName="w-[min(480px,calc(100vw-40px))]">
+              <p className="text-sm">{locale === "zh-CN" ? `将归档当前结果中的 ${archiveCompletedTasks?.length ?? 0} 项已完成任务。任务内容和相对文件夹路径会保留，可从归档视图恢复。` : `Archive ${archiveCompletedTasks?.length ?? 0} completed tasks in the current results? Their content and relative folder paths will be preserved, and they can be restored from Archive.`}</p>
+              <ul className="mt-3 max-h-64 space-y-1 overflow-y-auto rounded border border-line p-2" aria-label={locale === "zh-CN" ? "待归档任务" : "Tasks to archive"}>
+                {archiveCompletedTasks?.map((item) => <li key={item.id} className="min-w-0 rounded bg-surface-soft px-2 py-1.5 text-sm">
+                  <div className="break-words font-medium">{item.title}</div>
+                  <div className="break-all text-xs text-muted">{item.folderPath ? `${item.folderPath}/` : ""}{item.fileName}</div>
+                </li>)}
+              </ul>
               <div className="mt-4 flex justify-end gap-2">
-                <Button variant="outline" disabled={folderBusy} onClick={() => setArchiveCompletedIds(null)}>{t("common.cancel")}</Button>
+                <Button variant="outline" disabled={folderBusy} onClick={() => setArchiveCompletedTasks(null)}>{t("common.cancel")}</Button>
                 <Button disabled={folderBusy} onClick={() => void archiveCompleted()}>{locale === "zh-CN" ? "确认归档" : "Archive tasks"}</Button>
               </div>
             </Dialog>
@@ -1538,7 +1544,7 @@ function WorkspaceSession() {
                     </Tooltip>
                   </div>
                 </div>
-                <FolderNavigator revealSignal={navigatorRevealSignal} folders={folders} archived={query.archived} selected={query.folderPath ?? null} expanded={expandedFolders} onSelect={(folderPath) => setQuery({ ...query, folderPath })} onExpand={setExpandedFolders} onAction={manageFolder} onDrop={dropOnFolder} checked={checkedIds.size} onSelectAll={() => setCheckedIds(new Set(tasks.map((item) => item.id)))} onMoveSelected={() => { setMoveTarget(query.folderPath || ""); setMoveIds([...checkedIds]); }} completed={completedIds.length} onArchiveCompleted={() => setArchiveCompletedIds(completedIds)} busy={folderBusy} />
+                <FolderNavigator revealSignal={navigatorRevealSignal} folders={folders} archived={query.archived} selected={query.folderPath ?? null} expanded={expandedFolders} onSelect={(folderPath) => setQuery({ ...query, folderPath })} onExpand={setExpandedFolders} onAction={manageFolder} onDrop={dropOnFolder} checked={checkedIds.size} onSelectAll={() => setCheckedIds(new Set(tasks.map((item) => item.id)))} onMoveSelected={() => { setMoveTarget(query.folderPath || ""); setMoveIds([...checkedIds]); }} completed={completedTasks.length} onArchiveCompleted={() => setArchiveCompletedTasks(completedTasks)} busy={folderBusy} />
                 {archiveResult && <div role="status" className="px-3 py-1 text-xs text-muted">{archiveResult}</div>}
                 <TaskList
                   checkedIds={checkedIds}

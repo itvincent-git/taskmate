@@ -27,6 +27,9 @@ describe("Archive completed results", () => {
     await $("[title='Completed item']").waitForDisplayed();
     await $("//button[contains(., '归档已完成') or contains(., 'Archive completed')]").click();
     await expect($("[role='dialog']")).toHaveText(/1/);
+    await expect($("[role='dialog'] li")).toHaveText(/Completed item/);
+    await expect($("[role='dialog'] li")).toHaveText(/project\/Completed item\.md/);
+    await expect($("[role='dialog'] li")).not.toHaveText(/Pending item/);
     await $("//div[@role='dialog']//button[contains(., '确认归档') or contains(., 'Archive tasks')]").click();
     await expect($("[role='status']")).toHaveText(/已归档 1 项|Archived 1/);
     await access(join(workspacePath, "archive", "project", "Completed item.md"));
