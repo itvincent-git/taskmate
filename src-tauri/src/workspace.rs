@@ -374,6 +374,18 @@ impl Workspace {
     }
 
     fn find_task_path(&self, id: &str) -> Result<PathBuf, String> {
+        if let Some(path) =
+            TaskIndex::open(&self.root.join(".task-app/index.sqlite"))?.path_for_id(id)?
+        {
+            let path = PathBuf::from(path);
+            if path.starts_with(self.region(false)) || path.starts_with(self.region(true)) {
+                if let Ok(text) = fs::read_to_string(&path) {
+                    if parse_task(&path, &text).is_ok_and(|task| task.id == id) {
+                        return Ok(path);
+                    }
+                }
+            }
+        }
         for path in self.markdown_paths()? {
             if let Ok(text) = fs::read_to_string(&path) {
                 if parse_task(&path, &text).is_ok_and(|task| task.id == id) {

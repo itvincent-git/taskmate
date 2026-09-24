@@ -61,6 +61,21 @@ fn with_workspace<T>(
     operation(Workspace::new(root))
 }
 
+async fn with_workspace_blocking<T: Send + 'static>(
+    state: State<'_, AppState>,
+    operation: impl FnOnce(Workspace) -> Result<T, String> + Send + 'static,
+) -> Result<T, String> {
+    let root = state
+        .workspace
+        .lock()
+        .map_err(|_| "Workspace state is unavailable.".to_string())?
+        .clone()
+        .ok_or_else(|| "Open a workspace first.".to_string())?;
+    tauri::async_runtime::spawn_blocking(move || operation(Workspace::new(root)))
+        .await
+        .map_err(|error| format!("Workspace task failed: {error}"))?
+}
+
 async fn run_git<T: Send + 'static>(
     state: State<'_, AppState>,
     operation: impl FnOnce(PathBuf) -> Result<T, String> + Send + 'static,
@@ -136,8 +151,8 @@ fn create_task(
 }
 
 #[tauri::command]
-fn list_folders(state: State<'_, AppState>) -> Result<Vec<Folder>, String> {
-    with_workspace(state, |w| w.list_folders())
+async fn list_folders(state: State<'_, AppState>) -> Result<Vec<Folder>, String> {
+    with_workspace_blocking(state, |w| w.list_folders()).await
 }
 #[tauri::command]
 fn create_folder(
@@ -173,18 +188,21 @@ fn move_tasks(
 }
 
 #[tauri::command]
-fn get_task(id: String, state: State<'_, AppState>) -> Result<Task, String> {
-    with_workspace(state, |workspace| workspace.get_task(&id))
+async fn get_task(id: String, state: State<'_, AppState>) -> Result<Task, String> {
+    with_workspace_blocking(state, move |workspace| workspace.get_task(&id)).await
 }
 
 #[tauri::command]
-fn save_task(input: SaveTaskInput, state: State<'_, AppState>) -> Result<Task, String> {
-    with_workspace(state, |workspace| workspace.save_task(input))
+async fn save_task(input: SaveTaskInput, state: State<'_, AppState>) -> Result<Task, String> {
+    with_workspace_blocking(state, move |workspace| workspace.save_task(input)).await
 }
 
 #[tauri::command]
-fn query_tasks(query: TaskQuery, state: State<'_, AppState>) -> Result<Vec<TaskSummary>, String> {
-    with_workspace(state, |workspace| workspace.query(query))
+async fn query_tasks(
+    query: TaskQuery,
+    state: State<'_, AppState>,
+) -> Result<Vec<TaskSummary>, String> {
+    with_workspace_blocking(state, move |workspace| workspace.query(query)).await
 }
 
 #[tauri::command]

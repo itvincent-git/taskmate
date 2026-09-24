@@ -1,6 +1,7 @@
 use crate::model::{
     PropertyDefinition, Task, TaskFilter, TaskQuery, TaskSearchResult, TaskSort, TaskSummary,
 };
+use rusqlite::OptionalExtension;
 use rusqlite::{params, Connection};
 use serde_yaml::Value;
 use std::cmp::Ordering;
@@ -78,6 +79,17 @@ impl TaskIndex {
             .execute("DELETE FROM tasks WHERE id=?1", params![id])
             .map_err(to_string)?;
         Ok(())
+    }
+
+    pub fn path_for_id(&self, id: &str) -> Result<Option<String>, String> {
+        self.connection
+            .query_row(
+                "SELECT file_path FROM tasks WHERE id=?1",
+                params![id],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(to_string)
     }
 
     pub fn remove_path(&self, path: &str) -> Result<(), String> {
