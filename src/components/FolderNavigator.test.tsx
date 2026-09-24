@@ -7,7 +7,8 @@ function setup(onAction = vi.fn(async () => true)) {
   const onSelect = vi.fn();
   const onExpand = vi.fn();
   const onDrop = vi.fn();
-  render(<FolderNavigator folders={[{ path: "a", archived: false }, { path: "a/child", archived: false }, { path: "empty", archived: false }, { path: "archived", archived: true }]} archived={false} selected={null} expanded={[]} onSelect={onSelect} onExpand={onExpand} onAction={onAction} onDrop={onDrop} checked={0} onSelectAll={vi.fn()} onMoveSelected={vi.fn()} busy={false} />);
+  render(<FolderNavigator folders={[{ path: "a", archived: false }, { path: "a/child", archived: false }, { path: "empty", archived: false }, { path: "archived", archived: true }]} archived={false} selected={null} expanded={[]} onSelect={onSelect} onExpand={onExpand} onAction={onAction} onDrop={onDrop} checked={0} onSelectAll={vi.fn()} onMoveSelected={vi.fn()} completed={0} onArchiveCompleted={vi.fn()} busy={false} />);
+  expect(screen.getByRole("button", { name: "Archive completed · 0" })).toBeDisabled();
   return { onSelect, onExpand, onDrop, onAction };
 }
 

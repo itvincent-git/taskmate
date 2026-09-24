@@ -22,12 +22,12 @@ export function readTaskDrag(event: DragEvent): DragPayload | null {
   return null;
 }
 
-export function FolderNavigator({ folders, archived, selected, expanded, onSelect, onExpand, onAction, onDrop, checked, onSelectAll, onMoveSelected, busy, revealSignal }: {
+export function FolderNavigator({ folders, archived, selected, expanded, onSelect, onExpand, onAction, onDrop, checked, onSelectAll, onMoveSelected, completed, onArchiveCompleted, busy, revealSignal }: {
   folders: TaskFolder[]; archived: boolean; selected: string | null; expanded: string[];
   onSelect(path: string | null): void; onExpand(paths: string[]): void;
   onAction(action: FolderAction): Promise<boolean>; onDrop(payload: DragPayload, target: string): void;
   revealSignal?: number;
-  checked: number; onSelectAll(): void; onMoveSelected(): void; busy: boolean;
+  checked: number; onSelectAll(): void; onMoveSelected(): void; completed: number; onArchiveCompleted(): void; busy: boolean;
 }) {
   const { locale } = useTaskmateI18n();
   const label = (en: string, zh: string) => locale === "zh-CN" ? zh : en;
@@ -68,6 +68,7 @@ export function FolderNavigator({ folders, archived, selected, expanded, onSelec
     </section>
     <div className="flex shrink-0 items-center gap-1 px-2 py-1 text-xs">
       <button className="rounded px-2 py-1 hover:bg-accent-soft" onClick={onSelectAll}>{label("Select all results", "全选当前结果")}</button>
+      {!archived && <button className="rounded px-2 py-1 hover:bg-accent-soft disabled:opacity-40" disabled={!completed || busy} onClick={onArchiveCompleted}>{label("Archive completed", "归档已完成")} · {completed}</button>}
       <button className="ml-auto rounded px-2 py-1 hover:bg-accent-soft disabled:opacity-40" disabled={!checked || busy} onClick={onMoveSelected}>{label("Move to", "移动到")} · {checked}</button>
     </div>
     <Dialog open={!!action} onOpenChange={(open) => { if (!open && !busy) setAction(null); }} title={label("Manage folder", "管理文件夹")} contentClassName="w-[min(480px,calc(100vw-40px))]">

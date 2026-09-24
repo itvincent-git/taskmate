@@ -10,7 +10,7 @@ vi.mock("@tanstack/react-virtual", () => ({
 }));
 vi.mock("./components/MarkdownEditor", () => ({ MarkdownEditor: ({ value, onChange }: { value: string; onChange(value: string): void }) => <textarea aria-label="Test body" value={value} onChange={(e) => onChange(e.target.value)} /> }));
 
-async function setup() {
+async function setup(prepare?: (tasks: Awaited<ReturnType<typeof api.createTask>>[]) => Promise<void>, filters: unknown[] = []) {
   await api.openWorkspace("/tmp/folder-tests");
   await api.createFolder(false, "", "a");
   await api.createFolder(false, "a", "child");
@@ -18,8 +18,9 @@ async function setup() {
   const first = await api.createTask("Alpha", "a");
   const second = await api.createTask("Beta", "a/child");
   const third = await api.createTask("Gamma");
+  await prepare?.([first, second, third]);
   localStorage.setItem("taskmate-workspaces.v1", JSON.stringify(["/tmp/folder-tests"]));
-  localStorage.setItem("taskmate-filter-sort.v1", JSON.stringify({ "/tmp/folder-tests": { filters: [], sorts: [{ key: "title", direction: "asc", nulls: "last" }] } }));
+  localStorage.setItem("taskmate-filter-sort.v1", JSON.stringify({ "/tmp/folder-tests": { filters, sorts: [{ key: "title", direction: "asc", nulls: "last" }] } }));
   render(<App />);
   await screen.findByRole("checkbox", { name: "Select Alpha" });
   return { first, second, third };
@@ -31,6 +32,62 @@ beforeEach(() => {
 });
 
 describe("folder workflows", () => {
+  it("archives only completed tasks in the current folder results after confirmation", async () => {
+    const { first, second, third } = await setup(async (items) => {
+      for (const item of items) await api.saveTask({ ...item, properties: { status: "done" } });
+    });
+    fireEvent.click(screen.getByRole("button", { name: "a" }));
+    const archiveButton = await screen.findByRole("button", { name: "Archive completed · 2" });
+    fireEvent.click(archiveButton);
+    const dialog = screen.getByRole("dialog", { name: "Archive completed tasks" });
+    expect(dialog).toHaveTextContent("2 completed tasks in the current results");
+    expect((await api.getTask(first.id)).archived).toBe(false);
+    fireEvent.click(within(dialog).getByRole("button", { name: "Archive tasks" }));
+    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("Archived 2, skipped 0, failed 0"));
+    expect((await api.getTask(first.id)).archived).toBe(true);
+    expect((await api.getTask(first.id)).folderPath).toBe("a");
+    expect((await api.getTask(second.id)).archived).toBe(true);
+    expect((await api.getTask(second.id)).folderPath).toBe("a/child");
+    expect((await api.getTask(third.id)).archived).toBe(false);
+    fireEvent.click(screen.getByRole("button", { name: "Archive" }));
+    await screen.findByRole("checkbox", { name: "Select Alpha" });
+    expect(screen.queryByRole("button", { name: /Archive completed/ })).not.toBeInTheDocument();
+  });
+
+  it("rechecks status and continues after a single archive failure", async () => {
+    const { first, second, third } = await setup(async (items) => {
+      for (const item of items) await api.saveTask({ ...item, properties: { status: "done" } });
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Archive completed · 3" }));
+    const changed = await api.getTask(first.id);
+    await api.saveTask({ ...changed, properties: { status: "doing" } });
+    const original = api.saveTask.bind(api);
+    vi.spyOn(api, "saveTask").mockImplementation(async (item) => item.id === second.id && item.archived ? Promise.reject(new Error("disk full")) : original(item));
+    fireEvent.click(within(screen.getByRole("dialog", { name: "Archive completed tasks" })).getByRole("button", { name: "Archive tasks" }));
+    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("Archived 1, skipped 1, failed 1"));
+    expect((await api.getTask(first.id)).archived).toBe(false);
+    expect((await api.getTask(second.id)).archived).toBe(false);
+    expect((await api.getTask(third.id)).archived).toBe(true);
+  });
+
+  it("counts filtered done IDs after a status label change and saves the open draft", async () => {
+    const { first, second, third } = await setup(async (items) => {
+      const definitions = (await api.openWorkspace("/tmp/folder-tests")).properties;
+      await api.saveProperties(definitions.map((definition) => definition.role === "status" ? { ...definition, options: definition.options.map((option) => option.id === "done" ? { ...option, label: "Finished" } : option) } : definition));
+      for (const item of items) await api.saveTask({ ...item, properties: { status: item.id === items[2].id ? "doing" : "done" } });
+    }, [{ key: "status", operator: "eq", value: "done" }]);
+    expect(screen.getByRole("button", { name: "Archive completed · 2" })).toBeEnabled();
+    fireEvent.click(screen.getByText("Alpha", { selector: "article div" }));
+    await waitFor(() => expect(screen.getByLabelText("Task title")).toHaveValue("Alpha"));
+    fireEvent.change(await screen.findByLabelText("Test body"), { target: { value: "Unsaved draft" } });
+    fireEvent.click(screen.getByRole("button", { name: "Archive completed · 2" }));
+    fireEvent.click(within(screen.getByRole("dialog", { name: "Archive completed tasks" })).getByRole("button", { name: "Archive tasks" }));
+    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("Archived 2, skipped 0, failed 0"));
+    expect((await api.getTask(first.id)).body).toBe("Unsaved draft");
+    expect((await api.getTask(second.id)).archived).toBe(true);
+    expect((await api.getTask(third.id)).archived).toBe(false);
+  });
+
   it("selects a visible range independently of the editor and clears selection on navigation", async () => {
     await setup();
     const original = (screen.getByLabelText("Task title") as HTMLInputElement).value;
