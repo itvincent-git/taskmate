@@ -95,6 +95,10 @@ describe("Body todo summary in the native app", () => {
     await expect(checkboxes[1]).not.toBeSelected();
     await $("//section[@aria-label='Body todos']//button[normalize-space(.)='Unique review']").click();
     await expect($(".cm-editor")).toHaveAttribute("data-selection-line", "4");
+    // Reveal heading markers before typing at the start of the source line.
+    await $("button[aria-label='Task actions']").click();
+    await browser.keys("ArrowDown");
+    await $("//*[@role='menuitemcheckbox' and normalize-space(.)='Source mode']").click();
     // The embedded driver uses HTMLElement.click(), which does not position
     // a contenteditable caret. Send the same mouse events as the editor tests.
     await browser.execute(() => {
@@ -114,6 +118,9 @@ describe("Body todo summary in the native app", () => {
     await browser.keys("Enter");
     await browser.keys("Enter");
     await expect($(".cm-content")).toHaveText(/Draft explanation/);
+    await $("button[aria-label='Task actions']").click();
+    await browser.keys("ArrowDown");
+    await $("//*[@role='menuitemcheckbox' and normalize-space(.)='Source mode']").click();
     await $(item("Unique review")).click();
     await browser.waitUntil(async () => (await readFile(betaPath, "utf8")).includes("[x] Unique review"));
     const saved = await readFile(betaPath, "utf8");

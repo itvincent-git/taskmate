@@ -1403,14 +1403,14 @@ function WorkspaceSession() {
                 <Tooltip label={t("tasks.files")}>
                   <Button variant="ghost" size="icon" className="my-1 shrink-0" aria-label={t("tasks.files")} aria-pressed={taskPanel === "files"} aria-controls="task-side-panel" onClick={() => setTaskPanel("files")}><FileText size={17} /></Button>
                 </Tooltip>
+                <Tooltip label={locale === "zh-CN" ? "正文待办" : "Body todos"}>
+                  <Button variant="ghost" size="icon" className="my-1 shrink-0" aria-label={locale === "zh-CN" ? "正文待办" : "Body todos"} aria-pressed={taskPanel === "todos"} aria-controls="task-side-panel" onClick={() => setTaskPanel("todos")}><CheckSquare size={17} /></Button>
+                </Tooltip>
                 <Tooltip label={t("tasks.searchPanel")}>
                   <Button variant="ghost" size="icon" className="my-1 shrink-0" aria-label={t("tasks.searchPanel")} aria-pressed={taskPanel === "search"} aria-controls="task-side-panel" onClick={() => setTaskPanel("search")}><Search size={17} /></Button>
                 </Tooltip>
                 <Tooltip label={t("tasks.recentFiles")}>
                   <Button variant="ghost" size="icon" className="my-1 shrink-0" aria-label={t("tasks.recentFiles")} aria-pressed={taskPanel === "recent"} aria-controls="task-side-panel" onClick={() => setTaskPanel("recent")}><History size={17} /></Button>
-                </Tooltip>
-                <Tooltip label={locale === "zh-CN" ? "正文待办" : "Body todos"}>
-                  <Button variant="ghost" size="icon" className="my-1 shrink-0" aria-label={locale === "zh-CN" ? "正文待办" : "Body todos"} aria-pressed={taskPanel === "todos"} aria-controls="task-side-panel" onClick={() => setTaskPanel("todos")}><CheckSquare size={17} /></Button>
                 </Tooltip>
               </>
             ) : null}
