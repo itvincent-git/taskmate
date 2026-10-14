@@ -1,4 +1,8 @@
 {
+  "0.18.0": {
+    "en": "- feat: aggregate Markdown body todos\n- fix: place body todos next to files",
+    "zh": "- feat: aggregate Markdown body todos\n- fix: place body todos next to files"
+  },
   "0.17.0": {
     "en": "- feat(editor): support MDX syntax\n- fix(workspace): support MDX task files\n- feat: archive completed tasks from current results\n- feat: list tasks in archive confirmation\n- fix: keep bulk archiving responsive",
     "zh": "- feat(editor): support MDX syntax\n- fix(workspace): support MDX task files\n- feat: archive completed tasks from current results\n- feat: list tasks in archive confirmation\n- fix: keep bulk archiving responsive"
