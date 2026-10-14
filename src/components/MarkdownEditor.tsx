@@ -1,5 +1,5 @@
 import { memo, useEffect, useRef, useSyncExternalStore } from "react";
-import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
+import { defaultKeymap, history, historyKeymap, indentWithTab, isolateHistory } from "@codemirror/commands";
 import { markdown } from "@codemirror/lang-markdown";
 import { GFM } from "@lezer/markdown";
 import { HighlightStyle, syntaxHighlighting } from "@codemirror/language";
@@ -28,6 +28,8 @@ import { applyMarkdownAction, MARKDOWN_ACTIONS, type MarkdownAction } from "../e
 import { codeLanguages } from "../editor/codeLanguages";
 import { linkUrlAt, livePreview, navigateToFragment } from "../editor/livePreview";
 import { MDX, mdxJsxLanguage } from "../editor/mdx";
+import { highlightTodo, todoHighlight } from "../editor/todoNavigation";
+import { resolveBodyTodo, type BodyTodo } from "../editor/bodyTodos";
 import { api } from "../lib/api";
 import {
   EDITOR_SHORTCUT_ACTIONS,
@@ -51,7 +53,19 @@ interface Props {
   onChange(document: Text): void;
   onError?(cause: unknown): void;
   sourceMode?: boolean;
+  revealRange?: { from: number; to: number; signal: number };
+  todoCommand?: TodoEditorCommand | null;
+  onTodoEdit?(result: TodoEditResult | null): void;
 }
+
+export interface TodoEditorCommand {
+  taskId: string;
+  signal: number;
+  source: string;
+  item: BodyTodo;
+  checked: boolean;
+}
+export interface TodoEditResult { body: string; item: BodyTodo }
 
 const toolDetails: Record<MarkdownAction, [string, typeof Bold]> = {
   h1: ["Heading 1", Heading1],
@@ -84,7 +98,7 @@ const githubHighlightStyle = HighlightStyle.define([
   { tag: tags.invalid, color: "var(--danger)" },
 ]);
 
-export const MarkdownEditor = memo(function MarkdownEditor({ value, documentId, replacementRevision = 0, onChange, onError, sourceMode = false }: Props) {
+export const MarkdownEditor = memo(function MarkdownEditor({ value, documentId, replacementRevision = 0, onChange, onError, sourceMode = false, revealRange, todoCommand, onTodoEdit }: Props) {
   const { locale, t } = useTaskmateI18n();
   const shortcuts = useSyncExternalStore(subscribeEditorShortcuts, getEditorShortcuts, getEditorShortcuts);
   const platform = getShortcutPlatform();
@@ -94,8 +108,11 @@ export const MarkdownEditor = memo(function MarkdownEditor({ value, documentId, 
   const shortcutCompartment = useRef(new Compartment());
   const changeHandler = useRef(onChange);
   const errorHandler = useRef(onError);
+  const todoEditHandler = useRef(onTodoEdit);
+  const appliedTodoCommand = useRef<number | null>(null);
   changeHandler.current = onChange;
   errorHandler.current = onError;
+  todoEditHandler.current = onTodoEdit;
 
   useEffect(() => {
     if (!host.current) return;
@@ -105,6 +122,7 @@ export const MarkdownEditor = memo(function MarkdownEditor({ value, documentId, 
         doc: value,
         extensions: [
           history(),
+          todoHighlight,
           markdown({ extensions: [GFM, MDX], codeLanguages, htmlTagLanguage: mdxJsxLanguage }),
           syntaxHighlighting(githubHighlightStyle),
           search({ top: true }),
@@ -197,6 +215,7 @@ export const MarkdownEditor = memo(function MarkdownEditor({ value, documentId, 
             ".cm-panel.cm-search [name=close]": { top: "8px", right: "12px", fontSize: "18px" },
             ".cm-searchMatch": { backgroundColor: "color-mix(in srgb, var(--warning) 28%, transparent)" },
             ".cm-searchMatch-selected": { backgroundColor: "color-mix(in srgb, var(--accent) 32%, transparent)" },
+            ".cm-todo-highlight": { backgroundColor: "color-mix(in srgb, var(--accent) 22%, transparent)" },
             "&.cm-focused": { outline: "none" },
           }),
         ],
@@ -254,6 +273,34 @@ export const MarkdownEditor = memo(function MarkdownEditor({ value, documentId, 
       annotations: syncValue.of(true),
     });
   }, [documentId, replacementRevision]);
+
+  useEffect(() => {
+    const view = editor.current;
+    if (!view || !revealRange) return;
+    const { from, to } = revealRange;
+    if (from < 0 || to > view.state.doc.length || from >= to) return;
+    view.dispatch({
+      selection: { anchor: from },
+      effects: [highlightTodo.of({ from, to }), EditorView.scrollIntoView(from, { y: "center" })],
+    });
+    view.focus();
+    const timer = window.setTimeout(() => view.dispatch({ effects: highlightTodo.of(null) }), 1800);
+    return () => window.clearTimeout(timer);
+  }, [documentId, revealRange]);
+
+  useEffect(() => {
+    const view = editor.current;
+    if (!view || !todoCommand || todoCommand.taskId !== documentId || appliedTodoCommand.current === todoCommand.signal) return;
+    appliedTodoCommand.current = todoCommand.signal;
+    const item = resolveBodyTodo(view.state.doc.toString(), todoCommand.source, todoCommand.item);
+    if (!item || item.cancelled || item.checked !== todoCommand.item.checked) { todoEditHandler.current?.(null); return; }
+    if (item.checked !== todoCommand.checked) view.dispatch({
+      changes: { from: item.markerFrom, to: item.markerTo, insert: todoCommand.checked ? "[x]" : "[ ]" },
+      userEvent: "input.todo",
+      annotations: isolateHistory.of("full"),
+    });
+    todoEditHandler.current?.({ body: view.state.doc.toString(), item: { ...item, checked: todoCommand.checked } });
+  }, [documentId, todoCommand]);
 
   return (
     <section className="flex h-full min-h-0 flex-col overflow-hidden border-b border-line">

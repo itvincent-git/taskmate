@@ -48,6 +48,10 @@ endDate: 2026-07-31
 
 Unknown frontmatter values are preserved on read/write. The stable UUID, rather than the title-derived filename, identifies the task.
 
+The **Body todos** side panel collects Markdown checklist items by file and heading. Search item text, file titles, and headings; restrict the scope to a folder or include archived files. Completed items and quoted lists are hidden by default. Fully struck-through items, empty checkboxes, code samples, and HTML/MDX expression contents are excluded.
+
+Click an item to open and highlight its source. Checking an item edits its Markdown marker through the same editor and save path, preserving unsaved text and offering a brief Undo action. Failed saves remain visible as pending, and external changes use the existing conflict dialog. File status, parent/child checkboxes, and archive state remain independent. Items are located within a document version; ambiguous matches after edits require refreshing and retrying.
+
 ## Architecture
 
 - `src-tauri/src/workspace.rs` owns directory creation, atomic save/rename, archive/delete lifecycle, incremental file scans, and index rebuilds.

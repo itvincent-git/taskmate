@@ -214,6 +214,18 @@ fn search_tasks(
 }
 
 #[tauri::command]
+async fn query_task_documents(
+    query: TaskQuery,
+    include_archived: bool,
+    state: State<'_, AppState>,
+) -> Result<Vec<Task>, String> {
+    with_workspace_blocking(state, move |workspace| {
+        workspace.query_documents(query, include_archived)
+    })
+    .await
+}
+
+#[tauri::command]
 fn rebuild_index(state: State<'_, AppState>) -> Result<Vec<TaskSummary>, String> {
     with_workspace(state, |workspace| workspace.rebuild_index())
 }
@@ -563,6 +575,7 @@ pub fn run() {
             get_task,
             save_task,
             query_tasks,
+            query_task_documents,
             search_tasks,
             rebuild_index,
             delete_task,

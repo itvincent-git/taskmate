@@ -187,6 +187,40 @@ impl TaskIndex {
         Ok(tasks)
     }
 
+    pub fn query_documents(
+        &self,
+        query: &TaskQuery,
+        definitions: &[PropertyDefinition],
+    ) -> Result<Vec<Task>, String> {
+        let summaries = self.query(query, definitions)?;
+        let mut statement = self
+            .connection
+            .prepare("SELECT body,content_hash FROM tasks WHERE id=?1")
+            .map_err(to_string)?;
+        summaries
+            .into_iter()
+            .map(|summary| {
+                let (body, content_hash) = statement
+                    .query_row(params![summary.id], |row| {
+                        Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+                    })
+                    .map_err(to_string)?;
+                Ok(Task {
+                    id: summary.id,
+                    title: summary.title,
+                    file_name: summary.file_name,
+                    folder_path: summary.folder_path,
+                    archived: summary.archived,
+                    created_at: summary.created_at,
+                    updated_at: summary.updated_at,
+                    properties: summary.properties,
+                    body,
+                    content_hash,
+                })
+            })
+            .collect()
+    }
+
     pub fn search(&self, search: &str) -> Result<Vec<TaskSearchResult>, String> {
         let needle = folded_chars(search.trim());
         if needle.is_empty() {

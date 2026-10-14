@@ -28,15 +28,23 @@ function mdxExpression(context: InlineContext, next: number, position: number) {
 }
 
 function expressionEnd(context: InlineContext, position: number) {
+  return scanExpressionEnd(position, context.end, (cursor) => context.char(cursor));
+}
+
+export function mdxExpressionEnd(text: string, position: number) {
+  return scanExpressionEnd(position, text.length, (cursor) => text.charCodeAt(cursor));
+}
+
+function scanExpressionEnd(position: number, end: number, char: (cursor: number) => number) {
   let depth = 1;
   let quote = 0;
   let escaped = false;
   let lineComment = false;
   let blockComment = false;
 
-  for (let cursor = position + 1; cursor < context.end; cursor += 1) {
-    const character = context.char(cursor);
-    const following = context.char(cursor + 1);
+  for (let cursor = position + 1; cursor < end; cursor += 1) {
+    const character = char(cursor);
+    const following = char(cursor + 1);
 
     if (lineComment) {
       if (character === 10) lineComment = false;

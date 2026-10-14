@@ -1,4 +1,7 @@
 import type { Text } from "@codemirror/state";
+import type { TodoEditorCommand, TodoEditResult } from "./components/MarkdownEditor";
+import type { TodoTarget } from "./components/BodyTodoPanel";
+import { createTodoDraftStore } from "./lib/todo-draft";
 import type { TaskFolder } from "./types";
 import { FolderNavigator, type FolderAction, type DragPayload } from "./components/FolderNavigator";
 import { createContext, lazy, Suspense, useCallback, useContext, useEffect, useMemo, useRef, useState, type Dispatch, type ReactNode, type SetStateAction } from "react";
@@ -10,6 +13,7 @@ import {
   Archive,
   ArchiveRestore,
   Check,
+  CheckSquare,
   ChevronDown,
   ChevronUp,
   Cloud,
@@ -89,6 +93,7 @@ const TASK_LIST_WIDTH_KEY = "taskmate-task-list-width.v1";
 const TASK_PROPERTIES_WIDTH_KEY = "taskmate-task-properties-width.v1";
 const OPEN_TABS_KEY = "taskmate-open-tabs.v1";
 const MarkdownEditor = lazy(() => import("./components/MarkdownEditor").then((module) => ({ default: module.MarkdownEditor })));
+const BodyTodoPanel = lazy(() => import("./components/BodyTodoPanel").then((module) => ({ default: module.BodyTodoPanel })));
 
 type StateUpdate<T> = SetStateAction<T>;
 type WorkspacePage = "/properties" | "/backup" | "/settings";
@@ -245,9 +250,9 @@ function loadTaskPropertiesWidth() {
   return Number.isFinite(width) ? Math.max(240, Math.min(520, width)) : 320;
 }
 
-function loadTaskPanel(): "files" | "search" | "recent" {
+function loadTaskPanel(): "files" | "search" | "recent" | "todos" {
   const stored = localStorage.getItem(TASK_PANEL_KEY);
-  return stored === "search" || stored === "recent" ? stored : "files";
+  return stored === "search" || stored === "recent" || stored === "todos" ? stored : "files";
 }
 
 type StoredFilterSort = Pick<TaskQuery, "filters"> & { sorts?: TaskSort[]; sort?: TaskSort };
@@ -552,6 +557,13 @@ function WorkspaceSession() {
   const [archiveResult, setArchiveResult] = useState("");
   const savePromise = useRef<Promise<boolean> | null>(null);
   const bodyDraft = useRef<{ id: string; body: Text; version: number } | null>(null);
+  const [todoDraftStore] = useState(createTodoDraftStore);
+  const [todoBusy, setTodoBusy] = useState(false);
+  const todoBusyRef = useRef(false);
+  const [todoCommand, setTodoCommand] = useState<TodoEditorCommand | null>(null);
+  const todoCommandResult = useRef<((result: TodoEditResult | null) => void) | null>(null);
+  const todoSignal = useRef(0);
+  const [todoReveal, setTodoReveal] = useState<{ taskId: string; from: number; to: number; signal: number } | null>(null);
   const bodyUpdateTimer = useRef<number | null>(null);
   const bodyVersion = useRef(0);
   const lastEditAt = useRef(0);
@@ -841,7 +853,7 @@ function WorkspaceSession() {
   }, [workspaceOpen, fileSignal, syncLocations]);
 
   const folderOperation = async (operation: () => Promise<void>, affectsCurrent = false): Promise<boolean> => {
-    if (folderBusyRef.current) return false;
+    if (folderBusyRef.current || todoBusyRef.current) return false;
     folderBusyRef.current = true;
     setFolderBusy(true);
     try {
@@ -881,7 +893,7 @@ function WorkspaceSession() {
   const statusKey = definitions.find((definition) => definition.role === "status")?.key ?? "status";
   const completedTasks = query.archived ? [] : tasks.filter((item) => item.properties[statusKey] === "done");
   const archiveCompleted = async () => {
-    if (!archiveCompletedTasks || folderBusyRef.current) return;
+    if (!archiveCompletedTasks || folderBusyRef.current || todoBusyRef.current) return;
     folderBusyRef.current = true;
     setFolderBusy(true);
     setArchiveResult("");
@@ -971,6 +983,7 @@ function WorkspaceSession() {
         if (changed) {
           if (latest.saveState === "saved") {
             bodyDraft.current = null;
+            todoDraftStore.setState({ id: null, body: null });
             setBodyReplacementRevision((version) => version + 1);
             setTask(changed);
             await refresh();
@@ -1052,8 +1065,8 @@ function WorkspaceSession() {
     if (!await save(current.task)) return false;
     return workspaceStore.getState().saveState === "saved";
   };
-  const chooseTask = async (id: string) => {
-    if (id === selectedId || folderBusyRef.current) return;
+  const chooseTask = async (id: string, todoOperation = false) => {
+    if (id === selectedId || folderBusyRef.current || (todoBusyRef.current && !todoOperation)) return;
     if (!await flushTask()) return;
     try {
       const next = await api.getTask(id);
@@ -1064,7 +1077,7 @@ function WorkspaceSession() {
     } catch (cause) { setError(errorMessage(cause)); }
   };
   const create = async () => {
-    if (query.archived || folderBusyRef.current) return;
+    if (query.archived || folderBusyRef.current || todoBusyRef.current) return;
     if (!await flushTask()) return;
     try {
       const created = await api.createTask(t("tasks.untitled"), query.folderPath || "");
@@ -1076,7 +1089,7 @@ function WorkspaceSession() {
     } catch (cause) { setError(errorMessage(cause)); }
   };
   const quickEdit = async (summary: TaskSummary, key: string, value: unknown) => {
-    if (folderBusyRef.current) return;
+    if (folderBusyRef.current || todoBusyRef.current) return;
     if (savePromise.current && !await savePromise.current) return;
     try {
       const full = summary.id === task?.id ? task : await api.getTask(summary.id);
@@ -1097,14 +1110,14 @@ function WorkspaceSession() {
     }
   }, []);
   const archive = async () => {
-    if (!task || folderBusyRef.current) return;
+    if (!task || folderBusyRef.current || todoBusyRef.current) return;
     const archivedId = task.id;
     if (!await save({ ...task, archived: !task.archived })) return;
     setTask(null);
     setOpenTabs((tabs) => tabs.filter((tab) => tab.kind !== "task" || tab.id !== archivedId));
   };
   const archiveTabTask = async (tab: Extract<OpenTab, { kind: "task" }>) => {
-    if (folderBusyRef.current) return;
+    if (folderBusyRef.current || todoBusyRef.current) return;
     if (task?.id === tab.id) {
       await archive();
       return;
@@ -1128,6 +1141,7 @@ function WorkspaceSession() {
     if (workspaceOpen) saveWorkspaceTabs(workspacePath, openTabs, activeTabKey);
   }, [activeTabKey, openTabs, workspaceOpen, workspacePath]);
   const closeTabs = async (closing: OpenTab[], preferred?: OpenTab) => {
+    if (todoBusyRef.current) return;
     const closingKeys = new Set(closing.map(tabKey));
     if (task && closingKeys.has(`task:${task.id}`) && !await flushTask()) return;
     const firstClosingIndex = openTabs.findIndex((tab) => closingKeys.has(tabKey(tab)));
@@ -1176,6 +1190,7 @@ function WorkspaceSession() {
   };
 
   const switchWorkspace = async () => {
+    if (todoBusyRef.current) return;
     if (!await flushTask()) return;
     setTask(null);
     setOpenTabs([]);
@@ -1257,6 +1272,7 @@ function WorkspaceSession() {
   const changeTaskBody = useLatestCallback((body: Text) => {
     if (!task) return;
     bodyDraft.current = { id: task.id, body, version: ++bodyVersion.current };
+    todoDraftStore.setState({ id: task.id, body });
     lastEditAt.current = Date.now();
     const state = workspaceStore.getState();
     if (state.saveState !== "external" && state.saveState !== "saving") setSaveState("dirty");
@@ -1268,12 +1284,62 @@ function WorkspaceSession() {
     }, 650);
   });
   useEffect(() => {
-    if (bodyDraft.current?.id !== task?.id) { bodyDraft.current = null; lastEditAt.current = 0; }
+    if (bodyDraft.current?.id !== task?.id) { bodyDraft.current = null; lastEditAt.current = 0; todoDraftStore.setState({ id: null, body: null }); }
     return () => {
       if (bodyUpdateTimer.current !== null) window.clearTimeout(bodyUpdateTimer.current);
       bodyUpdateTimer.current = null;
     };
   }, [task?.id]);
+  const finishTodoEdit = useLatestCallback((result: TodoEditResult | null) => {
+    todoCommandResult.current?.(result);
+    todoCommandResult.current = null;
+  });
+  useEffect(() => {
+    if (page !== "/tasks") finishTodoEdit(null);
+  }, [page, finishTodoEdit]);
+  const reportTodoError = useLatestCallback((cause: unknown) => setError(errorMessage(cause)));
+  const openBodyTodo = useLatestCallback(async (target: TodoTarget) => {
+    if (todoBusyRef.current || folderBusyRef.current) return;
+    await chooseTask(target.task.id);
+    const { resolveBodyTodo } = await import("./editor/bodyTodos");
+    const current = workspaceStore.getState().task;
+    if (current?.id !== target.task.id) return;
+    const body = bodyDraft.current?.id === current.id ? bodyDraft.current.body.toString() : current.body;
+    const item = resolveBodyTodo(body, target.task.body, target.item);
+    if (!item) { setError(locale === "zh-CN" ? "该事项已变化，请刷新待办后重试。" : "This item changed. Refresh todos and try again."); setSearchEpoch((epoch) => epoch + 1); return; }
+    navigate("/tasks");
+    setTodoReveal({ taskId: current.id, from: item.markerFrom, to: item.to, signal: ++todoSignal.current });
+  });
+  const toggleBodyTodo = useLatestCallback(async (target: TodoTarget, checked: boolean): Promise<TodoTarget | null> => {
+    if (todoBusyRef.current || folderBusyRef.current) return null;
+    todoBusyRef.current = true;
+    setTodoBusy(true);
+    try {
+      await chooseTask(target.task.id, true);
+      const state = workspaceStore.getState();
+      if (state.task?.id !== target.task.id || state.saveState === "external" || state.externalTask) return null;
+      navigate("/tasks");
+      const edited = await new Promise<TodoEditResult | null>((resolve) => {
+        todoCommandResult.current = resolve;
+        setTodoCommand({ taskId: target.task.id, source: target.task.body, item: target.item, checked, signal: ++todoSignal.current });
+      });
+      if (!edited) {
+        setError(locale === "zh-CN" ? "该事项已变化或无法唯一定位，请刷新待办后重试。" : "This item changed or is ambiguous. Refresh todos and try again.");
+        setSearchEpoch((epoch) => epoch + 1);
+        return null;
+      }
+      const current = workspaceStore.getState().task;
+      if (!current || !await save(current)) return null;
+      return { task: { ...workspaceStore.getState().task!, body: edited.body }, item: edited.item };
+    } catch (cause) {
+      setError(errorMessage(cause));
+      return null;
+    } finally {
+      todoBusyRef.current = false;
+      setTodoBusy(false);
+      setTodoCommand(null);
+    }
+  });
   const taskListEmptyState = useMemo(() => (
     <div className="flex h-full flex-col items-center justify-center text-center text-muted [&>h2]:mt-3 [&>h2]:mb-[3px] [&>h2]:font-heading [&>h2]:text-base [&>h2]:text-foreground [&>p]:m-0 [&>p]:text-xs">
       <LayoutList />
@@ -1342,6 +1408,9 @@ function WorkspaceSession() {
                 </Tooltip>
                 <Tooltip label={t("tasks.recentFiles")}>
                   <Button variant="ghost" size="icon" className="my-1 shrink-0" aria-label={t("tasks.recentFiles")} aria-pressed={taskPanel === "recent"} aria-controls="task-side-panel" onClick={() => setTaskPanel("recent")}><History size={17} /></Button>
+                </Tooltip>
+                <Tooltip label={locale === "zh-CN" ? "正文待办" : "Body todos"}>
+                  <Button variant="ghost" size="icon" className="my-1 shrink-0" aria-label={locale === "zh-CN" ? "正文待办" : "Body todos"} aria-pressed={taskPanel === "todos"} aria-controls="task-side-panel" onClick={() => setTaskPanel("todos")}><CheckSquare size={17} /></Button>
                 </Tooltip>
               </>
             ) : null}
@@ -1560,7 +1629,7 @@ function WorkspaceSession() {
                   onQuickEdit={quickEditTask}
                   onCreateOption={createPropertyOption}
                 />
-                </> : taskPanel === "recent" ? <RecentFilesPanel files={recentFileDetails} selectedId={selectedId} onSelect={(id) => void chooseTask(id)} /> : <TaskSearchPanel search={searchDraft} results={searchResults} loading={searchLoading} onSearchChange={setSearchDraft} onSelect={(result) => void chooseTask(result.id)} />}
+                </> : taskPanel === "todos" ? <Suspense fallback={<div className="p-3 text-xs text-muted">{t("editor.loading")}</div>}><BodyTodoPanel workspacePath={workspacePath} query={query} folders={folders} definitions={definitions} activeTask={task} saveState={saveState} draftStore={todoDraftStore} refreshSignal={fileSignal + searchEpoch} busy={todoBusy || folderBusy} onOpen={openBodyTodo} onToggle={toggleBodyTodo} onFilter={() => setFilterDialogOpen(true)} onError={reportTodoError} /></Suspense> : taskPanel === "recent" ? <RecentFilesPanel files={recentFileDetails} selectedId={selectedId} onSelect={(id) => void chooseTask(id)} /> : <TaskSearchPanel search={searchDraft} results={searchResults} loading={searchLoading} onSearchChange={setSearchDraft} onSelect={(result) => void chooseTask(result.id)} />}
               </section>
               <div className={cn("relative z-[2] cursor-col-resize bg-line hover:bg-accent", !taskListVisible && "invisible")} data-testid="splitter" onPointerDown={beginTaskListResize} />
               <section className="min-h-0 min-w-0 bg-surface" ref={setDetailPanel}>
@@ -1643,6 +1712,9 @@ function WorkspaceSession() {
                             key={task.id}
                             documentId={task.id}
                             replacementRevision={bodyReplacementRevision}
+                            todoCommand={todoCommand}
+                            onTodoEdit={finishTodoEdit}
+                            revealRange={todoReveal?.taskId === task.id ? todoReveal : undefined}
                             value={bodyDraft.current?.id === task.id ? bodyDraft.current.body : task.body}
                             sourceMode={sourceMode}
                             onChange={changeTaskBody}
@@ -1681,7 +1753,7 @@ function WorkspaceSession() {
           title={t("external.title", { title: task?.title ?? "" })}
           description={t("external.description")}
           closeLabel={t("common.close")}
-          footer={<><Button variant="outline" onClick={() => { if (externalTask) setTask((current) => current ? { ...current, contentHash: externalTask.contentHash } : current); setExternalTask(null); setSaveState("dirty"); }}>{t("external.keep")}</Button><Button onClick={() => { if (externalTask) { bodyDraft.current = null; setBodyReplacementRevision((version) => version + 1); setTask(externalTask); } setExternalTask(null); setSaveState("saved"); }}>{t("external.reload")}</Button></>}
+          footer={<><Button variant="outline" onClick={() => { if (externalTask) setTask((current) => current ? { ...current, contentHash: externalTask.contentHash } : current); setExternalTask(null); setSaveState("dirty"); }}>{t("external.keep")}</Button><Button onClick={() => { if (externalTask) { bodyDraft.current = null; todoDraftStore.setState({ id: null, body: null }); setBodyReplacementRevision((version) => version + 1); setTask(externalTask); } setExternalTask(null); setSaveState("saved"); }}>{t("external.reload")}</Button></>}
         >
           {externalTask && task ? <div className="grid grid-cols-2 gap-2.5 [&_pre]:max-h-80 [&_pre]:overflow-auto [&_pre]:whitespace-pre-wrap [&_pre]:rounded-lg [&_pre]:border [&_pre]:border-line [&_pre]:bg-surface-soft [&_pre]:p-3 [&_pre]:text-xs"><div><strong>{t("external.editor")}</strong><pre>{bodyDraft.current?.id === task.id ? bodyDraft.current.body.toString() : task.body}</pre></div><div><strong>{t("external.disk")}</strong><pre>{externalTask.body}</pre></div></div> : null}
         </Dialog>

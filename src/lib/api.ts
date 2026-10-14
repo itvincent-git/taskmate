@@ -320,6 +320,13 @@ export const api = {
     });
     return items.map(summary);
   },
+  async queryTaskDocuments(query: TaskQuery, includeArchived: boolean): Promise<Task[]> {
+    if (isTauri) return invoke("query_task_documents", { query, includeArchived });
+    const active = await api.queryTasks({ ...query, archived: false });
+    const archived = includeArchived ? await api.queryTasks({ ...query, archived: true }) : [];
+    const documents = new Map(loadDemo().tasks.map((task) => [task.id, task]));
+    return [...active, ...archived].map((task) => structuredClone(documents.get(task.id)!));
+  },
   async searchTasks(search: string): Promise<TaskSearchResult[]> {
     if (isTauri) return invoke("search_tasks", { search });
     const needle = search.trim().toLocaleLowerCase();

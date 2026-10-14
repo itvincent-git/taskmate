@@ -136,6 +136,23 @@ impl Workspace {
         index.search(search)
     }
 
+    pub fn query_documents(
+        &self,
+        mut query: TaskQuery,
+        include_archived: bool,
+    ) -> Result<Vec<Task>, String> {
+        let properties = self.load_or_create_properties()?;
+        let index = TaskIndex::open(&self.root.join(".task-app/index.sqlite"))?;
+        self.incremental_scan(&index)?;
+        query.archived = false;
+        let mut documents = index.query_documents(&query, &properties)?;
+        if include_archived {
+            query.archived = true;
+            documents.extend(index.query_documents(&query, &properties)?);
+        }
+        Ok(documents)
+    }
+
     pub fn rebuild_index(&self) -> Result<Vec<TaskSummary>, String> {
         let index = TaskIndex::open(&self.root.join(".task-app/index.sqlite"))?;
         index.clear()?;
@@ -902,6 +919,46 @@ mod tests {
             properties: task.properties,
             expected_hash: Some(task.content_hash),
         }
+    }
+
+    #[test]
+    fn todo_documents_use_the_index_and_refresh_external_changes() {
+        let temp = tempfile::tempdir().unwrap();
+        let w = Workspace::new(temp.path().to_path_buf());
+        w.initialize().unwrap();
+        w.create_folder(false, "", "project").unwrap();
+        let mut active = w
+            .create_task_in(Some("Checklist".into()), "project")
+            .unwrap();
+        active.body = "## Release\n- [ ] Test\n".into();
+        let active = w.save_task(save_input(active, false)).unwrap();
+        let archived = w
+            .create_task_in(Some("Archived checklist".into()), "project")
+            .unwrap();
+        let archived = w.save_task(save_input(archived, true)).unwrap();
+        w.create_task(Some("Other project".into())).unwrap();
+        let query = TaskQuery {
+            folder_path: Some("project".into()),
+            ..TaskQuery::default()
+        };
+        let documents = w.query_documents(query.clone(), false).unwrap();
+        assert_eq!(documents.len(), 1);
+        assert_eq!(documents[0], active);
+        let documents = w.query_documents(query.clone(), true).unwrap();
+        assert_eq!(documents.len(), 2);
+        assert!(documents
+            .iter()
+            .any(|task| task.id == archived.id && task.archived));
+        let path = w.task_file_path(&active.id).unwrap();
+        let text = fs::read_to_string(&path).unwrap();
+        fs::write(
+            &path,
+            text.replace("- [ ] Test", "- [ ] Test on a real device"),
+        )
+        .unwrap();
+        let changed = w.query_documents(query, false).unwrap();
+        assert!(changed[0].body.contains("Test on a real device"));
+        assert_ne!(changed[0].content_hash, active.content_hash);
     }
 
     #[test]
