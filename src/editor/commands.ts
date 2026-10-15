@@ -82,6 +82,12 @@ export function applyMarkdownAction(view: EditorView, action: MarkdownAction) {
       ? { from: line.from, to: line.from + linePrefix.length, insert: "" }
       : { from: line.from, insert: linePrefix });
   }
-  view.dispatch({ changes, userEvent: "input" });
+  view.dispatch({
+    changes,
+    selection: action === "task" && selection.empty && changes[0].insert === prefix
+      ? { anchor: startLine.to + prefix.length }
+      : undefined,
+    userEvent: "input",
+  });
   view.focus();
 }

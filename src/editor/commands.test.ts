@@ -37,4 +37,16 @@ describe("Markdown toolbar commands", () => {
     applyMarkdownAction(view, "ordered");
     expect(view.state.doc.toString()).toBe("one\ntwo\nthree");
   });
+
+  it("preserves the caret within the text when removing a task marker", () => {
+    view = new EditorView({
+      parent: document.body,
+      state: EditorState.create({ doc: "- [ ] todo", selection: { anchor: 8 } }),
+    });
+
+    applyMarkdownAction(view, "task");
+
+    expect(view.state.doc.toString()).toBe("todo");
+    expect(view.state.selection.main.head).toBe(2);
+  });
 });

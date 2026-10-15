@@ -135,6 +135,24 @@ describe("MarkdownEditor", () => {
     expect(editorView(container).state.doc.toString()).toBe("text");
   });
 
+  it.each([
+    { value: "", anchor: 0, expected: "- [ ] ", caret: 6 },
+    { value: "notes\n", anchor: 6, expected: "notes\n- [ ] ", caret: 12 },
+    { value: "任务内容", anchor: 0, expected: "- [ ] 任务内容", caret: 10 },
+    { value: "任务内容\nnext", anchor: 2, expected: "- [ ] 任务内容\nnext", caret: 10 },
+  ])("places the task shortcut caret at the end of the item: $value / $anchor", ({ value, anchor, expected, caret }) => {
+    const { container } = render(<MarkdownEditor value={value} onChange={vi.fn()} />);
+    const view = editorView(container);
+    act(() => view.dispatch({ selection: { anchor } }));
+
+    fireEvent.keyDown(view.contentDOM, { key: "l", ctrlKey: true });
+
+    expect(view.state.doc.toString()).toBe(expected);
+    expect(view.state.selection.main.empty).toBe(true);
+    expect(view.state.selection.main.head).toBe(caret);
+    expect(view.hasFocus).toBe(true);
+  });
+
   it("reports task checkbox clicks as document changes", () => {
     const onChange = vi.fn();
     const { container } = render(<MarkdownEditor value={"plain\n- [ ] todo"} onChange={onChange} />);
