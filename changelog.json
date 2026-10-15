@@ -1,4 +1,8 @@
 {
+  "0.18.1": {
+    "en": "- fix(editor): place caret at end of new task items",
+    "zh": "- fix(editor): place caret at end of new task items"
+  },
   "0.18.0": {
     "en": "- feat: aggregate Markdown body todos\n- fix: place body todos next to files",
     "zh": "- feat: aggregate Markdown body todos\n- fix: place body todos next to files"
