@@ -43,6 +43,7 @@ describe("folder workflows", () => {
     expect(dialog).toHaveTextContent("2 completed tasks in the current results");
     const archiveList = within(dialog).getByRole("list", { name: "Tasks to archive" });
     expect(within(archiveList).getAllByRole("listitem")).toHaveLength(2);
+    for (const checkbox of within(archiveList).getAllByRole("checkbox")) expect(checkbox).toBeChecked();
     expect(within(archiveList).getByText("Alpha")).toBeInTheDocument();
     expect(within(archiveList).getByText("a/Alpha.md")).toBeInTheDocument();
     expect(within(archiveList).getByText("Beta")).toBeInTheDocument();
@@ -59,6 +60,30 @@ describe("folder workflows", () => {
     fireEvent.click(screen.getByRole("button", { name: "Archive" }));
     await screen.findByRole("checkbox", { name: "Select Alpha" });
     expect(screen.queryByRole("button", { name: /Archive completed/ })).not.toBeInTheDocument();
+  });
+
+  it("archives only checked files and resets selection when the dialog reopens", async () => {
+    const { first, second, third } = await setup(async (items) => {
+      for (const item of items) await api.saveTask({ ...item, properties: { status: "done" } });
+    });
+    const archiveButton = screen.getByRole("button", { name: "Archive completed · 3" });
+    fireEvent.click(archiveButton);
+    let dialog = screen.getByRole("dialog", { name: "Archive completed tasks" });
+    for (const checkbox of within(dialog).getAllByRole("checkbox")) fireEvent.click(checkbox);
+    expect(within(dialog).getByRole("button", { name: "Archive tasks" })).toBeDisabled();
+    expect(dialog).toHaveTextContent("0 completed tasks in the current results");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+    fireEvent.click(archiveButton);
+    dialog = screen.getByRole("dialog", { name: "Archive completed tasks" });
+    for (const checkbox of within(dialog).getAllByRole("checkbox")) expect(checkbox).toBeChecked();
+    fireEvent.click(within(dialog).getByRole("checkbox", { name: "Select Beta" }));
+    fireEvent.click(within(dialog).getByRole("checkbox", { name: "Select Gamma" }));
+    expect(dialog).toHaveTextContent("1 completed tasks in the current results");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Archive tasks" }));
+    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("Archived 1, skipped 0, failed 0"));
+    expect((await api.getTask(first.id)).archived).toBe(true);
+    expect((await api.getTask(second.id)).archived).toBe(false);
+    expect((await api.getTask(third.id)).archived).toBe(false);
   });
 
   it("rechecks status and continues after a single archive failure", async () => {

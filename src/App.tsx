@@ -554,6 +554,7 @@ function WorkspaceSession() {
   const [folderBusy, setFolderBusy] = useState(false);
   const folderBusyRef = useRef(false);
   const [archiveCompletedTasks, setArchiveCompletedTasks] = useState<TaskSummary[] | null>(null);
+  const [archiveSelectedIds, setArchiveSelectedIds] = useState<Set<string>>(new Set());
   const [archiveResult, setArchiveResult] = useState("");
   const savePromise = useRef<Promise<boolean> | null>(null);
   const bodyDraft = useRef<{ id: string; body: Text; version: number } | null>(null);
@@ -894,6 +895,8 @@ function WorkspaceSession() {
   const completedTasks = query.archived ? [] : tasks.filter((item) => item.properties[statusKey] === "done");
   const archiveCompleted = async () => {
     if (!archiveCompletedTasks || folderBusyRef.current || todoBusyRef.current) return;
+    const selectedTasks = archiveCompletedTasks.filter((item) => archiveSelectedIds.has(item.id));
+    if (!selectedTasks.length) return;
     folderBusyRef.current = true;
     setFolderBusy(true);
     setArchiveResult("");
@@ -904,7 +907,7 @@ function WorkspaceSession() {
     try {
       if (savePromise.current && !await savePromise.current) return;
       const current = workspaceStore.getState();
-      if (current.task && archiveCompletedTasks.some((item) => item.id === current.task?.id)) {
+      if (current.task && archiveSelectedIds.has(current.task.id)) {
         if (current.saveState === "external" || current.externalTask) {
           setError(locale === "zh-CN" ? "请先解决外部文件冲突。" : "Resolve the external file conflict first.");
           return;
@@ -914,7 +917,7 @@ function WorkspaceSession() {
           if (workspaceStore.getState().saveState !== "saved") return;
         }
       }
-      for (const { id } of archiveCompletedTasks) {
+      for (const { id } of selectedTasks) {
         try {
           const latest = await api.getTask(id);
           if (latest.archived || latest.properties[statusKey] !== "done") { skipped++; continue; }
@@ -1581,16 +1584,28 @@ function WorkspaceSession() {
               </form>
             </Dialog>
             <Dialog open={archiveCompletedTasks !== null} onOpenChange={(open) => { if (!open && !folderBusy) setArchiveCompletedTasks(null); }} title={locale === "zh-CN" ? "归档已完成任务" : "Archive completed tasks"} contentClassName="w-[min(480px,calc(100vw-40px))]">
-              <p className="text-sm">{locale === "zh-CN" ? `将归档当前结果中的 ${archiveCompletedTasks?.length ?? 0} 项已完成任务。任务内容和相对文件夹路径会保留，可从归档视图恢复。` : `Archive ${archiveCompletedTasks?.length ?? 0} completed tasks in the current results? Their content and relative folder paths will be preserved, and they can be restored from Archive.`}</p>
+              <p className="text-sm">{locale === "zh-CN" ? `将归档当前结果中的 ${archiveSelectedIds.size} 项已完成任务。任务内容和相对文件夹路径会保留，可从归档视图恢复。` : `Archive ${archiveSelectedIds.size} completed tasks in the current results? Their content and relative folder paths will be preserved, and they can be restored from Archive.`}</p>
               <ul className="mt-3 max-h-64 space-y-1 overflow-y-auto rounded border border-line p-2" aria-label={locale === "zh-CN" ? "待归档任务" : "Tasks to archive"}>
                 {archiveCompletedTasks?.map((item) => <li key={item.id} className="min-w-0 rounded bg-surface-soft px-2 py-1.5 text-sm">
-                  <div className="break-words font-medium">{item.title}</div>
-                  <div className="break-all text-xs text-muted">{item.folderPath ? `${item.folderPath}/` : ""}{item.fileName}</div>
+                  <label className="flex cursor-pointer items-start gap-2">
+                    <input type="checkbox" className="mt-1 shrink-0" aria-label={locale === "zh-CN" ? `选择 ${item.title}` : `Select ${item.title}`} checked={archiveSelectedIds.has(item.id)} disabled={folderBusy} onChange={(event) => {
+                      const checked = event.target.checked;
+                      setArchiveSelectedIds((current) => {
+                        const next = new Set(current);
+                        if (checked) next.add(item.id); else next.delete(item.id);
+                        return next;
+                      });
+                    }} />
+                    <span className="min-w-0">
+                      <span className="block break-words font-medium">{item.title}</span>
+                      <span className="block break-all text-xs text-muted">{item.folderPath ? `${item.folderPath}/` : ""}{item.fileName}</span>
+                    </span>
+                  </label>
                 </li>)}
               </ul>
               <div className="mt-4 flex justify-end gap-2">
                 <Button variant="outline" disabled={folderBusy} onClick={() => setArchiveCompletedTasks(null)}>{t("common.cancel")}</Button>
-                <Button disabled={folderBusy} onClick={() => void archiveCompleted()}>{locale === "zh-CN" ? "确认归档" : "Archive tasks"}</Button>
+                <Button disabled={folderBusy || !archiveSelectedIds.size} onClick={() => void archiveCompleted()}>{locale === "zh-CN" ? "确认归档" : "Archive tasks"}</Button>
               </div>
             </Dialog>
             <div className="grid h-full min-h-0" data-testid="split-layout" style={{ gridTemplateColumns: taskListVisible ? `${leftWidth}px 5px minmax(0, 1fr)` : "0 0 minmax(0, 1fr)" }}>
@@ -1613,7 +1628,7 @@ function WorkspaceSession() {
                     </Tooltip>
                   </div>
                 </div>
-                <FolderNavigator revealSignal={navigatorRevealSignal} folders={folders} archived={query.archived} selected={query.folderPath ?? null} expanded={expandedFolders} onSelect={(folderPath) => setQuery({ ...query, folderPath })} onExpand={setExpandedFolders} onAction={manageFolder} onDrop={dropOnFolder} checked={checkedIds.size} onSelectAll={() => setCheckedIds(new Set(tasks.map((item) => item.id)))} onMoveSelected={() => { setMoveTarget(query.folderPath || ""); setMoveIds([...checkedIds]); }} completed={completedTasks.length} onArchiveCompleted={() => setArchiveCompletedTasks(completedTasks)} busy={folderBusy} />
+                <FolderNavigator revealSignal={navigatorRevealSignal} folders={folders} archived={query.archived} selected={query.folderPath ?? null} expanded={expandedFolders} onSelect={(folderPath) => setQuery({ ...query, folderPath })} onExpand={setExpandedFolders} onAction={manageFolder} onDrop={dropOnFolder} checked={checkedIds.size} onSelectAll={() => setCheckedIds(new Set(tasks.map((item) => item.id)))} onMoveSelected={() => { setMoveTarget(query.folderPath || ""); setMoveIds([...checkedIds]); }} completed={completedTasks.length} onArchiveCompleted={() => { setArchiveCompletedTasks(completedTasks); setArchiveSelectedIds(new Set(completedTasks.map((item) => item.id))); }} busy={folderBusy} />
                 {archiveResult && <div role="status" className="px-3 py-1 text-xs text-muted">{archiveResult}</div>}
                 <TaskList
                   checkedIds={checkedIds}
