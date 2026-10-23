@@ -21,7 +21,11 @@ updatedAt: 2026-10-15T00:00:00Z
 
 任务内容
 
-后续内容`);
+后续内容
+
+- [ ] Existing task
+
+- [x] 任务内容`);
   await browser.execute(() => {
     localStorage.clear();
     localStorage.setItem("taskmate.locale.v1", "en");
@@ -42,12 +46,34 @@ after(async () => {
 
 describe("Task list shortcut in the native editor", () => {
   for (const sourceMode of [false, true]) {
+    it(`continues a populated loose task list without a blank line in ${sourceMode ? "source" : "preview"} mode`, async () => {
+      if (sourceMode) {
+        await $("button[aria-label='Task actions']").click();
+        await browser.keys("ArrowDown");
+        await $("//*[@role='menuitemcheckbox' and normalize-space(.)='Source mode']").click();
+        await expect($("button[aria-label='Task actions']")).toBeFocused();
+      }
+      await focusEditorLine(6, true);
+      await expect($(".cm-content")).toBeFocused();
+      await expect($(".cm-editor")).toHaveAttribute("data-selection-line", "7");
+      await expect($(".cm-editor")).toHaveAttribute("data-selection-column", "10");
+
+      await browser.keys("Enter");
+
+      await expect($(".cm-editor")).toHaveAttribute("data-selection-line", "8");
+      await expect($(".cm-editor")).toHaveAttribute("data-selection-column", "6");
+      await expect($(".cm-line:nth-child(8)")).toHaveText(/^- \[ \]\s*$/);
+      await $(".cm-content").addValue("下一项");
+      await expect($(".cm-line:nth-child(8)")).toHaveText("- [ ] 下一项");
+    });
+
     for (const entry of ["toolbar", "shortcut"]) {
       it(`replaces list types through the ${entry} in ${sourceMode ? "source" : "preview"} mode`, async () => {
         if (sourceMode) {
           await $("button[aria-label='Task actions']").click();
           await browser.keys("ArrowDown");
           await $("//*[@role='menuitemcheckbox' and normalize-space(.)='Source mode']").click();
+          await expect($("button[aria-label='Task actions']")).toBeFocused();
         }
         await focusEditorLine(0);
         await expect($(".cm-content")).toBeFocused();
@@ -101,15 +127,15 @@ describe("Task list shortcut in the native editor", () => {
   }
 });
 
-async function focusEditorLine(lineIndex: number) {
+async function focusEditorLine(lineIndex: number, atEnd = false) {
   // The embedded driver does not position contenteditable carets with click().
-  await browser.execute((index) => {
+  await browser.execute((index, end) => {
     const line = document.querySelectorAll<HTMLElement>(".cm-line")[index];
     const rect = line.getBoundingClientRect();
-    const clientX = rect.left + 2;
+    const clientX = end ? rect.right - 2 : rect.left + 2;
     const clientY = rect.top + rect.height / 2;
     const target = document.elementFromPoint(clientX, clientY)!;
     target.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, button: 0, buttons: 1, detail: 1, clientX, clientY }));
     document.dispatchEvent(new MouseEvent("mouseup", { bubbles: true, button: 0, buttons: 0, detail: 1, clientX, clientY }));
-  }, lineIndex);
+  }, lineIndex, atEnd);
 }

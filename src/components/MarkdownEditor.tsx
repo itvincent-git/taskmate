@@ -24,7 +24,7 @@ import {
   Search,
   Strikethrough,
 } from "lucide-react";
-import { applyMarkdownAction, MARKDOWN_ACTIONS, type MarkdownAction } from "../editor/commands";
+import { applyMarkdownAction, insertMarkdownNewline, MARKDOWN_ACTIONS, type MarkdownAction } from "../editor/commands";
 import { codeLanguages } from "../editor/codeLanguages";
 import { linkUrlAt, livePreview, navigateToFragment } from "../editor/livePreview";
 import { MDX, mdxJsxLanguage } from "../editor/mdx";
@@ -146,7 +146,10 @@ export const MarkdownEditor = memo(function MarkdownEditor({ value, documentId, 
             },
           }),
           placeholder(t("editor.placeholder")),
-          Prec.highest(keymap.of([{ key: "Mod-f", run: openSearchPanel, scope: "editor search-panel" }])),
+          Prec.highest(keymap.of([
+            { key: "Mod-f", run: openSearchPanel, scope: "editor search-panel" },
+            { key: "Enter", run: insertMarkdownNewline },
+          ])),
           shortcutCompartment.current.of(markdownShortcutExtensions(shortcuts, platform)),
           keymap.of([indentWithTab, ...searchKeymap, ...defaultKeymap, ...historyKeymap]),
           EditorView.lineWrapping,

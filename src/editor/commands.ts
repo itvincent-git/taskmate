@@ -1,4 +1,34 @@
 import type { EditorView } from "@codemirror/view";
+import { ChangeSet, type ChangeSpec, type StateCommand } from "@codemirror/state";
+import { syntaxTree } from "@codemirror/language";
+import { insertNewlineContinueMarkup } from "@codemirror/lang-markdown";
+
+export const insertMarkdownNewline: StateCommand = ({ state, dispatch }) => insertNewlineContinueMarkup({
+  state,
+  dispatch(transaction) {
+    const blankLines: ChangeSpec[] = [];
+    transaction.changes.iterChanges((from, _to, fromB, _toB, inserted) => {
+      if (inserted.lines !== 3 || inserted.line(1).length !== 0) return;
+      let node = syntaxTree(state).resolveInner(from, -1);
+      while (node.parent && node.name !== "Task") node = node.parent;
+      const marker = node.name === "Task" ? node.getChild("TaskMarker") : null;
+      if (!marker || state.doc.lineAt(marker.from).from !== state.doc.lineAt(from).from) return;
+      // CodeMirror preserves loose-list spacing; task items should always be adjacent.
+      blankLines.push({ from: fromB + inserted.line(2).from, to: fromB + inserted.line(2).to + 1 });
+    });
+    if (!blankLines.length) {
+      dispatch(transaction);
+      return;
+    }
+    const trim = ChangeSet.of(blankLines, transaction.newDoc.length);
+    dispatch(state.update({
+      changes: transaction.changes.compose(trim),
+      selection: transaction.newSelection.map(trim),
+      userEvent: "input",
+      scrollIntoView: true,
+    }));
+  },
+});
 
 export const MARKDOWN_ACTIONS = [
   "h1", "h2", "bold", "italic", "strike", "inlineCode", "codeBlock",

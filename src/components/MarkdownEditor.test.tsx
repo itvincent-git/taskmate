@@ -162,6 +162,39 @@ describe("MarkdownEditor", () => {
     expect(onChange.mock.lastCall?.[0].toString()).toBe("plain\n- [x] todo");
   });
 
+  it.each([false, true].flatMap((sourceMode) => [
+    { value: "- [ ] first\n- [x] 任务内容", prefix: "- [ ] " },
+    { value: "- [ ] first\n\n- [x] 任务内容", prefix: "- [ ] " },
+    { value: "- parent\n  - [ ] first\n\n  - [x] 任务内容", prefix: "  - [ ] " },
+    { value: "> - [ ] first\n>\n> - [x] 任务内容", prefix: "> - [ ] " },
+  ].map((entry) => ({ ...entry, sourceMode }))))("continues a populated task without a blank line: $value (source mode: $sourceMode)", ({ value, prefix, sourceMode }) => {
+    const { container } = render(<MarkdownEditor value={value} onChange={vi.fn()} sourceMode={sourceMode} />);
+    const view = editorView(container);
+    act(() => view.dispatch({ selection: { anchor: value.length } }));
+
+    fireEvent.keyDown(view.contentDOM, { key: "Enter" });
+
+    expect(view.state.doc.toString()).toBe(`${value}\n${prefix}`);
+    expect(view.state.selection.main.head).toBe(view.state.doc.length);
+    fireEvent.keyDown(view.contentDOM, { key: "z", ctrlKey: true });
+    expect(view.state.doc.toString()).toBe(value);
+    fireEvent.keyDown(view.contentDOM, { key: "y", ctrlKey: true });
+    expect(view.state.doc.toString()).toBe(`${value}\n${prefix}`);
+  });
+
+  it.each([
+    { value: "- first\n\n- second", suffix: "\n\n- " },
+    { value: "```text\n- [ ] first\n\n- [x] second", suffix: "\n" },
+  ])("preserves Enter behavior outside task items: $value", ({ value, suffix }) => {
+    const { container } = render(<MarkdownEditor value={value} onChange={vi.fn()} />);
+    const view = editorView(container);
+    act(() => view.dispatch({ selection: { anchor: value.length } }));
+
+    fireEvent.keyDown(view.contentDOM, { key: "Enter" });
+
+    expect(view.state.doc.toString()).toBe(`${value}${suffix}`);
+  });
+
   it("shows raw Markdown when source mode is enabled", () => {
     const { container, rerender } = render(
       <MarkdownEditor value={"plain\n- [ ] todo"} onChange={vi.fn()} />,
