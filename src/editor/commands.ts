@@ -73,19 +73,30 @@ export function applyMarkdownAction(view: EditorView, action: MarkdownAction) {
   if (!prefix) return;
   const startLine = view.state.doc.lineAt(selection.from);
   const endLine = view.state.doc.lineAt(selection.to);
+  const isList = action === "bullet" || action === "ordered" || action === "task";
   const changes = [];
   for (let number = startLine.number; number <= endLine.number; number += 1) {
     const line = view.state.doc.line(number);
     const linePrefix = action === "ordered" ? `${number - startLine.number + 1}. ` : prefix;
+    const list = isList ? /^([ \t]*)([-+*]|\d+[.)])[ \t]+(\[[ xX]\](?:[ \t]+|$))?/.exec(line.text) : null;
+    if (list) {
+      const listType = list[3] ? "task" : /^\d/.test(list[2]) ? "ordered" : "bullet";
+      changes.push({
+        from: line.from + list[1].length,
+        to: line.from + list[0].length,
+        insert: listType === action ? "" : linePrefix,
+      });
+      continue;
+    }
     const existingPrefix = view.state.sliceDoc(line.from, Math.min(line.to, line.from + linePrefix.length));
     changes.push(existingPrefix === linePrefix
       ? { from: line.from, to: line.from + linePrefix.length, insert: "" }
-      : { from: line.from, insert: linePrefix });
+      : { from: line.from, to: line.from, insert: linePrefix });
   }
   view.dispatch({
     changes,
     selection: action === "task" && selection.empty && changes[0].insert === prefix
-      ? { anchor: startLine.to + prefix.length }
+      ? { anchor: startLine.to + prefix.length - (changes[0].to - changes[0].from) }
       : undefined,
     userEvent: "input",
   });
