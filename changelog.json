@@ -1,4 +1,8 @@
 {
+  "0.19.0": {
+    "en": "- fix(editor): replace existing markers when switching list types\n- fix(editor): avoid blank lines when continuing task lists\n- feat: allow selecting completed files to archive",
+    "zh": "- fix(editor): replace existing markers when switching list types\n- fix(editor): avoid blank lines when continuing task lists\n- feat: allow selecting completed files to archive"
+  },
   "0.18.1": {
     "en": "- fix(editor): place caret at end of new task items",
     "zh": "- fix(editor): place caret at end of new task items"
