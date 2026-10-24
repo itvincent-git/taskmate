@@ -1,0 +1,4 @@
+[build]
+rustc-wrapper = "sccache"
+# Incremental compilation is incompatible with sccache.
+incremental = false

@@ -20,6 +20,8 @@ jobs:
   build:
     name: Build ${{ matrix.label }}
     runs-on: ${{ matrix.os }}
+    env:
+      SCCACHE_GHA_ENABLED: "true"
     strategy:
       fail-fast: false
       matrix:
@@ -36,7 +38,8 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with: { targets: "${{ matrix.target }}" }
       - uses: swatinem/rust-cache@v2
-        with: { workspaces: "src-tauri -> target" }
+        with: { workspaces: "src-tauri -> target", cache-targets: false }
+      - uses: mozilla-actions/sccache-action@v0.0.11
       - run: pnpm install --frozen-lockfile
       - run: pnpm test
       - run: pnpm typecheck

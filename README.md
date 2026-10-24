@@ -65,12 +65,16 @@ Live Preview is a single CodeMirror editing surface. Decorations hide safe marke
 
 ## Development
 
-Requirements: Node.js 24, pnpm 11, stable Rust, and the Tauri 2 platform prerequisites.
+Requirements: Node.js 24, pnpm 11, stable Rust, sccache, and the Tauri 2 platform prerequisites.
+
+Install sccache with `brew install sccache` on macOS or `cargo install sccache --locked` on other platforms, and ensure it is on `PATH`.
 
 ```sh
 pnpm install
 pnpm dev:app
 ```
+
+Rust builds automatically use sccache via `.cargo/config.toml`, including Tauri development, builds, and E2E builds. Incremental compilation is disabled because sccache cannot cache it. Run `sccache --show-stats` to inspect cache hits. To temporarily build without sccache, set `RUSTC_WRAPPER=`. Release CI uses the GitHub Actions sccache backend; the Rust cache action retains Cargo downloads without duplicating compiled artifacts.
 
 Browser-only UI development is available with `pnpm dev`. It uses a localStorage-backed demo workspace because browsers cannot access the Rust filesystem commands.
 
