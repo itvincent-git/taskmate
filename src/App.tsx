@@ -592,6 +592,9 @@ function WorkspaceSession() {
   const renameRequested = useRef(false);
   const filterButton = useRef<HTMLButtonElement>(null);
   const activeTab = useRef<HTMLDivElement>(null);
+  const tabDrag = useRef<{ key: string; startX: number } | null>(null);
+  const suppressTabClick = useRef(false);
+  const [draggingTabKey, setDraggingTabKey] = useState<string | null>(null);
   const autoOpened = useRef(false);
   const [restoringWorkspace, setRestoringWorkspace] = useState(recentWorkspaces.length > 0);
   const selectedId = task?.id;
@@ -1143,6 +1146,43 @@ function WorkspaceSession() {
   useEffect(() => {
     if (workspaceOpen) saveWorkspaceTabs(workspacePath, openTabs, activeTabKey);
   }, [activeTabKey, openTabs, workspaceOpen, workspacePath]);
+  const beginTabDrag = (event: React.PointerEvent<HTMLDivElement>, tab: OpenTab) => {
+    if (event.button !== 0) return;
+    suppressTabClick.current = false;
+    if ((event.target as HTMLElement).closest("button[aria-label]")) return;
+    tabDrag.current = { key: tabKey(tab), startX: event.clientX };
+  };
+  const moveTabDrag = (event: React.PointerEvent<HTMLDivElement>) => {
+    const drag = tabDrag.current;
+    if (!drag || (!suppressTabClick.current && Math.abs(event.clientX - drag.startX) < 5)) return;
+    if (!suppressTabClick.current) {
+      event.currentTarget.setPointerCapture(event.pointerId);
+      suppressTabClick.current = true;
+      setDraggingTabKey(drag.key);
+    }
+    const tablist = event.currentTarget;
+    const bounds = tablist.getBoundingClientRect();
+    if (event.clientX < bounds.left + 24) tablist.scrollLeft -= 20;
+    else if (event.clientX > bounds.right - 24) tablist.scrollLeft += 20;
+    const siblings = Array.from(tablist.querySelectorAll<HTMLElement>("[role='tab']"));
+    const targetIndex = siblings.filter((element) => {
+      if (element.dataset.tabKey === drag.key) return false;
+      const rect = element.getBoundingClientRect();
+      return event.clientX > rect.left + rect.width / 2;
+    }).length;
+    setOpenTabs((tabs) => {
+      const index = tabs.findIndex((tab) => tabKey(tab) === drag.key);
+      if (index < 0 || index === targetIndex) return tabs;
+      const reordered = tabs.slice();
+      const [tab] = reordered.splice(index, 1);
+      reordered.splice(targetIndex, 0, tab);
+      return reordered;
+    });
+  };
+  const endTabDrag = () => {
+    tabDrag.current = null;
+    setDraggingTabKey(null);
+  };
   const closeTabs = async (closing: OpenTab[], preferred?: OpenTab) => {
     if (todoBusyRef.current) return;
     const closingKeys = new Set(closing.map(tabKey));
@@ -1424,15 +1464,33 @@ function WorkspaceSession() {
             </Tooltip>
           </div>
         ) : null}
-        <div className="scrollbar-hidden flex min-w-0 flex-1 items-end gap-0.5 overflow-x-auto overflow-y-hidden px-1.5 pt-1" role="tablist" aria-label={t("editor.openFiles")}>
+        <div
+          className="scrollbar-hidden flex min-w-0 flex-1 items-end gap-0.5 overflow-x-auto overflow-y-hidden px-1.5 pt-1"
+          role="tablist"
+          aria-label={t("editor.openFiles")}
+          onPointerMove={moveTabDrag}
+          onPointerUp={endTabDrag}
+          onPointerCancel={endTabDrag}
+          onLostPointerCapture={(event) => { if (event.target === event.currentTarget) endTabDrag(); }}
+          onPointerLeave={() => { if (!suppressTabClick.current) endTabDrag(); }}
+          onDragStart={(event) => event.preventDefault()}
+          onClickCapture={(event) => {
+            if (!suppressTabClick.current) return;
+            suppressTabClick.current = false;
+            event.preventDefault();
+            event.stopPropagation();
+          }}
+        >
           {openTabs.map((tab, index) => (
             <ContextMenu.Root key={tabKey(tab)}>
               <ContextMenu.Trigger asChild>
                 <div
                   ref={tabKey(tab) === activeTabKey ? activeTab : undefined}
-                  className={cn("group flex h-8 min-w-32 max-w-56 shrink-0 select-none items-center rounded-t-md border border-b-0 px-2 text-xs", tabKey(tab) === activeTabKey ? "border-line bg-background text-foreground" : "border-transparent text-muted hover:bg-surface-soft")}
+                  className={cn("group flex h-8 min-w-32 max-w-56 shrink-0 touch-none select-none items-center rounded-t-md border border-b-0 px-2 text-xs", tabKey(tab) === activeTabKey ? "border-line bg-background text-foreground" : "border-transparent text-muted hover:bg-surface-soft", draggingTabKey === tabKey(tab) && "cursor-grabbing opacity-60 [&_button]:cursor-grabbing")}
                   role="tab"
+                  data-tab-key={tabKey(tab)}
                   aria-selected={tabKey(tab) === activeTabKey}
+                  onPointerDown={(event) => beginTabDrag(event, tab)}
                 >
                   <Tooltip label={tab.kind === "task" ? tab.fileName : tabTitle(tab)} side="bottom">
                     <button className="min-w-0 flex-1 cursor-pointer truncate text-left" onClick={() => tab.kind === "task" ? (navigate("/tasks"), void chooseTask(tab.id)) : navigate(tab.id)}>{tabTitle(tab)}</button>
