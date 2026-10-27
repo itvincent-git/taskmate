@@ -1,4 +1,8 @@
 {
+  "0.20.0": {
+    "en": "- chore(build): enable sccache for Rust compilation\n- feat: support dragging tabs to reorder\n- chore: upgrade Node.js to 24.22.1\n- feat(tabs): add long-press drag preview and drop indicator",
+    "zh": "- chore(build): enable sccache for Rust compilation\n- feat: support dragging tabs to reorder\n- chore: upgrade Node.js to 24.22.1\n- feat(tabs): add long-press drag preview and drop indicator"
+  },
   "0.19.0": {
     "en": "- fix(editor): replace existing markers when switching list types\n- fix(editor): avoid blank lines when continuing task lists\n- feat: allow selecting completed files to archive",
     "zh": "- fix(editor): replace existing markers when switching list types\n- fix(editor): avoid blank lines when continuing task lists\n- feat: allow selecting completed files to archive"

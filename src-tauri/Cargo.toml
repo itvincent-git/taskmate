@@ -1,6 +1,6 @@
 [package]
 name = "taskmate"
-version = "0.19.0"
+version = "0.20.0"
 description = "A local-first Markdown task manager for the desktop."
 authors = ["Taskmate contributors"]
 license = "MIT"
