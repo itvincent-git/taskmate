@@ -98,6 +98,11 @@ const BodyTodoPanel = lazy(() => import("./components/BodyTodoPanel").then((modu
 type StateUpdate<T> = SetStateAction<T>;
 type WorkspacePage = "/properties" | "/backup" | "/settings";
 type OpenTab = ({ kind: "task" } & Pick<Task, "id" | "title" | "fileName" | "archived" | "folderPath">) | { kind: "page"; id: WorkspacePage };
+type TabDrag = {
+  key: string; startX: number; startY: number; pointerId: number;
+  tablist: HTMLElement; timer: number; targetIndex: number;
+  preview?: HTMLElement; indicator?: HTMLElement;
+};
 type StoredOpenTab = { kind: "task"; id: string } | { kind: "page"; id: WorkspacePage };
 type StoredWorkspaceTabs = { tabs: StoredOpenTab[]; activeTabKey: string };
 type WorkspaceData = {
@@ -592,7 +597,7 @@ function WorkspaceSession() {
   const renameRequested = useRef(false);
   const filterButton = useRef<HTMLButtonElement>(null);
   const activeTab = useRef<HTMLDivElement>(null);
-  const tabDrag = useRef<{ key: string; startX: number } | null>(null);
+  const tabDrag = useRef<TabDrag | null>(null);
   const suppressTabClick = useRef(false);
   const [draggingTabKey, setDraggingTabKey] = useState<string | null>(null);
   const autoOpened = useRef(false);
@@ -1146,42 +1151,93 @@ function WorkspaceSession() {
   useEffect(() => {
     if (workspaceOpen) saveWorkspaceTabs(workspacePath, openTabs, activeTabKey);
   }, [activeTabKey, openTabs, workspaceOpen, workspacePath]);
+  const endTabDrag = useCallback((commit = false) => {
+    const drag = tabDrag.current;
+    if (!drag) return;
+    tabDrag.current = null;
+    window.clearTimeout(drag.timer);
+    drag.preview?.remove();
+    drag.indicator?.remove();
+    if (drag.tablist.hasPointerCapture(drag.pointerId)) drag.tablist.releasePointerCapture(drag.pointerId);
+    setDraggingTabKey(null);
+    if (!commit || !drag.preview) return;
+    setOpenTabs((tabs) => {
+      const index = tabs.findIndex((tab) => tabKey(tab) === drag.key);
+      if (index < 0 || index === drag.targetIndex) return tabs;
+      const reordered = tabs.slice();
+      const [tab] = reordered.splice(index, 1);
+      reordered.splice(drag.targetIndex, 0, tab);
+      return reordered;
+    });
+  }, [setOpenTabs]);
+  useEffect(() => {
+    const cancel = (event: KeyboardEvent) => { if (event.key === "Escape") endTabDrag(); };
+    const blur = () => endTabDrag();
+    window.addEventListener("keydown", cancel);
+    window.addEventListener("blur", blur);
+    return () => {
+      window.removeEventListener("keydown", cancel);
+      window.removeEventListener("blur", blur);
+      endTabDrag();
+    };
+  }, [endTabDrag]);
   const beginTabDrag = (event: React.PointerEvent<HTMLDivElement>, tab: OpenTab) => {
-    if (event.button !== 0) return;
+    if (event.button !== 0 || tabDrag.current) return;
     suppressTabClick.current = false;
     if ((event.target as HTMLElement).closest("button[aria-label]")) return;
-    tabDrag.current = { key: tabKey(tab), startX: event.clientX };
+    const source = event.currentTarget;
+    const drag: TabDrag = {
+      key: tabKey(tab), startX: event.clientX, startY: event.clientY, pointerId: event.pointerId,
+      tablist: source.closest<HTMLElement>("[role='tablist']")!, timer: 0,
+      targetIndex: openTabs.findIndex((candidate) => tabKey(candidate) === tabKey(tab)),
+    };
+    tabDrag.current = drag;
+    drag.timer = window.setTimeout(() => {
+      const bounds = source.getBoundingClientRect();
+      const preview = source.cloneNode(true) as HTMLElement;
+      preview.removeAttribute("role");
+      preview.removeAttribute("data-tab-key");
+      preview.removeAttribute("aria-selected");
+      preview.setAttribute("aria-hidden", "true");
+      preview.inert = true;
+      preview.dataset.tabDragPreview = "";
+      Object.assign(preview.style, {
+        left: `${bounds.left}px`, top: `${bounds.top}px`, width: `${bounds.width}px`, height: `${bounds.height}px`,
+      });
+      const indicator = document.createElement("div");
+      indicator.dataset.tabDropIndicator = "";
+      indicator.setAttribute("aria-hidden", "true");
+      Object.assign(indicator.style, {
+        left: `${bounds.left - 1}px`, top: `${bounds.top + 3}px`, height: `${bounds.height - 6}px`,
+      });
+      document.body.append(preview, indicator);
+      drag.preview = preview;
+      drag.indicator = indicator;
+      drag.tablist.setPointerCapture(drag.pointerId);
+      suppressTabClick.current = true;
+      setDraggingTabKey(drag.key);
+    }, 300);
   };
   const moveTabDrag = (event: React.PointerEvent<HTMLDivElement>) => {
     const drag = tabDrag.current;
-    if (!drag || (!suppressTabClick.current && Math.abs(event.clientX - drag.startX) < 5)) return;
-    if (!suppressTabClick.current) {
-      event.currentTarget.setPointerCapture(event.pointerId);
-      suppressTabClick.current = true;
-      setDraggingTabKey(drag.key);
+    if (!drag || event.pointerId !== drag.pointerId) return;
+    if (!drag.preview) {
+      if (Math.hypot(event.clientX - drag.startX, event.clientY - drag.startY) > 5) endTabDrag();
+      return;
     }
+    event.preventDefault();
+    drag.preview.style.transform = `translate(${event.clientX - drag.startX}px, ${event.clientY - drag.startY}px)`;
     const tablist = event.currentTarget;
     const bounds = tablist.getBoundingClientRect();
     if (event.clientX < bounds.left + 24) tablist.scrollLeft -= 20;
     else if (event.clientX > bounds.right - 24) tablist.scrollLeft += 20;
-    const siblings = Array.from(tablist.querySelectorAll<HTMLElement>("[role='tab']"));
-    const targetIndex = siblings.filter((element) => {
-      if (element.dataset.tabKey === drag.key) return false;
-      const rect = element.getBoundingClientRect();
-      return event.clientX > rect.left + rect.width / 2;
-    }).length;
-    setOpenTabs((tabs) => {
-      const index = tabs.findIndex((tab) => tabKey(tab) === drag.key);
-      if (index < 0 || index === targetIndex) return tabs;
-      const reordered = tabs.slice();
-      const [tab] = reordered.splice(index, 1);
-      reordered.splice(targetIndex, 0, tab);
-      return reordered;
-    });
-  };
-  const endTabDrag = () => {
-    tabDrag.current = null;
-    setDraggingTabKey(null);
+    const siblings = Array.from(tablist.querySelectorAll<HTMLElement>("[role='tab']"))
+      .filter((element) => element.dataset.tabKey !== drag.key)
+      .map((element) => element.getBoundingClientRect());
+    drag.targetIndex = siblings.filter((rect) => event.clientX > rect.left + rect.width / 2).length;
+    const target = siblings[drag.targetIndex];
+    const indicatorX = target ? target.left - 1 : (siblings.at(-1)?.right ?? bounds.left + 6) + 1;
+    drag.indicator!.style.left = `${Math.max(bounds.left + 1, Math.min(bounds.right - 1, indicatorX))}px`;
   };
   const closeTabs = async (closing: OpenTab[], preferred?: OpenTab) => {
     if (todoBusyRef.current) return;
@@ -1469,11 +1525,16 @@ function WorkspaceSession() {
           role="tablist"
           aria-label={t("editor.openFiles")}
           onPointerMove={moveTabDrag}
-          onPointerUp={endTabDrag}
-          onPointerCancel={endTabDrag}
+          onPointerUp={() => endTabDrag(true)}
+          onPointerCancel={() => endTabDrag()}
           onLostPointerCapture={(event) => { if (event.target === event.currentTarget) endTabDrag(); }}
           onPointerLeave={() => { if (!suppressTabClick.current) endTabDrag(); }}
           onDragStart={(event) => event.preventDefault()}
+          onContextMenuCapture={(event) => {
+            if (!tabDrag.current?.preview) return;
+            event.preventDefault();
+            event.stopPropagation();
+          }}
           onClickCapture={(event) => {
             if (!suppressTabClick.current) return;
             suppressTabClick.current = false;
@@ -1486,7 +1547,7 @@ function WorkspaceSession() {
               <ContextMenu.Trigger asChild>
                 <div
                   ref={tabKey(tab) === activeTabKey ? activeTab : undefined}
-                  className={cn("group flex h-8 min-w-32 max-w-56 shrink-0 touch-none select-none items-center rounded-t-md border border-b-0 px-2 text-xs", tabKey(tab) === activeTabKey ? "border-line bg-background text-foreground" : "border-transparent text-muted hover:bg-surface-soft", draggingTabKey === tabKey(tab) && "cursor-grabbing opacity-60 [&_button]:cursor-grabbing")}
+                  className={cn("group flex h-8 min-w-32 max-w-56 shrink-0 touch-none select-none items-center rounded-t-md border border-b-0 px-2 text-xs", tabKey(tab) === activeTabKey ? "border-line bg-background text-foreground" : "border-transparent text-muted hover:bg-surface-soft", draggingTabKey === tabKey(tab) && "cursor-grabbing opacity-25 [&_button]:cursor-grabbing")}
                   role="tab"
                   data-tab-key={tabKey(tab)}
                   aria-selected={tabKey(tab) === activeTabKey}
