@@ -1494,7 +1494,7 @@ function WorkspaceSession() {
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-[var(--bg)]">
-      <header className="flex h-10 shrink-0 items-stretch border-b border-[var(--line)] bg-[var(--surface)] pl-[78px]" data-tauri-drag-region="deep">
+      <header className="flex h-10 shrink-0 items-stretch border-b border-[var(--line)] bg-surface-soft pl-[78px]" data-tauri-drag-region="deep">
         {page === "/tasks" ? (
           <div className="flex shrink-0 items-stretch">
             {taskListVisible ? (
@@ -1521,7 +1521,7 @@ function WorkspaceSession() {
           </div>
         ) : null}
         <div
-          className="scrollbar-hidden flex min-w-0 flex-1 items-end gap-0.5 overflow-x-auto overflow-y-hidden px-1.5 pt-1"
+          className="scrollbar-hidden -mb-px flex min-w-0 flex-1 items-end gap-0.5 overflow-x-auto overflow-y-hidden px-3 pt-1"
           role="tablist"
           aria-label={t("editor.openFiles")}
           onPointerMove={moveTabDrag}
@@ -1547,7 +1547,7 @@ function WorkspaceSession() {
               <ContextMenu.Trigger asChild>
                 <div
                   ref={tabKey(tab) === activeTabKey ? activeTab : undefined}
-                  className={cn("group flex h-8 min-w-32 max-w-56 shrink-0 touch-none select-none items-center rounded-t-md border border-b-0 px-2 text-xs", tabKey(tab) === activeTabKey ? "border-line bg-background text-foreground" : "border-transparent text-muted hover:bg-surface-soft", draggingTabKey === tabKey(tab) && "cursor-grabbing opacity-25 [&_button]:cursor-grabbing")}
+                  className={cn("workspace-tab group flex h-9 min-w-32 max-w-56 shrink-0 touch-none select-none items-center px-3 text-xs", draggingTabKey === tabKey(tab) && "cursor-grabbing opacity-25 [&_button]:cursor-grabbing")}
                   role="tab"
                   data-tab-key={tabKey(tab)}
                   aria-selected={tabKey(tab) === activeTabKey}
@@ -1556,7 +1556,7 @@ function WorkspaceSession() {
                   <Tooltip label={tab.kind === "task" ? tab.fileName : tabTitle(tab)} side="bottom">
                     <button className="min-w-0 flex-1 cursor-pointer truncate text-left" onClick={() => tab.kind === "task" ? (navigate("/tasks"), void chooseTask(tab.id)) : navigate(tab.id)}>{tabTitle(tab)}</button>
                   </Tooltip>
-                  <button className="ml-1.5 grid size-5 shrink-0 cursor-pointer place-items-center rounded opacity-0 hover:bg-line group-hover:opacity-100 focus:opacity-100" aria-label={`${t("tasks.closeTab")}: ${tabTitle(tab)}`} onClick={() => void closeTab(tab)}><X size={12} /></button>
+                  <button className="workspace-tab-close ml-1.5 grid size-5 shrink-0 cursor-pointer place-items-center rounded opacity-0 hover:bg-line group-hover:opacity-100 focus:opacity-100" aria-label={`${t("tasks.closeTab")}: ${tabTitle(tab)}`} onClick={() => void closeTab(tab)}><X size={14} /></button>
                 </div>
               </ContextMenu.Trigger>
               <ContextMenu.Portal>

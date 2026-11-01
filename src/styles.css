@@ -94,6 +94,60 @@ body {
   display: none;
 }
 
+.workspace-tab {
+  position: relative;
+  border: 1px solid transparent;
+  border-bottom: 0;
+  border-radius: 12px 12px 0 0;
+  color: var(--muted);
+}
+
+.workspace-tab[aria-selected="false"]:hover {
+  background: var(--surface);
+}
+
+.workspace-tab[aria-selected="false"]:not(:last-child):not(:has(+ [aria-selected="true"]))::after {
+  content: "";
+  position: absolute;
+  top: 8px;
+  right: -1px;
+  bottom: 9px;
+  width: 1px;
+  background: var(--line);
+  pointer-events: none;
+}
+
+.workspace-tab[aria-selected="true"] {
+  z-index: 1;
+  border-color: var(--line);
+  background: var(--bg);
+  color: var(--text);
+}
+
+.workspace-tab[aria-selected="true"]::before,
+.workspace-tab[aria-selected="true"]::after {
+  content: "";
+  position: absolute;
+  bottom: 0;
+  width: 12px;
+  height: 12px;
+  pointer-events: none;
+}
+
+.workspace-tab[aria-selected="true"]::before {
+  left: -12px;
+  background: radial-gradient(circle at 0 0, transparent 11px, var(--line) 11px, var(--line) 12px, var(--bg) 12px);
+}
+
+.workspace-tab[aria-selected="true"]::after {
+  right: -12px;
+  background: radial-gradient(circle at 100% 0, transparent 11px, var(--line) 11px, var(--line) 12px, var(--bg) 12px);
+}
+
+.workspace-tab[aria-selected="true"] .workspace-tab-close {
+  opacity: 1;
+}
+
 [data-tab-drag-preview] {
   position: fixed;
   z-index: 200;
