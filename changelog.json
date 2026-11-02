@@ -1,4 +1,8 @@
 {
+  "0.21.0": {
+    "en": "- style: match tab bar to rounded reference design\n- fix(tabs): preserve bottom divider on inactive tab hover",
+    "zh": "- style: match tab bar to rounded reference design\n- fix(tabs): preserve bottom divider on inactive tab hover"
+  },
   "0.20.0": {
     "en": "- chore(build): enable sccache for Rust compilation\n- feat: support dragging tabs to reorder\n- chore: upgrade Node.js to 24.22.1\n- feat(tabs): add long-press drag preview and drop indicator",
     "zh": "- chore(build): enable sccache for Rust compilation\n- feat: support dragging tabs to reorder\n- chore: upgrade Node.js to 24.22.1\n- feat(tabs): add long-press drag preview and drop indicator"
