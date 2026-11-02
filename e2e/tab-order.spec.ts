@@ -128,6 +128,47 @@ async function dragTab(from: number, to: number) {
 }
 
 describe("Tab order in the native app", () => {
+  it("keeps the bottom divider visible when hovering an inactive tab", async () => {
+    const { before, hovered } = await browser.execute(() => {
+      const tab = document.querySelector<HTMLElement>("[role='tab'][aria-selected='false']")!;
+      const header = tab.closest("header")!;
+      const snapshot = () => {
+        const style = getComputedStyle(tab);
+        const bounds = tab.getBoundingClientRect();
+        return {
+          background: style.backgroundColor,
+          width: style.borderBottomWidth,
+          color: style.borderBottomColor,
+          expectedColor: getComputedStyle(header).borderBottomColor,
+          bounds: { x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height },
+          bottom: bounds.bottom,
+          expectedBottom: header.getBoundingClientRect().bottom,
+        };
+      };
+      // The embedded driver dispatches synthetic MouseEvents, which cannot set
+      // CSS :hover. Activate the app's hover rule in the real WebView instead.
+      const rule = Array.from(document.styleSheets).flatMap((sheet) => Array.from(sheet.cssRules))
+        .find((rule): rule is CSSStyleRule => rule instanceof CSSStyleRule
+          && rule.selectorText.includes('.workspace-tab[aria-selected="false"]:hover'))!;
+      const selector = rule.selectorText;
+      rule.selectorText = selector.replace(":hover", "[data-e2e-hover]");
+      try {
+        const before = snapshot();
+        tab.setAttribute("data-e2e-hover", "");
+        return { before, hovered: snapshot() };
+      } finally {
+        tab.removeAttribute("data-e2e-hover");
+        rule.selectorText = selector;
+      }
+    });
+    expect(hovered.background).not.toBe(before.background);
+    expect(hovered.width).toBe("1px");
+    expect(hovered.color).toBe(hovered.expectedColor);
+    expect(hovered.bottom).toBe(hovered.expectedBottom);
+    expect(hovered.bounds).toEqual(before.bounds);
+    await expect($("[role='tab'][aria-selected='true'] button")).toHaveText("Settings");
+  });
+
   it("requires a long press and cancels without changing the order", async () => {
     const originalOrder = await tabTitles();
     await pressTab(0, true);
