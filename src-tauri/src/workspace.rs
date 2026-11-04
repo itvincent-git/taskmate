@@ -162,10 +162,6 @@ impl Workspace {
 
     pub fn delete_task(&self, id: &str) -> Result<(), String> {
         let path = self.find_task_path(id)?;
-        let task = self.read_task(&path, &fs::read_to_string(&path).map_err(to_string)?)?;
-        if !task.archived {
-            return Err("Only archived tasks can be permanently deleted.".into());
-        }
         fs::remove_file(&path).map_err(to_string)?;
         TaskIndex::open(&self.root.join(".task-app/index.sqlite"))?.remove(id)
     }
@@ -1281,11 +1277,16 @@ mod tests {
     }
 
     #[test]
-    fn rejects_delete_until_archived() {
+    fn permanently_deletes_an_active_task_and_its_index_row() {
         let temporary = tempfile::tempdir().unwrap();
         let workspace = Workspace::new(temporary.path().to_path_buf());
         let task = workspace.create_task(None).unwrap();
-        assert!(workspace.delete_task(&task.id).is_err());
+        let path = temporary.path().join("tasks").join(&task.file_name);
+        assert!(path.exists());
+        workspace.delete_task(&task.id).unwrap();
+        assert!(!path.exists());
+        assert!(workspace.get_task(&task.id).is_err());
+        assert!(workspace.query(TaskQuery::default()).unwrap().is_empty());
     }
 
     #[test]

@@ -188,13 +188,14 @@ describe("Taskmate application", () => {
     fireEvent.change(title, { target: { value: "Latest title" } });
     fireEvent.blur(title);
     await user.click(trigger);
-    expect(screen.getAllByRole("menuitem")).toHaveLength(7);
+    expect(screen.getAllByRole("menuitem")).toHaveLength(8);
     expect(screen.getByRole("menuitemcheckbox", { name: "Source mode" })).toHaveAttribute("aria-checked", "false");
     expect(screen.getByRole("menuitem", { name: "Reveal in Finder" })).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: "Reveal in Navigator" })).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: "Open in default app" })).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: "Rename" })).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: "Archive task" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Permanently delete" })).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: "Copy title" })).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: "Copy file path" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Archive task" })).not.toBeInTheDocument();
@@ -294,6 +295,7 @@ describe("Taskmate application", () => {
     await user.click(screen.getByRole("button", { name: "任务操作" }));
 
     expect(screen.getByRole("menuitem", { name: "归档任务" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "永久删除" })).toBeInTheDocument();
     expect(screen.getByRole("menuitemcheckbox", { name: "源码模式" })).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: "在访达中显示" })).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: "在导航器中显示" })).toBeInTheDocument();
@@ -301,6 +303,99 @@ describe("Taskmate application", () => {
     expect(screen.getByRole("menuitem", { name: "重命名" })).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: "复制标题" })).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: "复制文件路径" })).toBeInTheDocument();
+  });
+
+  it("confirms deletion and removes the task from storage, tabs, and recent files", async () => {
+    const user = userEvent.setup();
+    const deleteTask = vi.spyOn(api, "deleteTask");
+    render(<App />);
+    await user.click(screen.getByRole("button", { name: "Open workspace" }));
+    await user.click(await screen.findByRole("button", { name: "New task" }));
+    const id = JSON.parse(localStorage.getItem("taskmate-browser-demo")!).tasks[0].id;
+    await user.click(screen.getByRole("button", { name: "Task actions" }));
+    await user.click(screen.getByRole("menuitem", { name: "Permanently delete" }));
+    expect(screen.getByRole("dialog")).toHaveTextContent("Permanently delete “Untitled task”? This cannot be undone.");
+    expect(deleteTask).not.toHaveBeenCalled();
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(screen.getByLabelText("Task title")).toHaveValue("Untitled task");
+    await waitFor(() => expect(screen.getByRole("button", { name: "Task actions" })).toHaveFocus());
+    expect(deleteTask).not.toHaveBeenCalled();
+
+    await user.click(screen.getByRole("button", { name: "Task actions" }));
+    await user.click(screen.getByRole("menuitem", { name: "Permanently delete" }));
+    await user.click(screen.getByRole("button", { name: "Permanently delete" }));
+    expect(await screen.findByRole("heading", { name: "Select a task" })).toBeInTheDocument();
+    expect(deleteTask).toHaveBeenCalledExactlyOnceWith(id);
+    expect(JSON.parse(localStorage.getItem("taskmate-browser-demo")!).tasks).toEqual([]);
+    expect(screen.queryByRole("tab")).not.toBeInTheDocument();
+    expect(localStorage.getItem("taskmate-recent-files.v1")).not.toContain(id);
+    expect(localStorage.getItem("taskmate-open-tabs.v1")).not.toContain(id);
+  });
+
+  it("waits for an in-flight save before deleting the task", async () => {
+    const user = userEvent.setup();
+    const deleteTask = vi.spyOn(api, "deleteTask");
+    render(<App />);
+    await user.click(screen.getByRole("button", { name: "Open workspace" }));
+    await user.click(await screen.findByRole("button", { name: "New task" }));
+    let finishSaving!: () => void;
+    const saving = new Promise<void>((resolve) => { finishSaving = resolve; });
+    const originalSave = api.saveTask;
+    const saveTask = vi.spyOn(api, "saveTask").mockImplementationOnce(async (current) => {
+      await saving;
+      return originalSave(current);
+    });
+    fireEvent.change(screen.getByLabelText("Task title"), { target: { value: "Pending save" } });
+    fireEvent.blur(screen.getByLabelText("Task title"));
+    await waitFor(() => expect(saveTask).toHaveBeenCalledTimes(1));
+    await user.click(screen.getByRole("button", { name: "Task actions" }));
+    await user.click(screen.getByRole("menuitem", { name: "Permanently delete" }));
+    await user.click(screen.getByRole("button", { name: "Permanently delete" }));
+    expect(screen.getByRole("button", { name: "Permanently delete" })).toBeDisabled();
+    expect(deleteTask).not.toHaveBeenCalled();
+    await act(async () => { finishSaving(); });
+    expect(await screen.findByRole("heading", { name: "Select a task" })).toBeInTheDocument();
+    expect(deleteTask).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(localStorage.getItem("taskmate-browser-demo")!).tasks).toEqual([]);
+  });
+
+  it("keeps the task and allows retry when deletion fails", async () => {
+    const user = userEvent.setup();
+    const deleteTask = vi.spyOn(api, "deleteTask").mockRejectedValueOnce(new Error("Permission denied"));
+    render(<App />);
+    await user.click(screen.getByRole("button", { name: "Open workspace" }));
+    await user.click(await screen.findByRole("button", { name: "New task" }));
+    await user.click(screen.getByRole("button", { name: "Task actions" }));
+    await user.click(screen.getByRole("menuitem", { name: "Permanently delete" }));
+    await user.click(screen.getByRole("button", { name: "Permanently delete" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Permission denied");
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(JSON.parse(localStorage.getItem("taskmate-browser-demo")!).tasks).toHaveLength(1);
+    expect(screen.getByLabelText("Task title")).toHaveValue("Untitled task");
+    await user.click(screen.getByRole("button", { name: "Task actions" }));
+    await user.click(screen.getByRole("menuitem", { name: "Permanently delete" }));
+    await user.click(screen.getByRole("button", { name: "Permanently delete" }));
+    expect(await screen.findByRole("heading", { name: "Select a task" })).toBeInTheDocument();
+    expect(deleteTask).toHaveBeenCalledTimes(2);
+  });
+
+  it("deletes the right-clicked background task while preserving the active task", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(screen.getByRole("button", { name: "Open workspace" }));
+    await user.click(await screen.findByRole("button", { name: "New task" }));
+    const backgroundId = JSON.parse(localStorage.getItem("taskmate-browser-demo")!).tasks[0].id;
+    await user.click(screen.getByRole("button", { name: "New task" }));
+    const activeId = JSON.parse(localStorage.getItem("taskmate-browser-demo")!).tasks.find((task: { id: string }) => task.id !== backgroundId).id;
+    fireEvent.contextMenu(screen.getAllByRole("tab")[0]);
+    await user.click(await screen.findByRole("menuitem", { name: "Permanently delete" }));
+    await user.click(screen.getByRole("button", { name: "Permanently delete" }));
+    await waitFor(() => expect(screen.getAllByRole("tab")).toHaveLength(1));
+    expect(screen.getByRole("tab")).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByLabelText("Task title")).toHaveValue("Untitled task");
+    const stored = JSON.parse(localStorage.getItem("taskmate-browser-demo")!);
+    expect(stored.tasks.map((task: { id: string }) => task.id)).toEqual([activeId]);
+    expect(localStorage.getItem("taskmate-recent-files.v1")).not.toContain(backgroundId);
   });
 
   it("opens filters and sorting from the task list toolbar and applies changes immediately", async () => {

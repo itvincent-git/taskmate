@@ -561,6 +561,7 @@ function WorkspaceSession() {
   const [archiveCompletedTasks, setArchiveCompletedTasks] = useState<TaskSummary[] | null>(null);
   const [archiveSelectedIds, setArchiveSelectedIds] = useState<Set<string>>(new Set());
   const [archiveResult, setArchiveResult] = useState("");
+  const [deleteTarget, setDeleteTarget] = useState<Pick<Task, "id" | "title"> | null>(null);
   const savePromise = useRef<Promise<boolean> | null>(null);
   const bodyDraft = useRef<{ id: string; body: Text; version: number } | null>(null);
   const [todoDraftStore] = useState(createTodoDraftStore);
@@ -593,6 +594,7 @@ function WorkspaceSession() {
   const setFileSignal = useWorkspaceState((state) => state.setFileSignal);
   const [detailPanel, setDetailPanel] = useState<HTMLElement | null>(null);
   const propertiesButton = useRef<HTMLButtonElement>(null);
+  const taskActionsButton = useRef<HTMLButtonElement>(null);
   const titleInput = useRef<HTMLInputElement>(null);
   const renameRequested = useRef(false);
   const filterButton = useRef<HTMLButtonElement>(null);
@@ -823,6 +825,7 @@ function WorkspaceSession() {
   }, [refresh]);
 
   const saveCurrentTask = useLatestCallback(() => {
+    if (folderBusyRef.current) return;
     const current = workspaceStore.getState();
     if (current.task && current.saveState !== "external") void save(current.task);
   });
@@ -1141,6 +1144,37 @@ function WorkspaceSession() {
       setSearchEpoch((epoch) => epoch + 1);
     } catch (cause) {
       setError(errorMessage(cause));
+    }
+  };
+  const deleteTask = async () => {
+    if (!deleteTarget || folderBusyRef.current || todoBusyRef.current) return;
+    const { id } = deleteTarget;
+    folderBusyRef.current = true;
+    setFolderBusy(true);
+    setError("");
+    if (bodyUpdateTimer.current !== null) window.clearTimeout(bodyUpdateTimer.current);
+    bodyUpdateTimer.current = null;
+    try {
+      while (savePromise.current) await savePromise.current;
+      await api.deleteTask(id);
+      if (workspaceStore.getState().task?.id === id) {
+        setTask(null);
+        setExternalTask(null);
+        setTitleEditing(false);
+        setSaveState("saved");
+      }
+      setOpenTabs((tabs) => tabs.filter((tab) => tab.kind !== "task" || tab.id !== id));
+      setRecentFiles((files) => files.filter((file) => file.id !== id));
+      setCheckedIds((ids) => new Set([...ids].filter((checkedId) => checkedId !== id)));
+      setDeleteTarget(null);
+      await refresh();
+      setSearchEpoch((epoch) => epoch + 1);
+    } catch (cause) {
+      setDeleteTarget(null);
+      setError(errorMessage(cause));
+    } finally {
+      folderBusyRef.current = false;
+      setFolderBusy(false);
     }
   };
   const tabTitle = (tab: OpenTab) => tab.kind === "task" ? tab.title : t(tab.id === "/properties" ? "nav.properties" : tab.id === "/backup" ? "nav.backup" : "nav.settings");
@@ -1572,6 +1606,10 @@ function WorkspaceSession() {
                       {tab.archived ? <ArchiveRestore size={15} /> : <Archive size={15} />}
                       {tab.archived ? t("tasks.restore") : t("tasks.archiveAction")}
                     </ContextMenu.Item>
+                    <ContextMenu.Item className="flex min-h-[30px] cursor-default items-center gap-1.5 rounded-[5px] px-2 py-1.5 text-xs text-danger outline-none data-[highlighted]:bg-accent-soft" onSelect={() => setDeleteTarget(tab)}>
+                      <Trash2 size={15} />
+                      {t("tasks.deleteAction")}
+                    </ContextMenu.Item>
                     <ContextMenu.Item className="flex min-h-[30px] cursor-default items-center gap-1.5 rounded-[5px] px-2 py-1.5 text-xs outline-none data-[highlighted]:bg-accent-soft data-[highlighted]:text-accent" onSelect={() => void copyText(tab.title)}>
                       <Copy size={15} />
                       {t("editor.copyTitle")}
@@ -1774,7 +1812,7 @@ function WorkspaceSession() {
                       <DropdownMenu.Root>
                         <Tooltip label={t("editor.moreActions")}>
                           <DropdownMenu.Trigger asChild>
-                            <Button variant="ghost" size="icon" className="size-8 shrink-0 [&_svg]:size-[17px]" aria-label={t("editor.moreActions")}><MoreHorizontal /></Button>
+                            <Button ref={taskActionsButton} variant="ghost" size="icon" className="size-8 shrink-0 [&_svg]:size-[17px]" aria-label={t("editor.moreActions")}><MoreHorizontal /></Button>
                           </DropdownMenu.Trigger>
                         </Tooltip>
                         <DropdownMenu.Portal>
@@ -1821,6 +1859,10 @@ function WorkspaceSession() {
                             <DropdownMenu.Item className="flex min-h-[30px] cursor-default items-center gap-1.5 rounded-[5px] px-2 py-1.5 text-xs outline-none data-[highlighted]:bg-accent-soft data-[highlighted]:text-accent" onSelect={() => void archive()}>
                               {task.archived ? <ArchiveRestore size={15} /> : <Archive size={15} />}
                               {task.archived ? t("tasks.restore") : t("tasks.archiveAction")}
+                            </DropdownMenu.Item>
+                            <DropdownMenu.Item className="flex min-h-[30px] cursor-default items-center gap-1.5 rounded-[5px] px-2 py-1.5 text-xs text-danger outline-none data-[highlighted]:bg-accent-soft" onSelect={() => setDeleteTarget(task)}>
+                              <Trash2 size={15} />
+                              {t("tasks.deleteAction")}
                             </DropdownMenu.Item>
                             <DropdownMenu.Item className="flex min-h-[30px] cursor-default items-center gap-1.5 rounded-[5px] px-2 py-1.5 text-xs outline-none data-[highlighted]:bg-accent-soft data-[highlighted]:text-accent" onSelect={() => void copyText(task.title)}>
                               <Copy size={15} />
@@ -1871,6 +1913,19 @@ function WorkspaceSession() {
             </div>
           </>
         )}
+        <Dialog
+          open={deleteTarget !== null}
+          onOpenChange={(open) => { if (!open && !folderBusyRef.current) setDeleteTarget(null); }}
+          title={t("tasks.deleteAction")}
+          description={t("tasks.deleteConfirm", { title: deleteTarget?.title ?? "" })}
+          closeLabel={t("common.close")}
+          returnFocusRef={taskActionsButton}
+          contentClassName="w-[min(480px,calc(100vw-40px))]"
+          footer={<>
+            <Button variant="ghost" disabled={folderBusy} onClick={() => setDeleteTarget(null)}>{t("common.cancel")}</Button>
+            <Button variant="destructive" disabled={folderBusy || todoBusy} onClick={() => void deleteTask()}><Trash2 size={15} />{t("tasks.deleteAction")}</Button>
+          </>}
+        />
         <Dialog
           open={propertiesDrawerOpen && detailNarrow && Boolean(task)}
           onOpenChange={setPropertiesDrawerOpen}

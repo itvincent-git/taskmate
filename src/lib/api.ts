@@ -373,8 +373,6 @@ export const api = {
   async deleteTask(id: string): Promise<void> {
     if (isTauri) return invoke("delete_task", { id });
     const state = loadDemo();
-    const task = state.tasks.find((candidate) => candidate.id === id);
-    if (!task?.archived) throw new Error("Only archived tasks can be permanently deleted.");
     state.tasks = state.tasks.filter((candidate) => candidate.id !== id);
     storeDemo(state);
   },
