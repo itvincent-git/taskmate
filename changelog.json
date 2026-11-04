@@ -1,4 +1,8 @@
 {
+  "0.22.0": {
+    "en": "- feat: add task deletion to action menus",
+    "zh": "- feat: add task deletion to action menus"
+  },
   "0.21.0": {
     "en": "- style: match tab bar to rounded reference design\n- fix(tabs): preserve bottom divider on inactive tab hover",
     "zh": "- style: match tab bar to rounded reference design\n- fix(tabs): preserve bottom divider on inactive tab hover"
