@@ -38,8 +38,8 @@ it("applies complete queries, expands ancestors, clears checks and preserves the
   const editor = await screen.findByLabelText("Draft body");
   fireEvent.change(editor, { target: { value: "Unsaved body survives view changes" } });
   fireEvent.click(screen.getByRole("checkbox", { name: "Select Current task" }));
-  await user.click(screen.getByRole("combobox", { name: "Work views" }));
-  await user.click(await screen.findByRole("option", { name: "Nested archive" }));
+  await user.click(screen.getByRole("button", { name: "Work views" }));
+  await user.click(await screen.findByRole("menuitemcheckbox", { name: "Nested archive" }));
   await screen.findByRole("checkbox", { name: "Select Archived nested" });
   expect(screen.queryByRole("checkbox", { name: "Select Current task" })).not.toBeInTheDocument();
   expect(screen.getByRole("checkbox", { name: "Select Archived nested" })).not.toBeChecked();
@@ -54,7 +54,7 @@ it("restores modified associated queries after restart and keeps workspace prefe
   await setup();
   saveWorkViewState("/views", { ...view, search: "", folderPath: null }, view.id);
   let app = render(<App />);
-  await waitFor(() => expect(screen.getByRole("combobox", { name: "Work views" })).toHaveTextContent("Nested archive · Modified"));
+  await waitFor(() => expect(screen.getByRole("button", { name: "Work views" })).toHaveTextContent("Nested archive · Modified"));
   await screen.findByRole("checkbox", { name: "Select Archived nested" });
   app.unmount();
   await api.openWorkspace("/other");
@@ -62,11 +62,11 @@ it("restores modified associated queries after restart and keeps workspace prefe
   localStorage.setItem("taskmate-workspaces.v1", '["/other","/views"]');
   app = render(<App />);
   await screen.findByRole("checkbox", { name: "Select Other workspace" });
-  expect(screen.getByRole("combobox", { name: "Work views" })).toHaveTextContent("Custom");
+  expect(screen.getByRole("button", { name: "Work views" })).toHaveTextContent("All tasks");
   app.unmount();
   localStorage.setItem("taskmate-workspaces.v1", '["/views","/other"]');
   render(<App />);
-  await waitFor(() => expect(screen.getByRole("combobox", { name: "Work views" })).toHaveTextContent("Nested archive · Modified"));
+  await waitFor(() => expect(screen.getByRole("button", { name: "Work views" })).toHaveTextContent("Nested archive · Modified"));
   expect(screen.getByRole("button", { name: "Return to current tasks" })).toBeInTheDocument();
   expect(loadWorkViewState("/other")?.viewId).toBeNull();
 });
@@ -78,8 +78,9 @@ it("continues with legacy filter, sort and folder preferences when the views fil
   localStorage.setItem("taskmate-browser-demo:views:/views", "broken");
   render(<App />);
   await screen.findByRole("checkbox", { name: "Select Current task" });
+  await userEvent.click(screen.getByRole("button", { name: "Work views" }));
   await screen.findByRole("alert");
-  expect(screen.getByRole("button", { name: "Save as view" })).toBeDisabled();
+  expect(screen.getByRole("menuitem", { name: "Save as view" })).toHaveAttribute("data-disabled");
   expect(loadWorkViewState("/views")?.query).toMatchObject({ folderPath: "", sorts: [{ key: "title", direction: "asc", nulls: "last" }] });
   expect(localStorage.getItem("taskmate-browser-demo:views:/views")).toBe("broken");
 });

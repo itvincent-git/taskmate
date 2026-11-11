@@ -1810,7 +1810,13 @@ function WorkspaceSession() {
               <section id="task-side-panel" className={cn("flex min-h-0 min-w-0 flex-col bg-background", !taskListVisible && "invisible overflow-hidden")} aria-hidden={!taskListVisible}>
                 {taskPanel === "files" ? <>
                 <div className="flex min-h-12 shrink-0 items-center justify-between gap-2 px-2.5 py-2" role="toolbar" aria-label={t("tasks.listToolbar")}>
-                  <span className="inline-flex min-w-0 items-center gap-1.5 text-xs font-semibold text-muted [&_svg]:shrink-0" aria-label={t("tasks.taskCount", { count: tasks.length })}><LayoutList size={16} />{tasks.length}</span>
+                  <SavedViews key={workspacePath} workspacePath={workspacePath} query={query} activeId={activeViewId} onActiveIdChange={setActiveViewId} definitions={definitions} folders={folders} count={tasks.length} onApply={(conditions) => {
+                    setQuery({ ...query, ...conditions });
+                    setExpandedFolders((expanded) => [...new Set([...expanded, ...(conditions.folderPath?.split("/").map((_, index, parts) => parts.slice(0, index + 1).join("/")) ?? [])])]);
+                    setCheckedIds(new Set());
+                    selectionAnchor.current = null;
+                    setNavigatorRevealSignal((signal) => signal + 1);
+                  }} />
                   <div className="flex items-center gap-1.5 [&_button]:size-8 [&_button]:shrink-0 [&_button_svg]:size-[17px]">
                     <Tooltip label={t("tasks.openFilterSort")}>
                       <Button ref={filterButton} variant="outline" size="icon" aria-pressed={filterSortActive} aria-label={t("tasks.openFilterSort")} onClick={() => setFilterDialogOpen(true)}><ListFilter size={17} /></Button>
@@ -1826,13 +1832,6 @@ function WorkspaceSession() {
                     </Tooltip>
                   </div>
                 </div>
-                <SavedViews key={workspacePath} workspacePath={workspacePath} query={query} activeId={activeViewId} onActiveIdChange={setActiveViewId} definitions={definitions} folders={folders} onApply={(conditions) => {
-                  setQuery({ ...query, ...conditions });
-                  setExpandedFolders((expanded) => [...new Set([...expanded, ...(conditions.folderPath?.split("/").map((_, index, parts) => parts.slice(0, index + 1).join("/")) ?? [])])]);
-                  setCheckedIds(new Set());
-                  selectionAnchor.current = null;
-                  setNavigatorRevealSignal((signal) => signal + 1);
-                }} />
                 <FolderNavigator revealSignal={navigatorRevealSignal} folders={folders} archived={query.archived} selected={query.folderPath ?? null} expanded={expandedFolders} onSelect={(folderPath) => setQuery({ ...query, folderPath })} onExpand={setExpandedFolders} onAction={manageFolder} onDrop={dropOnFolder} checked={checkedIds.size} onSelectAll={() => setCheckedIds(new Set(tasks.map((item) => item.id)))} onMoveSelected={() => { setMoveTarget(query.folderPath || ""); setMoveIds([...checkedIds]); }} completed={completedTasks.length} onArchiveCompleted={() => { setArchiveCompletedTasks(completedTasks); setArchiveSelectedIds(new Set(completedTasks.map((item) => item.id))); }} busy={folderBusy} />
                 {archiveResult && <div role="status" className="px-3 py-1 text-xs text-muted">{archiveResult}</div>}
                 <TaskList

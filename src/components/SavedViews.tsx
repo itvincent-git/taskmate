@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { MoreHorizontal, Save } from "lucide-react";
+import { AlertCircle, Check, ChevronDown, Save, Settings2 } from "lucide-react";
+import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import type { PropertyDefinition, SavedViewsSnapshot, SavedWorkView, TaskFolder, TaskQuery, WorkViewQuery } from "../types";
 import { api } from "../lib/api";
 import { invalidViewReference, sameWorkViewQuery, viewNameError, workViewQuery } from "../lib/saved-views";
@@ -7,12 +8,13 @@ import { useTaskmateI18n } from "../lib/taskmate-i18n";
 import { Button } from "./ui/Button";
 import { Dialog } from "./ui/Dialog";
 import { Input } from "./ui/Input";
-import { Select } from "./ui/Select";
 import { Tooltip } from "./ui/Tooltip";
 
 type ViewDialog = { kind: "create" } | { kind: "manage" } | { kind: "rename"; view: SavedWorkView } | { kind: "delete"; view: SavedWorkView };
+const allTasks: WorkViewQuery = { filters: [], sorts: [], folderPath: null, archived: false };
+const itemClass = "relative flex min-h-[30px] cursor-default items-center gap-2 rounded-[5px] py-1.5 pr-2 pl-7 text-xs outline-none data-[highlighted]:bg-accent-soft data-[highlighted]:text-accent data-[disabled]:pointer-events-none data-[disabled]:opacity-50";
 
-export function SavedViews({ workspacePath, query, activeId, onActiveIdChange, onApply, definitions, folders }: {
+export function SavedViews({ workspacePath, query, activeId, onActiveIdChange, onApply, definitions, folders, count }: {
   workspacePath: string;
   query: TaskQuery;
   activeId: string | null;
@@ -20,6 +22,7 @@ export function SavedViews({ workspacePath, query, activeId, onActiveIdChange, o
   onApply(query: WorkViewQuery): void;
   definitions: PropertyDefinition[];
   folders: TaskFolder[];
+  count: number;
 }) {
   const { t } = useTaskmateI18n();
   const [snapshot, setSnapshot] = useState<SavedViewsSnapshot>({ views: [], contentHash: null });
@@ -36,6 +39,7 @@ export function SavedViews({ workspacePath, query, activeId, onActiveIdChange, o
   const active = snapshot.views.find((view) => view.id === activeId);
   const modified = active && !sameWorkViewQuery(query, active);
   const actionButton = useRef<HTMLButtonElement>(null);
+  const title = active?.name ?? t(query.archived ? "tasks.archived" : "views.allTasks");
 
   const reload = useCallback(async () => {
     const request = ++generation.current;
@@ -94,10 +98,11 @@ export function SavedViews({ workspacePath, query, activeId, onActiveIdChange, o
   };
 
   const apply = (view: SavedWorkView) => {
-    if (!checkQuery(view)) return;
+    if (!checkQuery(view)) return false;
     onApply(structuredClone(workViewQuery(view)));
     onActiveIdChange(view.id);
     setError("");
+    return true;
   };
   const update = async (view: SavedWorkView) => {
     if (!checkQuery(query)) return;
@@ -120,25 +125,46 @@ export function SavedViews({ workspacePath, query, activeId, onActiveIdChange, o
     }
   };
 
-  return <div className="min-w-0 shrink-0 border-b border-line px-2.5 pb-2">
-    <div className="flex min-w-0 items-center gap-1.5">
-      <Select className="min-w-0 flex-1" ariaLabel={t("views.label")} disabled={!ready || busy} value={active ? `view:${active.id}` : "__custom"} onValueChange={(id) => {
-        if (id === "__custom") { onActiveIdChange(null); return; }
-        const view = snapshot.views.find((item) => `view:${item.id}` === id);
-        if (view) apply(view);
-      }} options={[
-        { value: "__custom", label: t("views.custom") },
-        ...snapshot.views.map((view) => ({ value: `view:${view.id}`, label: <span className="block max-w-[min(360px,60vw)] truncate" title={view.name}>{view.name}{modified && active?.id === view.id ? ` · ${t("views.modified")}` : ""}</span> })),
-      ]} />
-      <Tooltip label={t("views.saveAs")}><Button variant="outline" size="icon" aria-label={t("views.saveAs")} disabled={!ready || busy} onClick={() => openNameDialog()}><Save size={15} /></Button></Tooltip>
-      <Tooltip label={t("views.manage")}><Button ref={actionButton} variant="ghost" size="icon" aria-label={t("views.manage")} onClick={() => setDialog({ kind: "manage" })}><MoreHorizontal size={16} /></Button></Tooltip>
-    </div>
-    {modified && <div className="mt-1 flex flex-wrap items-center gap-1" aria-live="polite">
-      <span className="text-xs text-muted">{t("views.modified")}</span>
-      <Button className="h-7 px-1.5 text-xs" variant="ghost" disabled={!ready || busy} onClick={() => void update(active)}>{t("views.update")}</Button>
-      <Button className="h-7 px-1.5 text-xs" variant="ghost" disabled={!ready || busy} onClick={() => openNameDialog()}>{t("views.saveCopy")}</Button>
-      <Button className="h-7 px-1.5 text-xs" variant="ghost" disabled={!ready || busy} onClick={() => apply(active)}>{t("views.restore")}</Button>
-    </div>}
+  return <div className="min-w-0 flex-1">
+    <DropdownMenu.Root>
+      <Tooltip label={`${title}${modified ? ` · ${t("views.modified")}` : ""}${error ? ` · ${error}` : ""}`}>
+        <DropdownMenu.Trigger asChild>
+          <Button ref={actionButton} variant="ghost" className="w-full min-w-0 justify-start gap-1 px-1 text-foreground enabled:hover:translate-y-0" aria-label={t("views.label")} disabled={busy}>
+            <span className="min-w-0 truncate" title={title}>{title}</span>
+            {modified && <span className="size-1.5 shrink-0 rounded-full bg-accent" aria-live="polite"><span className="sr-only">{` · ${t("views.modified")}`}</span></span>}
+            <span className="shrink-0 text-xs font-normal text-muted" aria-label={t("tasks.taskCount", { count })}>{count}</span>
+            {error && <AlertCircle size={13} className="shrink-0 text-danger" aria-label={error} />}
+            <ChevronDown size={13} className="shrink-0" aria-hidden="true" />
+          </Button>
+        </DropdownMenu.Trigger>
+      </Tooltip>
+      <DropdownMenu.Portal>
+        <DropdownMenu.Content className="z-[200] max-h-[var(--radix-dropdown-menu-content-available-height)] w-[min(300px,calc(100vw-32px))] overflow-y-auto rounded-lg border border-line bg-surface p-1 shadow-panel" align="start" sideOffset={5}>
+          <DropdownMenu.Label className="px-2 py-1.5 text-xs text-muted">{t("views.label")}</DropdownMenu.Label>
+          <DropdownMenu.CheckboxItem className={itemClass} checked={!active && sameWorkViewQuery(query, allTasks)} disabled={!ready || busy} onSelect={() => {
+            onApply(structuredClone(allTasks)); onActiveIdChange(null); setError("");
+          }}>
+            <DropdownMenu.ItemIndicator className="absolute left-2"><Check size={13} /></DropdownMenu.ItemIndicator>
+            {t("views.allTasks")}
+          </DropdownMenu.CheckboxItem>
+          {snapshot.views.map((view) => <DropdownMenu.CheckboxItem className={itemClass} key={view.id} checked={active?.id === view.id} disabled={!ready || busy} onSelect={(event) => { if (!apply(view)) event.preventDefault(); }}>
+            <DropdownMenu.ItemIndicator className="absolute left-2"><Check size={13} /></DropdownMenu.ItemIndicator>
+            <span className="min-w-0 truncate" title={view.name}>{view.name}</span>
+          </DropdownMenu.CheckboxItem>)}
+          <DropdownMenu.Separator className="m-1 h-px bg-line" />
+          {modified && <>
+            <DropdownMenu.Item className={itemClass} disabled={!ready || busy} onSelect={(event) => { event.preventDefault(); void update(active); }}>{t("views.update")}</DropdownMenu.Item>
+            <DropdownMenu.Item className={itemClass} disabled={!ready || busy} onSelect={() => openNameDialog()}>{t("views.saveCopy")}</DropdownMenu.Item>
+            <DropdownMenu.Item className={itemClass} disabled={!ready || busy} onSelect={() => apply(active)}>{t("views.restore")}</DropdownMenu.Item>
+            <DropdownMenu.Separator className="m-1 h-px bg-line" />
+          </>}
+          <DropdownMenu.Item className={itemClass} disabled={!ready || busy} onSelect={() => openNameDialog()}><Save size={13} className="absolute left-2" aria-hidden="true" />{t("views.saveAs")}</DropdownMenu.Item>
+          <DropdownMenu.Item className={itemClass} onSelect={() => setDialog({ kind: "manage" })}><Settings2 size={13} className="absolute left-2" aria-hidden="true" />{t("views.manage")}</DropdownMenu.Item>
+          {error && <p role="alert" className="m-2 break-words text-xs text-danger">{error}</p>}
+          {!ready && <DropdownMenu.Item className={itemClass} disabled={busy} onSelect={(event) => { event.preventDefault(); void reload(); }}>{t("views.reload")}</DropdownMenu.Item>}
+        </DropdownMenu.Content>
+      </DropdownMenu.Portal>
+    </DropdownMenu.Root>
     <Dialog open={dialog !== null} onOpenChange={(open) => { if (!open && !busy) setDialog(null); }} title={dialog?.kind === "delete" ? t("views.delete") : dialog?.kind === "rename" ? t("views.rename") : dialog?.kind === "create" ? t("views.saveAs") : t("views.manage")} closeLabel={t("common.close")} returnFocusRef={actionButton} contentClassName="w-[min(520px,calc(100vw-40px))]">
       {dialog?.kind === "manage" && <div className="grid gap-2">
         {!snapshot.views.length && <p className="text-sm text-muted">{t("views.empty")}</p>}
@@ -170,6 +196,5 @@ export function SavedViews({ workspacePath, query, activeId, onActiveIdChange, o
       {dialog && error && <p role="alert" className="mt-3 break-words text-xs text-danger">{error}</p>}
       {dialog && !ready && <Button variant="outline" className="mt-2" disabled={busy} onClick={() => void reload()}>{t("views.reload")}</Button>}
     </Dialog>
-    {!dialog && error && <div role="alert" className="mt-1 break-words text-xs text-danger">{error}<Button variant="ghost" className="h-7 text-xs" disabled={busy} onClick={() => void reload()}>{t("views.reload")}</Button></div>}
   </div>;
 }

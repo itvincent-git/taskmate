@@ -7,17 +7,32 @@ let workspacePath: string;
 let viewsPath: string;
 const views = "button[aria-label='Work views']";
 
+async function openViews() {
+  if (!await $("[role='menu']").isExisting()) {
+    // The embedded driver sends MouseEvents; use the same keyboard opener as other Radix menu specs.
+    await $(views).click();
+    await browser.keys("ArrowDown");
+  }
+  await $("[role='menu']").waitForDisplayed();
+}
+
+async function viewAction(name: string) {
+  await openViews();
+  await $(`//*[@role='menuitem' and normalize-space(.)='${name}']`).click();
+}
+
 async function select(label: string, option: string) {
-  await $(`button[aria-label='${label}']`).click();
-  await $(`//*[@role='option' and normalize-space(.)='${option}']`).click();
+  if (label === "Work views") await openViews();
+  else await $(`button[aria-label='${label}']`).click();
+  await $(`//*[@role='${label === "Work views" ? "menuitemcheckbox" : "option"}' and normalize-space(.)='${option}']`).click();
 }
 
 async function saveAs(name: string) {
-  await $("button[aria-label='Save as view']").click();
+  await viewAction("Save as view");
   await $("[role='dialog'] input").setValue(name);
   await $("[role='dialog'] button[type='submit']").click();
   await $("[role='dialog']").waitForExist({ reverse: true });
-  await expect($(views)).toHaveText(name);
+  await expect($(views)).toHaveText(expect.stringContaining(name));
 }
 
 before(async () => {
@@ -45,7 +60,15 @@ describe("Saved work views in the native application", () => {
     await $("#workspace-path").setValue(workspacePath);
     await $("//main/button").click();
     await $("article [title='Current work item']").waitForDisplayed();
-    await expect($(views)).toHaveText("Custom");
+    await expect($(views)).toHaveText(expect.stringContaining("All tasks"));
+    await expect($("button[aria-label='Save as view']")).not.toExist();
+    const inToolbar = await browser.execute(() => {
+      const trigger = document.querySelector("button[aria-label='Work views']")!;
+      const toolbar = trigger.closest("[role='toolbar']")!;
+      const folders = document.querySelector("section[aria-label='Folders']")!;
+      return toolbar.nextElementSibling === folders && trigger.getBoundingClientRect().bottom <= toolbar.getBoundingClientRect().bottom;
+    });
+    expect(inToolbar).toBe(true);
     await access(viewsPath).then(() => { throw new Error("Views file was created before the first save"); }, () => {});
 
     await $("button[aria-label='Archive']").click();
@@ -80,13 +103,14 @@ describe("Saved work views in the native application", () => {
 
     await browser.refresh();
     await $("article [title='Matching archived item']").waitForDisplayed();
-    await expect($(views)).toHaveText("Recent archive");
+    await expect($(views)).toHaveText(expect.stringContaining("Recent archive"));
     await $("//section[@aria-label='Folders']//button[normalize-space(.)='All tasks']").click();
-    await expect($(views)).toHaveText("Recent archive · Modified");
+    await expect($(views)).toHaveText(expect.stringContaining("Recent archive · Modified"));
     await browser.refresh();
-    await expect($(views)).toHaveText("Recent archive · Modified");
-    await $("//button[normalize-space(.)='Restore saved conditions']").click();
-    await expect($(views)).toHaveText("Recent archive");
+    await expect($(views)).toHaveText(expect.stringContaining("Recent archive · Modified"));
+    await viewAction("Restore saved conditions");
+    await expect($(`${views} [aria-live='polite']`)).not.toExist();
+    await expect($(views)).toHaveText(expect.stringContaining("Recent archive"));
     await expect($("article [title='Other archived item']")).not.toExist();
     await $("button[aria-label='Open filters and sorting']").click();
     await expect($("button[aria-label='Status Filter']")).toHaveText("Done");
@@ -99,25 +123,40 @@ describe("Saved work views in the native application", () => {
     const file = JSON.parse(await readFile(viewsPath, "utf8"));
     file.views[0].name = "A long saved view name that must fit within the narrow task sidebar";
     await writeFile(viewsPath, JSON.stringify(file));
-    await expect($(views)).toHaveText(file.views[0].name);
+    await expect($(views)).toHaveText(expect.stringContaining(file.views[0].name));
     const fits = await browser.execute(() => {
       const button = document.querySelector("button[aria-label='Work views']")!.getBoundingClientRect();
       const panel = document.querySelector("#task-side-panel")!.getBoundingClientRect();
-      return button.right <= panel.right && button.width > 100 && panel.width === 290;
+      const label = document.querySelector("button[aria-label='Work views'] span[title]")!;
+      return button.right <= panel.right && button.width > 100 && panel.width === 290 && label.scrollWidth > label.clientWidth;
     });
     expect(fits).toBe(true);
     await browser.saveScreenshot("/tmp/taskmate-saved-views.png");
+    await openViews();
+    await browser.saveScreenshot("/tmp/taskmate-view-menu.png");
+    await browser.keys("Escape");
     await writeFile(viewsPath, "broken views file");
+    await $(`${views} svg[aria-label]`).waitForDisplayed();
+    await openViews();
     await $("[role='alert']").waitForDisplayed();
-    await expect($("button[aria-label='Save as view']")).toBeDisabled();
+    await expect($("//*[@role='menuitem' and normalize-space(.)='Save as view']")).toHaveAttribute("aria-disabled", "true");
     await expect($("article [title='Matching archived item']")).toBeDisplayed();
     expect(await readFile(viewsPath, "utf8")).toBe("broken views file");
     await writeFile(viewsPath, JSON.stringify(file));
-    await expect($("button[aria-label='Save as view']")).toBeEnabled();
+    await expect($("//*[@role='menuitem' and normalize-space(.)='Save as view']")).not.toHaveAttribute("aria-disabled", "true");
     await $("[role='alert']").waitForExist({ reverse: true });
-    await $("button[aria-label='Manage views']").click();
+    await viewAction("Manage views");
     await expect($$("[role='dialog'] button")).toBeElementsArrayOfSize(7);
     await browser.keys("Escape");
     await $("[role='dialog']").waitForExist({ reverse: true });
+    await expect($(views)).toBeFocused();
+    await openViews();
+    await browser.keys("Escape");
+    await $("[role='menu']").waitForExist({ reverse: true });
+    await expect($(views)).toBeFocused();
+    await select("Work views", "All tasks");
+    await $("article [title='Current work item']").waitForDisplayed();
+    await expect($(views)).toHaveText(expect.stringContaining("All tasks"));
+    await expect($("button[aria-label='Archive']")).toHaveAttribute("aria-pressed", "false");
   });
 });
