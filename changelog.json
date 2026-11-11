@@ -1,4 +1,8 @@
 {
+  "0.23.0": {
+    "en": "- fix(git): generate commit messages from current changes\n- feat: add saved work views\n- feat: move saved work views into task list title menu\n- docs: add interactive filter and sort concept mockup\n- docs: unify filter and sort mockup in one tabbed panel\n- docs: define complete filter and sort behavior with interactive prototype",
+    "zh": "- fix(git): generate commit messages from current changes\n- feat: add saved work views\n- feat: move saved work views into task list title menu\n- docs: add interactive filter and sort concept mockup\n- docs: unify filter and sort mockup in one tabbed panel\n- docs: define complete filter and sort behavior with interactive prototype"
+  },
   "0.22.0": {
     "en": "- feat: add task deletion to action menus",
     "zh": "- feat: add task deletion to action menus"
