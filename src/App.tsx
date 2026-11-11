@@ -300,7 +300,7 @@ function BackupView() {
   const { t } = useTaskmateI18n();
   const [status, setStatus] = useState<GitStatus | null>(null);
   const [remote, setRemote] = useState("");
-  const [message, setMessage] = useState("Taskmate backup");
+  const [message, setMessage] = useState("");
   const [history, setHistory] = useState<GitHistoryEntry[]>([]);
   const [busy, setBusy] = useState("");
   const busyRef = useRef(false);
@@ -323,6 +323,7 @@ function BackupView() {
     setError("");
     try {
       setStatus(await api.gitAction(command, args));
+      if (command === "git_commit") setMessage("");
       await refresh();
     } catch (cause) {
       setError(errorMessage(cause));
@@ -359,7 +360,7 @@ function BackupView() {
           </section>
           <section className="rounded-xl border border-line bg-surface p-4 transition-shadow hover:shadow-panel [&>h2]:mt-0 [&>h2]:mb-3 [&>h2]:font-heading [&>h2]:text-base [&>label]:mb-2.5 [&>label]:grid [&>label]:gap-1.5 [&>label]:text-xs [&>label]:font-semibold [&>label]:text-muted">
             <h2>{t("backup.sync")}</h2>
-            <label>{t("backup.commitMessage")}<Input value={message} onChange={(event) => setMessage(event.target.value)} /></label>
+            <label>{t("backup.commitMessage")}<Input value={message} onChange={(event) => setMessage(event.target.value)} placeholder={t("backup.commitMessagePlaceholder")} /></label>
             <div className="flex gap-1.5">
               <Button onClick={() => action("git_commit", { message })} disabled={Boolean(busy)} aria-busy={busy === "git_commit"}>{busy === "git_commit" && <LoaderCircle className="animate-spin" size={14} />}{busy === "git_commit" ? t("backup.committing") : t("backup.commit")}</Button>
               <Button variant="outline" onClick={() => action("git_pull")} disabled={Boolean(busy)} aria-busy={busy === "git_pull"}>{busy === "git_pull" && <LoaderCircle className="animate-spin" size={14} />}{busy === "git_pull" ? t("backup.pulling") : t("backup.pull")}</Button>

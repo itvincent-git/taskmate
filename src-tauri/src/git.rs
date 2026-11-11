@@ -59,15 +59,53 @@ pub fn commit(root: &Path, message: &str) -> Result<GitStatus, String> {
             "core.quotePath=false",
             "diff",
             "--cached",
-            "--name-only",
+            "--name-status",
+            "--no-renames",
+            "-z",
         ],
     )?;
-    let details = changed_files
-        .lines()
-        .map(|path| format!("- {path}"))
+    let changes = changed_files
+        .split_terminator('\0')
+        .collect::<Vec<_>>()
+        .chunks_exact(2)
+        .map(|entry| {
+            let action = match entry[0] {
+                "A" => "Add",
+                "D" => "Delete",
+                _ => "Update",
+            };
+            format!("{action} {}", entry[1].replace(['\n', '\r'], " "))
+        })
+        .collect::<Vec<_>>();
+    if changes.is_empty() {
+        return Err("No changes to commit.".into());
+    }
+    let subject = if message.trim().is_empty() {
+        let mut summary = changes.iter().take(3).cloned().collect::<Vec<_>>().join("; ");
+        if changes.len() > 3 {
+            summary.push_str(&format!("; {} more", changes.len() - 3));
+        }
+        summary
+    } else {
+        message.trim().to_string()
+    };
+    let details = changes
+        .iter()
+        .map(|change| format!("- {change}"))
         .collect::<Vec<_>>()
         .join("\n");
-    let commit_message = format!("{message}\n\nChanged files:\n{details}");
+    let stats = run(
+        root,
+        &[
+            "-c",
+            "core.quotePath=false",
+            "diff",
+            "--cached",
+            "--stat",
+            "--stat-width=120",
+        ],
+    )?;
+    let commit_message = format!("{subject}\n\nChanged files:\n{details}\n\n{stats}");
     run(root, &["commit", "-m", &commit_message])?;
     status(root)
 }
@@ -285,10 +323,57 @@ mod tests {
 
         commit(temporary.path(), "Taskmate backup").unwrap();
 
+        let message = run(temporary.path(), &["log", "-1", "--format=%B"]).unwrap();
+        assert!(message.starts_with("Taskmate backup\n\nChanged files:\n- Add tasks/today.md\n- Add tasks/明日.md"));
+        assert!(message.contains("2 files changed, 2 insertions(+)"));
+    }
+
+    #[test]
+    fn commit_generates_message_from_current_changes() {
+        let temporary = tempfile::tempdir().unwrap();
+        let root = temporary.path();
+        initialize(root).unwrap();
+        run(root, &["config", "user.email", "test@example.com"]).unwrap();
+        run(root, &["config", "user.name", "Taskmate Test"]).unwrap();
+        fs::write(root.join("deleted.md"), "Remove this task\n").unwrap();
+        fs::write(root.join("今日任务.md"), "Old task\n").unwrap();
+        commit(root, "").unwrap();
         assert_eq!(
-            run(temporary.path(), &["log", "-1", "--format=%B"]).unwrap(),
-            "Taskmate backup\n\nChanged files:\n- tasks/today.md\n- tasks/明日.md"
+            history(root).unwrap()[0].subject,
+            "Add deleted.md; Add 今日任务.md"
         );
+
+        fs::write(root.join("added.md"), "New task\n").unwrap();
+        fs::remove_file(root.join("deleted.md")).unwrap();
+        fs::write(root.join("今日任务.md"), "Updated task\nMore details\n").unwrap();
+        commit(root, "   ").unwrap();
+
+        let message = run(root, &["log", "-1", "--format=%B"]).unwrap();
+        assert!(message.starts_with("Add added.md; Delete deleted.md; Update 今日任务.md\n"));
+        assert!(message.contains("- Add added.md\n- Delete deleted.md\n- Update 今日任务.md"));
+        assert!(message.contains("3 files changed, 3 insertions(+), 2 deletions(-)"));
+        assert!(status(root).unwrap().changes.is_empty());
+
+        assert_eq!(commit(root, "").unwrap_err(), "No changes to commit.");
+        assert_eq!(history(root).unwrap().len(), 2);
+    }
+
+    #[test]
+    fn generated_subject_limits_files_but_body_lists_every_change() {
+        let temporary = tempfile::tempdir().unwrap();
+        let root = temporary.path();
+        initialize(root).unwrap();
+        run(root, &["config", "user.email", "test@example.com"]).unwrap();
+        run(root, &["config", "user.name", "Taskmate Test"]).unwrap();
+        for name in ["a.md", "b.md", "c.md", "d.md"] {
+            fs::write(root.join(name), "Task\n").unwrap();
+        }
+
+        commit(root, "").unwrap();
+
+        let message = run(root, &["log", "-1", "--format=%B"]).unwrap();
+        assert!(message.starts_with("Add a.md; Add b.md; Add c.md; 1 more\n"));
+        assert!(message.contains("- Add d.md"));
     }
 
     #[test]
