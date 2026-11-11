@@ -68,6 +68,9 @@ import { loadRecentFiles, saveRecentFiles, type RecentFile } from "./lib/recent-
 import { TaskSearchPanel } from "./components/TaskSearchPanel";
 import { TaskProperties } from "./components/TaskProperties";
 import { DynamicFilter } from "./components/DynamicFilter";
+import { UpdatedTimeFilter } from "./components/UpdatedTimeFilter";
+import { SavedViews } from "./components/SavedViews";
+import { invalidViewReference, loadWorkViewState, relativeTimeFilter, saveWorkViewState } from "./lib/saved-views";
 import { EditorShortcutSettings } from "./components/EditorShortcutSettings";
 import { FontSettings } from "./components/FontSettings";
 import { Button, buttonVariants } from "./components/ui/Button";
@@ -553,6 +556,7 @@ function WorkspaceSession() {
   const [recentFiles, setRecentFiles] = useState<RecentFile[]>([]);
   const [folders, setFolders] = useState<TaskFolder[]>([]);
   const [expandedFolders, setExpandedFolders] = useState<string[]>([]);
+  const [activeViewId, setActiveViewId] = useState<string | null>(null);
   const [checkedIds, setCheckedIds] = useState<Set<string>>(new Set());
   const selectionAnchor = useRef<string | null>(null);
   const [moveIds, setMoveIds] = useState<string[] | null>(null);
@@ -629,6 +633,8 @@ function WorkspaceSession() {
     const path = (requestedPath ?? workspacePath).trim();
     if (!path) return;
     setLoading(true);
+    setWorkspaceOpen(false);
+    refreshRequest.current++;
     setError("");
     try {
       const snapshot = await api.openWorkspace(path);
@@ -645,8 +651,16 @@ function WorkspaceSession() {
       let navigation: { selected?: string | null; expanded?: string[] } = {};
       try { navigation = JSON.parse(localStorage.getItem(`taskmate-folders.v1:${path}:false`) || "{}"); } catch { /* Use the default navigation. */ }
       const folderPath = navigation.selected && !snapshot.folders?.some((f) => !f.archived && f.path === navigation.selected) ? null : navigation.selected ?? null;
-      setExpandedFolders(Array.isArray(navigation.expanded) ? navigation.expanded : []);
-      setQuery({ search: "", archived: false, folderPath, ...loadFilterSort(path) });
+      const restoredView = loadWorkViewState(path);
+      const nextQuery = { search: "", archived: false, folderPath, ...loadFilterSort(path), ...restoredView?.query };
+      if (nextQuery.archived) {
+        try { navigation = JSON.parse(localStorage.getItem(`taskmate-folders.v1:${path}:true`) || "{}"); } catch { /* Use default expansion. */ }
+      }
+      const ancestors = nextQuery.folderPath?.split("/").map((_, index, parts) => parts.slice(0, index + 1).join("/")) ?? [];
+      setExpandedFolders([...new Set([...(Array.isArray(navigation.expanded) ? navigation.expanded : []), ...ancestors])]);
+      setActiveViewId(restoredView?.viewId ?? null);
+      setCheckedIds(new Set());
+      setQuery(nextQuery);
       const restored = loadWorkspaceTabs(path, snapshot.tasks);
       if (restored) {
         const activeTab = restored.tabs.find((tab) => tabKey(tab) === restored.activeTabKey);
@@ -713,6 +727,10 @@ function WorkspaceSession() {
   }, [query.filters, query.sorts, workspaceOpen, workspacePath]);
 
   useEffect(() => {
+    if (workspaceOpen) saveWorkViewState(workspacePath, query, activeViewId);
+  }, [query, activeViewId, workspaceOpen, workspacePath]);
+
+  useEffect(() => {
     const element = detailPanel;
     if (!workspaceOpen || !element || typeof ResizeObserver === "undefined") return;
     const observer = new ResizeObserver(([entry]) => {
@@ -740,15 +758,33 @@ function WorkspaceSession() {
       const request = ++refreshRequest.current;
       const [items, directories] = await Promise.all([api.queryTasks(nextQuery), api.listFolders()]);
       if (request !== refreshRequest.current) return;
+      if (activeViewId) {
+        const invalid = invalidViewReference(nextQuery, definitions, directories);
+        if (invalid) {
+          setFolders(directories);
+          setTasks([]);
+          setError(t(`views.invalid.${invalid.kind}`, { value: invalid.value }));
+          return;
+        }
+      }
       setTasks(items);
       setFolders(directories);
       if (nextQuery.folderPath && !directories.some((f) => f.archived === nextQuery.archived && f.path === nextQuery.folderPath)) setQuery({ ...nextQuery, folderPath: null });
     } catch (cause) {
       setError(errorMessage(cause));
     }
-  }, [query, workspaceOpen]);
+  }, [query, workspaceOpen, activeViewId, definitions, t]);
 
   useEffect(() => { void refresh(); }, [query, refresh]);
+
+  const hasRelativeTime = query.filters.some(relativeTimeFilter);
+  useEffect(() => {
+    if (!workspaceOpen || !hasRelativeTime) return;
+    const update = () => { void refresh(); };
+    const timer = window.setInterval(update, 60_000);
+    window.addEventListener("focus", update);
+    return () => { window.clearInterval(timer); window.removeEventListener("focus", update); };
+  }, [workspaceOpen, hasRelativeTime, refresh]);
 
   useEffect(() => {
     const request = ++searchRequest.current;
@@ -1343,6 +1379,8 @@ function WorkspaceSession() {
   };
   const sortOptions = [
     { value: "title:asc", label: t("tasks.sortTitle") },
+    { value: "updatedAt:asc", label: `${t("filter.updatedAt")} · ${t("filter.asc")}` },
+    { value: "updatedAt:desc", label: `${t("filter.updatedAt")} · ${t("filter.desc")}` },
     ...sortDefinitions.flatMap((definition) => [
       { value: `${definition.key}:asc`, label: `${localizedPropertyName(definition, locale)} · ${t("filter.asc")}` },
       { value: `${definition.key}:desc`, label: `${localizedPropertyName(definition, locale)} · ${t("filter.desc")}` },
@@ -1703,8 +1741,10 @@ function WorkspaceSession() {
               contentClassName="w-[min(560px,calc(100vw-48px))]"
             >
               <div className="grid gap-4">
+                <Button variant="outline" className="justify-self-start" onClick={() => setQuery({ ...query, filters: [], sorts: [], folderPath: null })}>{t("views.reset")}</Button>
                 <div className="grid gap-2">
                   {filterDefinitions.map((definition) => <DynamicFilter key={definition.id} definition={definition} current={query.filters.filter((filter) => filter.key === definition.key)} onChange={(filters) => updateFilters(definition, filters)} />)}
+                  <UpdatedTimeFilter current={query.filters.find(relativeTimeFilter)} onChange={(filters) => setQuery({ ...query, filters: [...query.filters.filter((filter) => filter.key !== "updatedAt"), ...filters] })} />
                 </div>
                 <div className="grid gap-2 border-t border-line pt-3">
                   {query.sorts.length === 0 ? <Select ariaLabel={`${t("properties.sort")} 1`} value="__recent" onValueChange={(value) => {
@@ -1786,6 +1826,13 @@ function WorkspaceSession() {
                     </Tooltip>
                   </div>
                 </div>
+                <SavedViews key={workspacePath} workspacePath={workspacePath} query={query} activeId={activeViewId} onActiveIdChange={setActiveViewId} definitions={definitions} folders={folders} onApply={(conditions) => {
+                  setQuery({ ...query, ...conditions });
+                  setExpandedFolders((expanded) => [...new Set([...expanded, ...(conditions.folderPath?.split("/").map((_, index, parts) => parts.slice(0, index + 1).join("/")) ?? [])])]);
+                  setCheckedIds(new Set());
+                  selectionAnchor.current = null;
+                  setNavigatorRevealSignal((signal) => signal + 1);
+                }} />
                 <FolderNavigator revealSignal={navigatorRevealSignal} folders={folders} archived={query.archived} selected={query.folderPath ?? null} expanded={expandedFolders} onSelect={(folderPath) => setQuery({ ...query, folderPath })} onExpand={setExpandedFolders} onAction={manageFolder} onDrop={dropOnFolder} checked={checkedIds.size} onSelectAll={() => setCheckedIds(new Set(tasks.map((item) => item.id)))} onMoveSelected={() => { setMoveTarget(query.folderPath || ""); setMoveIds([...checkedIds]); }} completed={completedTasks.length} onArchiveCompleted={() => { setArchiveCompletedTasks(completedTasks); setArchiveSelectedIds(new Set(completedTasks.map((item) => item.id))); }} busy={folderBusy} />
                 {archiveResult && <div role="status" className="px-3 py-1 text-xs text-muted">{archiveResult}</div>}
                 <TaskList

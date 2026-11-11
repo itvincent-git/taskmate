@@ -1,5 +1,5 @@
 import { Check, ChevronDown } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { PropertyDefinition, TaskFilter } from "../types";
 import { localizedOptionLabel, localizedPropertyName, useTaskmateI18n } from "../lib/taskmate-i18n";
 import { Button } from "./ui/Button";
@@ -15,29 +15,39 @@ export function DynamicFilter({ definition, current, onChange }: {
 }) {
   const { locale, t } = useTaskmateI18n();
   const name = localizedPropertyName(definition, locale);
-  const [operator, setOperator] = useState(() => current[0]?.operator || defaultOperator(definition));
-  const [first, setFirst] = useState(() => valueString(current[0]?.value));
-  const [second, setSecond] = useState(() => valueString(current[1]?.value));
-  const [multiValues, setMultiValues] = useState<string[]>(() => Array.isArray(current[0]?.value) ? current[0].value.map(String) : []);
+  const restored = filterState(definition, current);
+  const [operator, setOperator] = useState(restored.operator);
+  const [first, setFirst] = useState(restored.first);
+  const [second, setSecond] = useState(restored.second);
+  const [multiValues, setMultiValues] = useState<string[]>(restored.multiValues);
+  const signature = JSON.stringify(current);
+  const emitted = useRef(signature);
+  useEffect(() => {
+    if (signature === emitted.current) return;
+    emitted.current = signature;
+    const next = filterState(definition, JSON.parse(signature));
+    setOperator(next.operator); setFirst(next.first); setSecond(next.second); setMultiValues(next.multiValues);
+  }, [signature, definition]);
+  const emit = (filters: TaskFilter[]) => { emitted.current = JSON.stringify(filters); onChange(filters); };
   const apply = (nextOperator: string, a = first, b = second) => {
     setOperator(nextOperator);
     if (nextOperator === "set" || nextOperator === "unset") {
-      onChange([{ key: definition.key, operator: nextOperator }]);
+      emit([{ key: definition.key, operator: nextOperator }]);
       return;
     }
     if (!a) {
-      onChange([]);
+      emit([]);
       return;
     }
     const typed = definition.type === "number" ? Number(a) : definition.type === "boolean" ? a === "true" : a;
     if (nextOperator === "range") {
-      onChange(b ? [
+      emit(b ? [
         { key: definition.key, operator: "gte", value: typed },
         { key: definition.key, operator: "lte", value: definition.type === "number" ? Number(b) : b },
       ] : []);
       return;
     }
-    onChange([{ key: definition.key, operator: nextOperator, value: typed }]);
+    emit([{ key: definition.key, operator: nextOperator, value: typed }]);
   };
 
   if (definition.type === "select") {
@@ -60,14 +70,14 @@ export function DynamicFilter({ definition, current, onChange }: {
   if (definition.type === "multiselect" || definition.type === "tags") {
     const setMatch = (nextOperator: string) => {
       setOperator(nextOperator);
-      if (nextOperator === "unset") onChange([{ key: definition.key, operator: "unset" }]);
-      else onChange(multiValues.length ? [{ key: definition.key, operator: nextOperator, value: multiValues }] : []);
+      if (nextOperator === "unset") emit([{ key: definition.key, operator: "unset" }]);
+      else emit(multiValues.length ? [{ key: definition.key, operator: nextOperator, value: multiValues }] : []);
     };
     if (definition.options.length) {
       const toggle = (id: string, checked: boolean) => {
         const values = checked ? [...multiValues, id] : multiValues.filter((value) => value !== id);
         setMultiValues(values);
-        onChange(values.length ? [{ key: definition.key, operator, value: values }] : []);
+        emit(values.length ? [{ key: definition.key, operator, value: values }] : []);
       };
       return <div className="flex gap-[3px] [&>*]:w-full [&>*]:max-w-none">
         <Select ariaLabel={`${name} ${t("filter.match")}`} value={operator} onValueChange={setMatch} options={[
@@ -89,7 +99,8 @@ export function DynamicFilter({ definition, current, onChange }: {
       <Input aria-label={`${name} ${t("properties.filter")}`} value={first} placeholder={`${name}…`} onChange={(event) => {
         setFirst(event.target.value);
         const values = event.target.value.split(",").map((value) => value.trim()).filter(Boolean);
-        onChange(values.length ? [{ key: definition.key, operator, value: values }] : []);
+        setMultiValues(values);
+        emit(values.length ? [{ key: definition.key, operator, value: values }] : []);
       }} />
     </div>;
   }
@@ -98,7 +109,7 @@ export function DynamicFilter({ definition, current, onChange }: {
     return <Select ariaLabel={`${name} ${t("properties.filter")}`} value={operator === "unset" ? "unset" : first || "__all"} onValueChange={(value) => {
       if (value === "__all") {
         setFirst("");
-        onChange([]);
+        emit([]);
       } else {
         setFirst(value);
         apply(value === "unset" ? "unset" : "eq", value);
@@ -120,6 +131,18 @@ export function DynamicFilter({ definition, current, onChange }: {
     {!["set", "unset"].includes(operator) ? <Input type={inputType} aria-label={`${name} ${t("properties.filter")}`} value={first} onChange={(event) => { setFirst(event.target.value); apply(operator, event.target.value); }} /> : null}
     {operator === "range" ? <Input type={inputType} aria-label={`${name} ${t("filter.range")}`} value={second} onChange={(event) => { setSecond(event.target.value); apply(operator, first, event.target.value); }} /> : null}
   </div>;
+}
+
+function filterState(definition: PropertyDefinition, current: TaskFilter[]) {
+  const lower = current.find((filter) => filter.operator === "gte");
+  const upper = current.find((filter) => filter.operator === "lte");
+  const range = lower && upper;
+  return {
+    operator: range ? "range" : current[0]?.operator || defaultOperator(definition),
+    first: definition.type === "tags" || definition.type === "multiselect" ? Array.isArray(current[0]?.value) ? current[0].value.join(", ") : "" : valueString(range ? lower.value : current[0]?.value),
+    second: valueString(range ? upper.value : undefined),
+    multiValues: Array.isArray(current[0]?.value) ? current[0].value.map(String) : [],
+  };
 }
 
 function defaultOperator(definition: PropertyDefinition) {

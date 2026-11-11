@@ -3,6 +3,7 @@ import { listen } from "@tauri-apps/api/event";
 import { resolve } from "@tauri-apps/api/path";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { open } from "@tauri-apps/plugin-dialog";
+import { parseViewsFile } from "./saved-views";
 import type {
   TaskFolder,
   MoveTasksResult,
@@ -15,6 +16,8 @@ import type {
   TaskSearchResult,
   TaskSummary,
   WorkspaceSnapshot,
+  SavedWorkView,
+  SavedViewsSnapshot,
 } from "../types";
 
 const isTauri = "__TAURI_INTERNALS__" in window;
@@ -69,19 +72,37 @@ const defaultProperties: PropertyDefinition[] = [
   { id: "endDate", key: "endDate", name: "Due date", type: "date", showInDetail: true, showInCard: true, enableFilter: true, enableSort: true, order: 4, options: [] },
 ];
 
-function loadDemo(path = "~/Taskmate"): DemoState {
-  const saved = localStorage.getItem(STORAGE_KEY);
+function loadDemo(path?: string): DemoState {
+  let saved = localStorage.getItem(STORAGE_KEY);
+  if (path && saved && JSON.parse(saved).path !== path) saved = localStorage.getItem(`${STORAGE_KEY}:${path}`);
   if (saved) {
     const state = JSON.parse(saved) as DemoState;
     state.folders ??= [];
     state.tasks.forEach((task) => { task.folderPath ??= ""; });
     return state;
   }
-  return { path, properties: defaultProperties, tasks: [], folders: [] };
+  return { path: path ?? "~/Taskmate", properties: structuredClone(defaultProperties), tasks: [], folders: [] };
 }
 
 function storeDemo(state: DemoState) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  localStorage.setItem(`${STORAGE_KEY}:${state.path}`, JSON.stringify(state));
+}
+
+function demoViewsHash(raw: string | null): string | null {
+  if (raw === null) return null;
+  let hash = 2166136261;
+  for (let i = 0; i < raw.length; i++) hash = Math.imul(hash ^ raw.charCodeAt(i), 16777619);
+  return (hash >>> 0).toString(16);
+}
+
+function updatedTimestamp(value: string): number {
+  const parts = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d+)?(?:Z|[+-](\d{2}):(\d{2}))$/i.exec(value);
+  if (!parts) return NaN;
+  const [, year, month, day, hour, minute, second, offsetHour = "0", offsetMinute = "0"] = parts.map(Number);
+  const leap = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+  const days = [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  return month < 1 || month > 12 || day < 1 || day > days[month - 1] || hour > 23 || minute > 59 || second > 59 || Number(offsetHour) > 23 || Number(offsetMinute) > 59 ? NaN : Date.parse(value);
 }
 
 function uuid() {
@@ -148,6 +169,26 @@ function demoFileName(state: DemoState, task: Task) {
 }
 
 export const api = {
+  async loadViews(workspacePath: string): Promise<SavedViewsSnapshot> {
+    if (isTauri) return invoke("load_views", { workspacePath });
+    const raw = localStorage.getItem(`${STORAGE_KEY}:views:${workspacePath}`);
+    return { views: raw === null ? [] : parseViewsFile(raw), contentHash: demoViewsHash(raw) };
+  },
+  async saveViews(workspacePath: string, views: SavedWorkView[], expectedHash: string | null): Promise<SavedViewsSnapshot> {
+    if (isTauri) return invoke("save_views", { workspacePath, views, expectedHash });
+    const current = await api.loadViews(workspacePath);
+    if (current.contentHash !== expectedHash) throw new Error("VIEWS_CONFLICT: Saved views changed. Reload before saving.");
+    const raw = JSON.stringify({ version: 1, views: views.map((view) => ({ ...view, name: view.name.trim() })) });
+    const saved = parseViewsFile(raw);
+    localStorage.setItem(`${STORAGE_KEY}:views:${workspacePath}`, raw);
+    return { views: saved, contentHash: demoViewsHash(raw) };
+  },
+  async onViewsFileChange(workspacePath: string, callback: () => void): Promise<() => void> {
+    if (isTauri) return listen("views-file-change", callback);
+    const changed = (event: StorageEvent) => { if (event.key === `${STORAGE_KEY}:views:${workspacePath}`) callback(); };
+    window.addEventListener("storage", changed);
+    return () => window.removeEventListener("storage", changed);
+  },
   supportsNativeFolderPicker(): boolean {
     return isTauri;
   },
@@ -299,12 +340,28 @@ export const api = {
     if (isTauri) return invoke("query_tasks", { query });
     const state = loadDemo();
     const search = query.search.toLowerCase();
+    const now = Date.now();
     const items = state.tasks.filter((task) => task.archived === query.archived && (query.folderPath == null || (task.folderPath || "") === query.folderPath || (query.folderPath !== "" && (task.folderPath || "").startsWith(query.folderPath + "/")))).filter((task) =>
       !search || [task.title, task.fileName, task.body, JSON.stringify(task.properties)].some((value) => value.toLowerCase().includes(search)),
     ).filter((task) => query.filters.every((filter) => {
       const value = task.properties[filter.key];
-      if (filter.operator === "any") return Array.isArray(filter.value) && (filter.value as unknown[]).some((item) => Array.isArray(value) ? value.includes(item) : value === item);
-      return value === filter.value;
+      if (["withinLastDays", "olderThanDays"].includes(filter.operator)) {
+        const days = filter.value;
+        if (filter.key !== "updatedAt" || typeof days !== "number" || !Number.isSafeInteger(days) || days <= 0) return false;
+        const updated = updatedTimestamp(task.updatedAt);
+        const threshold = now - days * 86400000;
+        return Number.isFinite(updated) && (filter.operator === "withinLastDays" ? updated >= threshold && updated <= now : updated < threshold);
+      }
+      if (filter.operator === "unset") return value == null;
+      if (filter.operator === "set") return value != null;
+      if (filter.operator === "any" || filter.operator === "all") return Array.isArray(filter.value) && Array.isArray(value) && (filter.operator === "all" ? filter.value.every((item) => value.includes(item)) : filter.value.some((item) => value.includes(item)));
+      if (filter.operator === "contains" || filter.operator === "notContains") {
+        const contains = value != null && String(value).toLowerCase().includes(String(filter.value).toLowerCase());
+        return filter.operator === "contains" ? contains : !contains;
+      }
+      const expected = filter.value;
+      const order = value == null ? expected == null ? 0 : 1 : expected == null ? -1 : typeof value === "number" && typeof expected === "number" ? value - expected : String(value).toLowerCase().localeCompare(String(expected).toLowerCase());
+      return filter.operator === "gt" ? order > 0 : filter.operator === "lt" ? order < 0 : filter.operator === "gte" ? order >= 0 : filter.operator === "lte" ? order <= 0 : order === 0;
     }));
     items.sort((a, b) => {
       for (const sort of query.sorts) {

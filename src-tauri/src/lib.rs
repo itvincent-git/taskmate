@@ -2,12 +2,13 @@ mod git;
 mod index;
 mod markdown;
 mod model;
+mod views;
 mod workspace;
 
 use git::{GitHistoryEntry, GitStatus};
 use model::{
-    Folder, MoveTasksResult, PropertyDefinition, PropertyOption, SaveTaskInput, Task, TaskQuery,
-    TaskSearchResult, TaskSummary, WorkspaceSnapshot,
+    Folder, MoveTasksResult, PropertyDefinition, PropertyOption, SaveTaskInput, SavedViewsSnapshot,
+    SavedWorkView, Task, TaskQuery, TaskSearchResult, TaskSummary, WorkspaceSnapshot,
 };
 use notify::{RecommendedWatcher, RecursiveMode, Watcher};
 use serde::Serialize;
@@ -107,11 +108,25 @@ fn open_workspace(
         .lock()
         .map_err(|_| "Workspace state is unavailable.".to_string())? = Some(root);
     let event_app = app.clone();
+    let metadata_dir = std::fs::canonicalize(PathBuf::from(&snapshot.path).join(".task-app"))
+        .map_err(|error| format!("Unable to locate workspace metadata: {error}"))?;
+    let watched_metadata = metadata_dir.clone();
     let mut watcher = notify::recommended_watcher(move |event: notify::Result<notify::Event>| {
         if let Ok(event) = event {
+            if matches!(event.kind, notify::EventKind::Access(_)) {
+                return;
+            }
+            if event
+                .paths
+                .iter()
+                .any(|path| path == &watched_metadata.join("views.json"))
+            {
+                let _ = event_app.emit("views-file-change", ());
+            }
             let paths = event
                 .paths
                 .into_iter()
+                .filter(|path| !path.starts_with(&watched_metadata))
                 .map(|path| path.to_string_lossy().to_string())
                 .collect::<Vec<_>>();
             if !paths.is_empty() {
@@ -120,6 +135,9 @@ fn open_workspace(
         }
     })
     .map_err(|error| format!("Unable to watch workspace: {error}"))?;
+    watcher
+        .watch(&metadata_dir, RecursiveMode::NonRecursive)
+        .map_err(|error| format!("Unable to watch saved views: {error}"))?;
     watcher
         .watch(
             &PathBuf::from(&snapshot.path).join("tasks"),
@@ -137,6 +155,34 @@ fn open_workspace(
         .lock()
         .map_err(|_| "Workspace watcher is unavailable.".to_string())? = Some(watcher);
     Ok(snapshot)
+}
+
+#[tauri::command]
+fn load_views(
+    workspace_path: String,
+    state: State<'_, AppState>,
+) -> Result<SavedViewsSnapshot, String> {
+    with_workspace(state, |workspace| {
+        if workspace.root != PathBuf::from(workspace_path) {
+            return Err("Workspace changed.".into());
+        }
+        workspace.load_views()
+    })
+}
+
+#[tauri::command]
+fn save_views(
+    workspace_path: String,
+    views: Vec<SavedWorkView>,
+    expected_hash: Option<String>,
+    state: State<'_, AppState>,
+) -> Result<SavedViewsSnapshot, String> {
+    with_workspace(state, |workspace| {
+        if workspace.root != PathBuf::from(workspace_path) {
+            return Err("Workspace changed.".into());
+        }
+        workspace.save_views(views, expected_hash)
+    })
 }
 
 #[tauri::command]
@@ -566,6 +612,8 @@ pub fn run() {
     let app = builder
         .invoke_handler(tauri::generate_handler![
             open_workspace,
+            load_views,
+            save_views,
             create_task,
             list_folders,
             create_folder,

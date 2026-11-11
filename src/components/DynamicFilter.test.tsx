@@ -18,6 +18,18 @@ const base: PropertyDefinition = {
 };
 
 describe("DynamicFilter", () => {
+  it("restores date ranges and updates mounted controls when a view changes", async () => {
+    const onChange = vi.fn();
+    const { rerender } = render(<DynamicFilter definition={base} current={[
+      { key: "due", operator: "gte", value: "2026-07-01" },
+      { key: "due", operator: "lte", value: "2026-07-31" },
+    ]} onChange={onChange} />);
+    expect(screen.getByLabelText("Due match")).toHaveTextContent("Range");
+    expect(screen.getByLabelText("Due Range")).toHaveValue("2026-07-31");
+    rerender(<DynamicFilter definition={base} current={[{ key: "due", operator: "eq", value: "2026-08-01" }]} onChange={onChange} />);
+    expect(screen.getByLabelText("Due Filter")).toHaveValue("2026-08-01");
+    expect(screen.queryByLabelText("Due Range")).not.toBeInTheDocument();
+  });
   it("builds typed range conditions for date and number fields", async () => {
     const user = userEvent.setup();
     const onChange = vi.fn();

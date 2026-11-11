@@ -77,6 +77,18 @@ export interface TaskQuery {
   sorts: TaskSort[];
 }
 
+export type WorkViewQuery = Pick<TaskQuery, "filters" | "sorts" | "archived"> & { folderPath: string | null };
+
+export interface SavedWorkView extends WorkViewQuery {
+  id: string;
+  name: string;
+}
+
+export interface SavedViewsSnapshot {
+  views: SavedWorkView[];
+  contentHash: string | null;
+}
+
 export interface WorkspaceSnapshot {
   path: string;
   properties: PropertyDefinition[];

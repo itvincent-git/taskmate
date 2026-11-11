@@ -160,6 +160,7 @@ impl TaskIndex {
             .map_err(to_string)?;
 
         let needle = query.search.trim().to_lowercase();
+        let now = chrono::Utc::now();
         let mut tasks = rows
             .into_iter()
             .filter(|(task, body)| {
@@ -178,7 +179,7 @@ impl TaskIndex {
                     && query
                         .filters
                         .iter()
-                        .all(|filter| matches_filter(task, filter))
+                        .all(|filter| matches_filter(task, filter, now))
             })
             .map(|(task, _)| task)
             .collect::<Vec<_>>();
@@ -317,10 +318,36 @@ fn value_for<'a>(task: &'a TaskSummary, key: &str) -> Option<&'a Value> {
     task.properties.get(key)
 }
 
-fn matches_filter(task: &TaskSummary, filter: &TaskFilter) -> bool {
+fn matches_filter(
+    task: &TaskSummary,
+    filter: &TaskFilter,
+    now: chrono::DateTime<chrono::Utc>,
+) -> bool {
     let actual = value_for(task, &filter.key);
     let expected = filter.value.as_ref();
     match filter.operator.as_str() {
+        "withinLastDays" | "olderThanDays" => {
+            if filter.key != "updatedAt" {
+                return false;
+            }
+            let Some(days) = expected.and_then(Value::as_i64).filter(|days| *days > 0) else {
+                return false;
+            };
+            let Some(duration) = chrono::TimeDelta::try_days(days) else {
+                return false;
+            };
+            let Some(threshold) = now.checked_sub_signed(duration) else {
+                return false;
+            };
+            let Ok(updated) = chrono::DateTime::parse_from_rfc3339(&task.updated_at) else {
+                return false;
+            };
+            if filter.operator == "withinLastDays" {
+                updated >= threshold && updated <= now
+            } else {
+                updated < threshold
+            }
+        }
         "unset" => actual.is_none() || actual == Some(&Value::Null),
         "set" => actual.is_some() && actual != Some(&Value::Null),
         "contains" => actual
@@ -333,6 +360,7 @@ fn matches_filter(task: &TaskSummary, filter: &TaskFilter) -> bool {
                 operator: "contains".into(),
                 ..filter.clone()
             },
+            now,
         ),
         "any" => sequence_overlap(actual, expected, false),
         "all" => sequence_overlap(actual, expected, true),
@@ -453,6 +481,53 @@ fn to_string(error: impl ToString) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn relative_update_filters_use_rolling_inclusive_bounds_and_valid_instants() {
+        let now = chrono::DateTime::parse_from_rfc3339("2026-11-11T12:00:00Z")
+            .unwrap()
+            .with_timezone(&chrono::Utc);
+        let mut item = TaskSummary::from(&task("relative", "Relative", 1, "doing", &[]));
+        let recent = TaskFilter {
+            key: "updatedAt".into(),
+            operator: "withinLastDays".into(),
+            value: Some(Value::Number(7.into())),
+        };
+        let old = TaskFilter {
+            operator: "olderThanDays".into(),
+            ..recent.clone()
+        };
+        for (timestamp, within, older) in [
+            ("2026-11-04T12:00:00Z", true, false),
+            ("2026-11-04T20:00:00+08:00", true, false),
+            ("2026-11-04T11:59:59.999Z", false, true),
+            ("2026-11-11T12:00:00Z", true, false),
+            ("2026-11-11T12:00:00.001Z", false, false),
+            ("invalid", false, false),
+            ("2026-11-04", false, false),
+        ] {
+            item.updated_at = timestamp.into();
+            assert_eq!(matches_filter(&item, &recent, now), within, "{timestamp}");
+            assert_eq!(matches_filter(&item, &old, now), older, "{timestamp}");
+        }
+        for value in [
+            Value::Number(0.into()),
+            Value::Number((-1).into()),
+            Value::Number(1.5.into()),
+            Value::String("7".into()),
+            Value::Number(i64::MAX.into()),
+            Value::Null,
+        ] {
+            assert!(!matches_filter(
+                &item,
+                &TaskFilter {
+                    value: Some(value),
+                    ..recent.clone()
+                },
+                now
+            ));
+        }
+    }
     use std::collections::BTreeMap;
 
     fn task(id: &str, title: &str, priority: i64, status: &str, tags: &[&str]) -> Task {

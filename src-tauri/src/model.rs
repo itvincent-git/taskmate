@@ -117,6 +117,30 @@ pub struct TaskSort {
     pub nulls: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SavedWorkView {
+    pub id: String,
+    pub name: String,
+    pub filters: Vec<TaskFilter>,
+    pub sorts: Vec<TaskSort>,
+    pub folder_path: Option<String>,
+    pub archived: bool,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct SavedViewsFile {
+    pub version: u32,
+    pub views: Vec<SavedWorkView>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SavedViewsSnapshot {
+    pub views: Vec<SavedWorkView>,
+    pub content_hash: Option<String>,
+}
+
 fn default_nulls() -> String {
     "last".into()
 }
