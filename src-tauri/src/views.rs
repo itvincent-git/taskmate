@@ -31,6 +31,18 @@ impl Workspace {
         let bytes = match fs::read(self.root.join(".task-app/views.json")) {
             Ok(bytes) => bytes,
             Err(error) if error.kind() == ErrorKind::NotFound => {
+                // Windows can report NotFound when .task-app is a regular file.
+                match fs::metadata(self.root.join(".task-app")) {
+                    Ok(metadata) if !metadata.is_dir() => {
+                        return Err(
+                            "Unable to read saved views: .task-app is not a directory.".into()
+                        );
+                    }
+                    Err(error) if error.kind() != ErrorKind::NotFound => {
+                        return Err(format!("Unable to read saved views: {error}"));
+                    }
+                    _ => {}
+                }
                 return Ok(SavedViewsSnapshot {
                     views: vec![],
                     content_hash: None,
@@ -102,6 +114,14 @@ mod tests {
         let workspace = Workspace::new(dir.path().into());
         assert!(workspace.load_views().unwrap().views.is_empty());
         assert!(!dir.path().join(".task-app/views.json").exists());
+        fs::create_dir(dir.path().join(".task-app")).unwrap();
+        let missing = workspace.load_views().unwrap();
+        assert!(missing.views.is_empty());
+        assert_eq!(missing.content_hash, None);
+        assert_eq!(
+            fs::read_dir(dir.path().join(".task-app")).unwrap().count(),
+            0
+        );
         let saved = workspace
             .save_views(vec![view("  Archive  ")], None)
             .unwrap();
@@ -175,5 +195,9 @@ mod tests {
         let workspace = Workspace::new(dir.path().into());
         assert!(workspace.load_views().is_err());
         assert!(workspace.save_views(vec![], None).is_err());
+        assert_eq!(
+            fs::read_to_string(dir.path().join(".task-app")).unwrap(),
+            "not a directory"
+        );
     }
 }
